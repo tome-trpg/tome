@@ -771,7 +771,7 @@ Docling 轉接器的原始碼與 `uv.lock` 隨 npm 包發送，`tome engine add 
 
 ### 7.2 Repo
 
-專案放在 GitHub 組織 `tome-trpg`，repo 是 `tome-trpg/tome`。npm 組織也叫 `tome-trpg`，套件名維持不帶 scope 的 `tome-trpg`，`@tome-trpg/` 留給之後的函式庫與規則包。
+專案放在 GitHub 組織 `tome-trpg`，repo 是 `tome-trpg/tome`。npm 組織也叫 `tome-trpg`，套件名維持不帶 scope 的 `tome-trpg`，`@tome-trpg/` 留給之後的函式庫與規則包。轉移與佔位版本 `tome-trpg@0.0.0` 都已完成。
 
 ```text
 tome/
@@ -820,9 +820,9 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 
 | 設定 | 時機 |
 | :--- | :--- |
-| `v*` 標籤的 ruleset | 現在 |
-| 機密掃描與 push protection | 現在 |
-| 私下回報漏洞 | 現在 |
+| `v*` 標籤的 ruleset | 已完成 |
+| 機密掃描與 push protection | 已完成 |
+| 私下回報漏洞 | 已完成 |
 | CodeQL 預設設定 | 有程式碼後 |
 | Immutable releases | 第一版之前 |
 | `main` 的 ruleset | 第一個實作回合 |
