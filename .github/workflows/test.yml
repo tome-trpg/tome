@@ -39,11 +39,16 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm test
 
+      # 建置結果也要載得到 worker、語言設定檔與 JSON。內建規則包到 M2 才有，先查測試用的合成包。
+      # 指定 bash：Windows 的 pwsh 只看最後一行的結束碼，中間失敗不會讓這一步失敗。
       - name: Build, and run what was built
         if: ${{ !cancelled() }}
+        shell: bash
         run: |
           npm run build
           node dist/cli/main.js --version
+          node dist/cli/main.js system lint tests/fixtures/packs/sample-pack --public
+          node dist/cli/main.js system test tests/fixtures/packs/sample-pack
 
       # 真的憑證庫。假金鑰，測完就刪，Windows 跑得到 Credential Manager（H-14）。
       - name: 'H-14: keyring on Windows'

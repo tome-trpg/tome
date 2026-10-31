@@ -2,14 +2,22 @@ import { readFileSync } from 'node:fs';
 import { Ajv2020, type ValidateFunction } from 'ajv/dist/2020.js';
 import type { BookConfig } from './book.ts';
 import type { TomeIr } from './ir.ts';
+import type { Language } from './language.ts';
 import type { Probe } from './probe.ts';
 
 const IR_FILE = 'tome-ir-1.schema.json';
 const PACK_FILE = 'tome-pack-1.schema.json';
 const BOOK_FILE = 'tome-book-1.schema.json';
 const PROBE_FILE = 'tome-probe-1.schema.json';
+const LANGUAGE_FILE = 'tome-lang-1.schema.json';
 
-export type PackFileKind = 'pack' | 'roles' | 'entities' | 'glossary' | 'syntaxPatterns';
+export type PackFileKind =
+  | 'pack'
+  | 'roles'
+  | 'entities'
+  | 'glossary'
+  | 'syntaxPatterns'
+  | 'packTest';
 
 export interface SchemaIssue {
   readonly path: string;
@@ -31,6 +39,7 @@ interface Compiled {
   readonly packId: string;
   readonly bookId: string;
   readonly probeId: string;
+  readonly languageId: string;
 }
 
 let cached: Compiled | undefined;
@@ -42,8 +51,16 @@ function compiled(): Compiled {
     const pack = loadSchema(PACK_FILE);
     const book = loadSchema(BOOK_FILE);
     const probe = loadSchema(PROBE_FILE);
-    for (const schema of [ir, pack, book, probe]) ajv.addSchema(schema);
-    cached = { ajv, irId: ir.$id, packId: pack.$id, bookId: book.$id, probeId: probe.$id };
+    const language = loadSchema(LANGUAGE_FILE);
+    for (const schema of [ir, pack, book, probe, language]) ajv.addSchema(schema);
+    cached = {
+      ajv,
+      irId: ir.$id,
+      packId: pack.$id,
+      bookId: book.$id,
+      probeId: probe.$id,
+      languageId: language.$id,
+    };
   }
   return cached;
 }
@@ -93,6 +110,10 @@ export function validateBook(data: unknown): Validation<BookConfig> {
 
 export function validateProbe(data: unknown): Validation<Probe> {
   return validateAs(compiled().probeId, data);
+}
+
+export function validateLanguage(data: unknown): Validation<Language> {
+  return validateAs(compiled().languageId, data);
 }
 
 export function validatePackFile(kind: PackFileKind, data: unknown): Validation<unknown> {

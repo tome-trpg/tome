@@ -1,0 +1,11 @@
+patterns:
+  - id: dice
+    use: mask
+    kind: dice
+    regex: '\b\d*[dD]\d+(?:[+-]\d+)?\b'
+  - id: hp_line
+    use: detect
+    regex: '\bHP\s+\d+\b'
+  - id: ac_line
+    use: detect
+    regex: '\bAC\s+\d+\b'

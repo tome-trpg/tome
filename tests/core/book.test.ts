@@ -2,18 +2,19 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameS
 import { join } from 'node:path';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { workspaceTemplate } from '../../src/cli/messages.ts';
+import { packTemplate, workspaceTemplate } from '../../src/cli/messages.ts';
 import {
   addBook,
   bookDir,
   hashFile,
-  listBooks,
+  scanBooks,
   probeBook,
   readBook,
   readProbe,
   slugFromPath,
 } from '../../src/core/book.ts';
 import { TomeError } from '../../src/core/errors.ts';
+import { createPack } from '../../src/core/pack.ts';
 import { assertSafeId, openBookStore } from '../../src/core/store.ts';
 import { initWorkspace } from '../../src/core/workspace.ts';
 import { forgeFile } from '../forge/index.ts';
@@ -85,9 +86,18 @@ describe('addBook', () => {
 
   it('keeps --system and --source-lang in book.yaml', async () => {
     const home = workspace();
+    createPack(home, 'my-pack', packTemplate('my-pack'));
     const pdf = await forgeFile('plain', tempDir());
     await addBook({ home, pdf, system: 'my-pack', sourceLang: 'en-GB' });
     expect(readBook(home, 'plain').config).toMatchObject({ system: 'my-pack', source_lang: 'en-GB' });
+  });
+
+  it('refuses a language or a rule pack that does not exist', async () => {
+    const home = workspace();
+    const pdf = await forgeFile('plain', tempDir());
+    expect(await failure(() => addBook({ home, pdf, sourceLang: 'xx' }))).toBe('language.unknown');
+    expect(await failure(() => addBook({ home, pdf, system: 'no-such-pack' }))).toBe('pack.not_found');
+    expect(scanBooks(home).books).toEqual([]);
   });
 
   it.each(['encrypted-owner', 'encrypted-user'] as const)(
@@ -97,7 +107,7 @@ describe('addBook', () => {
       const result = await addBook({ home, pdf: await forgeFile(name, tempDir()) });
       expect(codes(result)).toEqual(['pdf.encrypted']);
       expect(result.findings[0]?.level).toBe('fail');
-      expect(listBooks(home)).toEqual([]);
+      expect(scanBooks(home).books).toEqual([]);
       expect(existsSync(bookDir(home, name))).toBe(false);
     },
   );
@@ -114,7 +124,7 @@ describe('addBook', () => {
     expect(refused.findings[0]?.level).toBe('fail');
     const accepted = await addBook({ home, pdf: other, name: 'second' });
     expect(accepted.book).toBe('second');
-    expect(listBooks(home).map((book) => book.slug).sort()).toEqual(['plain', 'second']);
+    expect(scanBooks(home).books.map((book) => book.slug).sort()).toEqual(['plain', 'second']);
   });
 
   it('only updates the path when the same file moved', async () => {
@@ -127,7 +137,7 @@ describe('addBook', () => {
     expect(codes(result)).toEqual(['book.updated']);
     expect(result.book).toBe('plain');
     expect(readBook(home, 'plain').config.pdf.path).toBe(moved);
-    expect(listBooks(home)).toHaveLength(1);
+    expect(scanBooks(home).books).toHaveLength(1);
   });
 
   it('changes nothing when the same file is added again', async () => {
@@ -153,13 +163,46 @@ describe('addBook', () => {
     const fake = join(directory, 'fake.pdf');
     writeFileSync(fake, 'this is not a pdf');
     expect(await failure(() => addBook({ home, pdf: fake }))).toBe('pdf.unreadable');
-    expect(listBooks(home)).toEqual([]);
+    expect(scanBooks(home).books).toEqual([]);
   });
 
   it('refuses a name the store cannot hold', async () => {
     const home = workspace();
     const pdf = await forgeFile('plain', tempDir());
     expect(await failure(() => addBook({ home, pdf, name: '../escape' }))).toBe('store.bad_id');
+  });
+
+  it.each(['con', 'CON', 'nul', 'Com1', 'lpt9'])('refuses the reserved name %s', async (name) => {
+    const home = workspace();
+    const pdf = await forgeFile('plain', tempDir());
+    expect(await failure(() => addBook({ home, pdf, name }))).toBe('store.bad_id');
+    expect(scanBooks(home).books).toEqual([]);
+  });
+
+  it('is not stopped by another book that is broken', async () => {
+    const home = workspace();
+    mkdirSync(bookDir(home, 'broken'), { recursive: true });
+    writeFileSync(join(bookDir(home, 'broken'), 'book.yaml'), 'a: [');
+    mkdirSync(bookDir(home, 'stray'), { recursive: true });
+    mkdirSync(join(home, 'books', 'not a name!'), { recursive: true });
+    writeFileSync(join(home, 'books', 'not a name!', 'book.yaml'), 'schema: tome-book/1\n');
+    const result = await addBook({ home, pdf: await forgeFile('plain', tempDir()) });
+    expect(result.book).toBe('plain');
+    expect(result.findings.filter((item) => item.code === 'book.unreadable')).toEqual([
+      { code: 'book.unreadable', level: 'warn', params: { name: 'broken' } },
+      { code: 'book.unreadable', level: 'warn', params: { name: 'not a name!' } },
+    ]);
+    expect(codes(result)).toContain('book.added');
+    expect(scanBooks(home).unreadable).toEqual(['broken', 'not a name!']);
+  });
+
+  it('still warns about a broken book when nothing else changes', async () => {
+    const home = workspace();
+    const pdf = await forgeFile('plain', tempDir());
+    await addBook({ home, pdf });
+    mkdirSync(bookDir(home, 'broken'), { recursive: true });
+    writeFileSync(join(bookDir(home, 'broken'), 'book.yaml'), 'schema: other/1\n');
+    expect(codes(await addBook({ home, pdf }))).toEqual(['book.unreadable', 'book.already_added']);
   });
 });
 
@@ -188,6 +231,25 @@ describe('probeBook', () => {
     const home = workspace();
     await addBook({ home, pdf: await forgeFile('plain', tempDir()) });
     renameSync(join(bookDir(home, 'plain'), 'ir', 'probe.json'), join(bookDir(home, 'plain'), 'old.json'));
+    expect((await probeBook(home, 'plain')).reused).toBe(false);
+  });
+
+  it('reports a stored result that is corrupt as a damaged file', async () => {
+    const home = workspace();
+    await addBook({ home, pdf: await forgeFile('plain', tempDir()) });
+    const path = join(bookDir(home, 'plain'), 'ir', 'probe.json');
+    writeFileSync(path, '{ not json');
+    expect(await failure(() => probeBook(home, 'plain'))).toBe('file.corrupt');
+    writeFileSync(path, '{"schema":"other/1"}');
+    expect(await failure(() => probeBook(home, 'plain'))).toBe('config.bad_schema');
+  });
+
+  it('runs again when the language profile changes the fingerprint', async () => {
+    const home = workspace();
+    await addBook({ home, pdf: await forgeFile('plain', tempDir()) });
+    const store = openBookStore(home, 'plain');
+    store.run("UPDATE stage SET fingerprint = 'old' WHERE name = 'probe'");
+    store.close();
     expect((await probeBook(home, 'plain')).reused).toBe(false);
   });
 

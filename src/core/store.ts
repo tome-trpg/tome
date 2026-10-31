@@ -7,6 +7,8 @@ import { TomeError } from './errors.ts';
 
 const BUSY_TIMEOUT_MS = 5000;
 const SQLITE_BUSY = 5;
+// Windows 不能建立這些名稱的檔案或目錄，放進路徑會變成看不懂的系統錯誤。
+const RESERVED_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
 export type StoreKind = 'book' | 'series';
 
@@ -174,8 +176,14 @@ export function openStore(
   };
 }
 
+export function isReservedName(name: string): boolean {
+  return RESERVED_NAME.test(name);
+}
+
 export function assertSafeId(id: string): void {
-  if (!/^[\p{L}\p{N}][\p{L}\p{N}_-]*$/u.test(id)) throw new TomeError('store.bad_id', { id });
+  if (!/^[\p{L}\p{N}][\p{L}\p{N}_-]*$/u.test(id) || isReservedName(id)) {
+    throw new TomeError('store.bad_id', { id });
+  }
 }
 
 export function openBookStore(home: string, slug: string): Store {

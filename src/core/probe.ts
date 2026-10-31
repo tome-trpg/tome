@@ -1,3 +1,4 @@
+import type { TextQuality } from './language.ts';
 import type { OutlineNode, PageFacts, PdfHandle, PdfLink } from './pdf.ts';
 import type { ToolRunner } from './process.ts';
 
@@ -6,7 +7,7 @@ import type { ToolRunner } from './process.ts';
 export const PROBE_SCHEMA = 'tome-probe/1';
 
 /** 探測的規則一改，這個數字就要加一，舊的結果才會重算（ADR-0056）。 */
-export const PROBE_VERSION = 1;
+export const PROBE_VERSION = 2;
 
 // 下面的數字都是提案，要等本機語料量過才算定案（H-7、H-8、H-10）。
 const SCAN_COVERAGE = 0.6;
@@ -29,6 +30,8 @@ export interface PageProbe {
   readonly chars: number;
   readonly bad_chars: number;
   readonly image_coverage: number;
+  /** 字母分布跟來源語言有多像，0 到 1。字母太少不判斷時沒有這個欄位。 */
+  readonly language_match?: number;
 }
 
 export interface PageLabel {
@@ -81,7 +84,40 @@ function countChars(facts: PageFacts): { chars: number; bad: number } {
   return { chars, bad };
 }
 
-function kindOf(facts: PageFacts, chars: number, bad: number): PageKind {
+/**
+ * 頁面字母分布與語言設定檔的餘弦相似度。對應錯的 ToUnicode 字元都合法，但字母分布會移位。
+ * 不用常見字比對：索引頁、數值塊幾乎沒有常見字，會被誤判。
+ */
+function languageMatch(facts: PageFacts, quality: TextQuality): number | undefined {
+  const counts = new Map<string, number>();
+  let letters = 0;
+  for (const run of facts.runs) {
+    for (const char of run.text.toLowerCase()) {
+      if (quality.letter_frequency[char] === undefined) continue;
+      counts.set(char, (counts.get(char) ?? 0) + 1);
+      letters += 1;
+    }
+  }
+  if (letters < quality.min_letters) return undefined;
+  let dot = 0;
+  let observed = 0;
+  let expected = 0;
+  for (const [char, frequency] of Object.entries<number>(quality.letter_frequency)) {
+    const count = counts.get(char) ?? 0;
+    dot += count * frequency;
+    observed += count * count;
+    expected += frequency * frequency;
+  }
+  return dot / Math.sqrt(observed * expected);
+}
+
+function kindOf(
+  facts: PageFacts,
+  chars: number,
+  bad: number,
+  match: number | undefined,
+  quality: TextQuality | undefined,
+): PageKind {
   const covered = facts.imageLargest >= SCAN_COVERAGE;
   const glyphs = facts.visibleGlyphs + facts.invisibleGlyphs;
   // OCR 過的掃描檔文字層看不見，字數再多也不是原生頁。
@@ -93,19 +129,25 @@ function kindOf(facts: PageFacts, chars: number, bad: number): PageKind {
   if (chars === 0) {
     return facts.imageTotal > 0 || facts.vectorPaths >= VECTOR_ART_PATHS ? 'image_only' : 'native';
   }
-  return bad / chars >= BAD_CHAR_SHARE ? 'broken_text' : 'native';
+  if (bad / chars >= BAD_CHAR_SHARE) return 'broken_text';
+  if (match !== undefined && quality !== undefined && match < quality.min_similarity) {
+    return 'broken_text';
+  }
+  return 'native';
 }
 
-export function classifyPage(facts: PageFacts): PageProbe {
+export function classifyPage(facts: PageFacts, quality?: TextQuality): PageProbe {
   const { chars, bad } = countChars(facts);
+  const match = quality === undefined ? undefined : languageMatch(facts, quality);
   return {
     page: facts.page,
-    kind: kindOf(facts, chars, bad),
+    kind: kindOf(facts, chars, bad, match, quality),
     width: facts.width,
     height: facts.height,
     chars,
     bad_chars: bad,
     image_coverage: facts.imageTotal,
+    ...(match === undefined ? {} : { language_match: match }),
   };
 }
 
@@ -115,12 +157,16 @@ function isSpread(pages: readonly PageProbe[]): boolean {
   return wide / pages.length >= SPREAD_PAGE_SHARE;
 }
 
-export async function probePdf(pdf: PdfHandle, pdfSha256: string): Promise<Probe> {
+export async function probePdf(
+  pdf: PdfHandle,
+  pdfSha256: string,
+  quality?: TextQuality,
+): Promise<Probe> {
   const pages: PageProbe[] = [];
   const links: PdfLink[] = [];
   for (let index = 0; index < pdf.pageCount; index += 1) {
     const facts = await pdf.page(index);
-    pages.push(classifyPage(facts));
+    pages.push(classifyPage(facts, quality));
     links.push(...facts.links);
   }
   const labels = (await pdf.pageLabels()) ?? [];

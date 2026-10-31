@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { loadSourceLanguage } from '../../src/core/language.ts';
 import { openPdf, type PageFacts, type PdfHandle } from '../../src/core/pdf.ts';
 import {
   classifyPage,
@@ -12,6 +14,7 @@ import { FORGE_CASES, forge, forgeFile, type ForgeCase } from '../forge/index.ts
 import { tempDir } from '../helpers.ts';
 
 const SHA = 'a'.repeat(64);
+const QUALITY = loadSourceLanguage('en').profile.text_quality;
 
 function facts(overrides: Partial<PageFacts> = {}): PageFacts {
   return {
@@ -37,7 +40,7 @@ async function opened(name: ForgeCase): Promise<PdfHandle> {
 
 async function kinds(name: ForgeCase): Promise<PageProbe['kind'][]> {
   const pdf = await opened(name);
-  const probe = await probePdf(pdf, SHA);
+  const probe = await probePdf(pdf, SHA, QUALITY);
   await pdf.close();
   return probe.pages.map((page) => page.kind);
 }
@@ -79,6 +82,46 @@ describe('classifyPage', () => {
   it('does not count whitespace', () => {
     const page = classifyPage(facts({ runs: [{ text: ' a\tb\n', bbox: [0, 0, 1, 1], font: 'f' }] }));
     expect(page.chars).toBe(2);
+  });
+});
+
+describe('the language signal', () => {
+  const page = (text: string): PageFacts => facts({ runs: [{ text, bbox: [0, 0, 1, 1], font: 'f' }] });
+  const rot13 = (text: string): string =>
+    text.replace(/[a-z]/gi, (char) => {
+      const base = char <= 'Z' ? 65 : 97;
+      return String.fromCharCode(((char.charCodeAt(0) - base + 13) % 26) + base);
+    });
+  const english = readFileSync('LICENSE', 'utf8');
+
+  it('passes ordinary English, and gives a score', () => {
+    const result = classifyPage(page(english), QUALITY);
+    expect(result.kind).toBe('native');
+    expect(result.language_match).toBeGreaterThan(0.9);
+  });
+
+  it('catches letters that are legal but wrong', () => {
+    const result = classifyPage(page(rot13(english)), QUALITY);
+    expect(result.kind).toBe('broken_text');
+    expect(result.language_match).toBeLessThan(QUALITY.min_similarity);
+  });
+
+  it('catches a text layer shifted by a fixed distance', () => {
+    const shifted = english.replace(/[a-z]/g, (char) =>
+      String.fromCharCode(((char.charCodeAt(0) - 97 + 3) % 26) + 97),
+    );
+    expect(classifyPage(page(shifted), QUALITY).kind).toBe('broken_text');
+  });
+
+  it('leaves a page with few letters alone, such as a table of numbers', () => {
+    const table = 'STR 45 CON 60 SIZ 70 DEX 50 '.repeat(4);
+    const result = classifyPage(page(table), QUALITY);
+    expect(result.kind).toBe('native');
+    expect(result.language_match).toBeUndefined();
+  });
+
+  it('does not judge without a language', () => {
+    expect(classifyPage(page(rot13(english))).kind).toBe('native');
   });
 });
 

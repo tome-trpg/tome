@@ -1,3 +1,4 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { run } from '../../src/cli/run.ts';
@@ -45,6 +46,7 @@ describe('tome add', () => {
 
   it('takes --as, --system and --source-lang', async () => {
     const env = await workspace();
+    await run(['system', 'new', 'my-pack'], capture({ env }).io);
     const pdf = await forgeFile('plain', tempDir());
     const argv = ['add', pdf, '--as', 'chosen', '--system', 'my-pack', '--source-lang', 'en', '--json'];
     const { io, stdout } = capture({ env });
@@ -81,6 +83,24 @@ describe('tome add', () => {
     expect(absent.stderr()).toContain('找不到檔案');
   });
 
+  it('exits 2 with a clear message on a reserved name, not an internal error', async () => {
+    const env = await workspace();
+    const { io, stdout } = capture({ env });
+    const pdf = await forgeFile('plain', tempDir());
+    expect(await run(['add', pdf, '--as', 'con', '--json'], io)).toBe(2);
+    expect(envelope(stdout()).findings[0]?.code).toBe('store.bad_id');
+  });
+
+  it('exits 0 and warns when another book is broken', async () => {
+    const env = await workspace();
+    const home = env['TOME_HOME'] ?? '';
+    mkdirSync(join(home, 'books', 'broken'), { recursive: true });
+    writeFileSync(join(home, 'books', 'broken', 'book.yaml'), 'a: [');
+    const { io, stdout } = capture({ env });
+    expect(await run(['add', await forgeFile('plain', tempDir())], io)).toBe(0);
+    expect(stdout()).toContain('書 broken 的資料讀不出來');
+  });
+
   it('warns about pages the first version will not translate', async () => {
     const env = await workspace();
     const { io, stdout } = capture({ env });
@@ -106,6 +126,16 @@ describe('tome probe', () => {
     ]);
     expect(result.findings.at(-1)?.params).toEqual({ name: 'Forged GPU', vram: '4096' });
     expect(result.data['probe']).toMatchObject({ pages: 3, tagged: false });
+  });
+
+  it('reports a corrupt stored result as a damaged file, not a bug in TOME', async () => {
+    const env = await workspace();
+    await run(['add', await forgeFile('plain', tempDir())], capture({ env }).io);
+    writeFileSync(join(env['TOME_HOME'] ?? '', 'books', 'plain', 'ir', 'probe.json'), '{ not json');
+    const { io, stderr } = capture({ env });
+    expect(await run(['probe', 'plain'], io)).toBe(2);
+    expect(stderr()).toContain('壞了');
+    expect(stderr()).not.toContain('回報');
   });
 
   it('exits 2 without a book, and on a book it does not know', async () => {

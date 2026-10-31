@@ -33,7 +33,7 @@ date: 2026-11-01
 | **假說** | 架構倚賴的假設，必須先驗證 | [§11](#11-風險與假說) 的條目 |
 | **提案** | 原則已定案，欄位名稱這類細節實作時可以調整 | 所在章節的說明 |
 
-**這份文件裡的成本與品質數字都不是實測。** 成本依公開價目推算，價目查證日是 2026-10-31。實測只有兩項：`node:sqlite` 的能力檢查（[佐證 §2.9](research/2026-10-31-landscape.md#29-nodesqlite-實測)）與憑證庫（[H-14](#11-風險與假說)）。
+**這份文件裡的成本與品質數字，除了下面列出的實測，都不是實測。** 成本依公開價目推算，價目查證日是 2026-10-31。實測目前有這幾項：`node:sqlite` 的能力檢查（[佐證 §2.9](research/2026-10-31-landscape.md#29-nodesqlite-實測)）、憑證庫（[H-14](#11-風險與假說)）、規則包正則的限時（[H-16](#11-風險與假說)）、文字層品質判斷（[H-10](#11-風險與假說)），以及 `tome probe` 在合成書上的速度（[§10](#10-品質需求) 的 Q-9，真實書籍還沒量，所以仍是目標）。
 
 文中的「輪」是設計討論的回合，見[附錄 B](#附錄-b討論順序與路線圖)。編號不重用，所以 TC、S、H 有跳號，那些項目已撤銷。ADR 裡的 prompt 指專案最初的需求說明，沒有公開，規格都以這份文件為準。「第一版」就是 0.1.0。
 
@@ -318,7 +318,9 @@ flowchart LR
 
 頁面分類的做法是提案，數字要等本機語料量過才算定案（H-7、H-8、H-10）：看不見的文字（繪製模式 3、7）占九成以上時，有滿版圖算 `scan`，否則算 `image_only`，所以 OCR 過的掃描檔不會被當成原生頁；最大的單張圖蓋住六成以上且字元少於 40 個算 `scan`，掃描書蓋上一行購買者頁尾也一樣；U+FFFD、私有區與控制字元占 5% 以上算 `broken_text`；沒有字但有圖或大量向量圖形算 `image_only`；全空的頁算 `native`，沒有東西要翻。跨頁攤開的判斷是六成以上的頁面寬高比到 1.2。GPU 用 `nvidia-smi` 查，只認 NVIDIA，因為引擎要的是 CUDA。
 
-頁面的引擎分配要等引擎協定完成，依語言判斷文字層品質的訊號要等語言設定檔完成。
+對應錯但字元都合法的文字層，字元類別抓不到，所以再比頁面的字母分布與來源語言設定檔的餘弦相似度，字母少於 200 個的頁不判斷，低於 0.8 算 `broken_text`。不用常見字比對，因為索引頁與數值塊幾乎沒有常見字，會被誤判。這兩個數字也是提案。
+
+頁面的引擎分配要等引擎協定完成。
 
 ### 5.2 Document IR
 
@@ -406,6 +408,8 @@ Docling 是預設引擎，走同一套協定，沒有特權。它的轉接器是
 | 目標 | 標點規則、用語檢查表、代名詞集合（他、她、牠、它、祂）、風格指南 | 只有 `zh-TW`（ADR-0009） |
 
 目標語言只測試與承諾 zh-TW。評測與 QA 的成本會隨語言數相乘，所以 G-2 的目標語言部分只保證「加語言時不必改架構」。
+
+**已實作**：`languages/source/en.yaml`、`languages/target/zh-TW.yaml`，格式是 `tome-lang/1`（`schemas/tome-lang-1.schema.json`），載入在 `src/core/language.ts`（`tests/core/language.test.ts`），隨 npm 包發送（ADR-0084）。欄位是提案。來源設定檔的文字品質資料已接進 `tome probe`；正規化、斷字還原與接段的資料要到組裝步驟才用到；Pass 0 提示到 M3 才加。目標設定檔目前只有資料，風格指南要在 M2 接進提示前由維護者審過，用語檢查表留空，OpenCC 的片語表在 M2 接上。語言代碼只拿來組檔名，有斷言擋下核心依語言代碼分支。
 
 ### 5.5 輸出：Obsidian vault
 
@@ -621,7 +625,9 @@ interface RequestResult {
 
 本節的原則已定案（ADR-0042 到 ADR-0051）。`tome system init` 與 `gumshoe-srd` 排到 0.1.0 之後（ADR-0080）。欄位名稱是提案，第一版實作時可以調整。
 
-**已實作**：`tome-pack/1` 的 schema 在 `schemas/tome-pack-1.schema.json`，涵蓋 `pack.yaml`、`roles.yaml`、`entities.yaml`、`glossary.yaml`、`syntax_patterns.yaml`，驗證在 `src/core/schema.ts`（`tests/core/schema.test.ts`）。每個物件都拒絕未知欄位，所以規則包指定不了連線端點或金鑰。除了 `pack.yaml`，其他檔案的欄位都是提案，M1 實作 `tome system lint` 時會再調整。規則包的內容與 `tome system` 指令都還沒有。
+**已實作**：`tome-pack/1` 的 schema 在 `schemas/tome-pack-1.schema.json`，涵蓋 `pack.yaml`、`roles.yaml`、`entities.yaml`、`glossary.yaml`、`syntax_patterns.yaml` 與 `tests/*.yaml`，驗證在 `src/core/schema.ts`（`tests/core/schema.test.ts`）。每個物件都拒絕未知欄位，所以規則包指定不了連線端點或金鑰。`tome system new`、`list`、`lint`、`test` 在 `src/core/pack.ts`、`src/core/pack-lint.ts`、`src/core/pack-test.ts`（`tests/core/pack.test.ts`、`tests/cli/system.test.ts`），正則在 `src/core/patterns.ts` 與 `src/core/pattern-worker.ts` 的 worker thread 裡執行（`tests/core/patterns.test.ts`）。內建規則包要到 M2 才有，目前用測試專用的合成包 `tests/fixtures/packs/sample-pack` 驗證，CI 也用建置結果跑它。
+
+下面的細節是提案。`detect` 列的模式全部命中才算該角色，要「其一」就在正則裡寫分支。正則一律開 `g` 與 `u`，`flags` 只能再加 `i`、`m`、`s`。測試案例是 `id`、`text`，加上預期抓到的 `matches` 或預期的 `role`，`role: null` 表示不該判定出角色。`lint` 依序查非資料檔與連結、schema、`id` 與資料夾、繼承、模式、參照、代名詞；手寫的危險寫法檢查只是警告，用對抗輸入實跑超時才算失敗。`--public` 另查 `LICENSE`、`NOTICE`、必要聲明與至少一個測試案例，必要聲明的清單在 `src/core/pack-notices.json`，授權要是清單裡的 `Apache-2.0`、`ORC`、`CC-BY-3.0`（ADR-0048、ADR-0084）。規則包寫到組裝步驟的角色判定還沒接上。
 
 **三層知識**
 
@@ -843,7 +849,7 @@ tome backup|purge <book>               備份與刪除
 
 `tome assemble` 偵測到未回收的 vault 修改就拒絕輸出，列出檔案，要求先跑 `tome sync`，人工譯文不會被覆蓋。
 
-**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2。其他指令還沒有。
+**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2。其他指令還沒有。
 
 ---
 
@@ -869,7 +875,8 @@ Docling 轉接器的原始碼與 `uv.lock` 隨 npm 包發送，`tome engine add 
 tome/
 ├── src/core/           主程式的核心函式庫
 ├── src/cli/            CLI，只是核心外面的一層
-├── schemas/            tome-ir、tome-pack 的公開 JSON Schema
+├── schemas/            tome-ir、tome-pack 等格式的公開 JSON Schema
+├── languages/          語言設定檔
 ├── systems/            內建規則包，各自有授權
 ├── engines/docling/    Python 轉接器與 uv.lock
 ├── tests/              測試與合成 PDF 產生器
@@ -884,7 +891,7 @@ tome/
 | 工作流程 | 觸發 | 內容 |
 | :--- | :--- | :--- |
 | `specs` | push 到 `main` 與 PR | spec-guard、`prove`、`cites`、spec-graph、spec-brief、`premises`，Windows 與 Ubuntu。**已實作**：`.github/workflows/specs.yml` |
-| 測試 | push 到 `main` 與 PR | 測試、`npm audit`、相依授權檢查、效能預算、`tome system lint` 與 `test`、測試素材清單檢查。**已實作**前三項：`.github/workflows/test.yml`，檔名是 `test`，`npm audit` 的門檻是 `moderate`（ADR-0082）；其他項目等對應的功能完成才加 |
+| 測試 | push 到 `main` 與 PR | 測試、`npm audit`、相依授權檢查、效能預算、`tome system lint` 與 `test`、測試素材清單檢查。**已實作**前五項：`.github/workflows/test.yml`，檔名是 `test`，`npm audit` 的門檻是 `moderate`（ADR-0082）。內建規則包到 M2 才有，`tome system lint` 與 `test` 目前查測試用的合成包。測試素材清單等第一個素材進 repo 才加 |
 | 引擎 | 改到 `engines/` 或手動 | 安裝 Docling 跑合成 PDF |
 | 變異 | 排程 | 六個關鍵模組 |
 | 發佈 | `v*` 標籤或手動演練 | 見下節 |
@@ -1155,13 +1162,13 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | H-7 | 目標書籍多半帶書籤與頁碼標籤 | 沒有的話，章節層級與印刷頁碼要改從版面推斷，「見 p.123」的連結會變差 | 本機私有語料統計；`tome probe` 回報覆蓋率。回報已實作（`tests/core/probe.test.ts`），這台機器沒有商業書，統計**還沒做** |
 | H-8 | 字元守恆檢查的假陽性夠低，不會把好頁面擋下來 | 隱藏文字、可選內容圖層、疊印的重複文字都可能造成差異 | 合成 PDF 鍛造 + 本機私有語料，再決定門檻 |
 | H-9 | 內容雜湊夠穩定，換引擎後翻譯記憶仍命中 | 引擎對空白、連字、斷字的處理不同，正規化不夠就白付一次 | 同一份公開素材用兩個引擎解析，比對遮蔽後雜湊的重合率 |
-| H-10 | pdf.js 足以判定文字層品質並做字元守恆 | 查到 PDFium 有 `FPDFText_HasUnicodeMapError`，pdf.js 這邊還沒找到對應訊號 | 合成 PDF 鍛造，故意做壞 ToUnicode；不夠時把深度檢查放進引擎。**部分驗證**：2026-11-01 pdf.js 忠實回傳壞掉的 ToUnicode，映到私有區、U+FFFD 或半數字元壞掉的頁面都判得出 `broken_text`（`tests/core/probe.test.ts`）。字元合法但對應錯的情況字元類別抓不到，還沒驗證 |
+| H-10 | pdf.js 足以判定文字層品質並做字元守恆 | 查到 PDFium 有 `FPDFText_HasUnicodeMapError`，pdf.js 這邊還沒找到對應訊號 | 合成 PDF 鍛造，故意做壞 ToUnicode；不夠時把深度檢查放進引擎。**文字層品質的部分已驗證**：2026-11-01 pdf.js 忠實回傳壞掉的 ToUnicode，映到私有區、U+FFFD 或半數字元壞掉的頁面都判得出 `broken_text`；字元合法但對應錯的情況，字母分布的相似度正常英文 0.9 以上、位移過的文字低於門檻 0.8（`tests/core/probe.test.ts`）。只用合成案例與 repo 裡的英文驗過，商業書的誤判率**還沒量**。字元守恆的部分**還沒驗證** |
 | H-11 | 候選詞加少量上下文的 Pass 0，召回率夠高 | 漏掉的名字會在分塊翻譯時分裂 | 用已知詞表的公開素材量召回率，並與全書掃描比較 |
 | H-12 | `tome sync` 能把 vault 的修改可靠對回區塊 | 對錯段落等於把人工譯文寫到別的地方 | 合成修改集：改字、併段、搬動段落，量對應正確率 |
 | H-13 | 關閉思考後，翻譯品質仍足以上桌 | 思考計入輸出費，開著可能明顯超出附錄 A | 同一段素材開關思考各翻一次，盲評並比較 `usage` |
 | H-14 | `@napi-rs/keyring` 在 Windows 憑證管理員可用。**已驗證**：2026-11-01 在參考機器實測 2.1.2，存、取、覆寫、刪都正常，跨行程讀得到，`cmdkey /list` 列得出這筆憑證，刪除後消失；值的上限是 2,560 位元組（UTF-16） | 文件沒提 Windows，不可行就要退回環境變數 | 在參考機器實測存、取、刪：`TOME_TEST_KEYRING=1 npx --no-install vitest run tests/core/secrets.test.ts` |
 | H-15 | 數值塊欄位化能涵蓋多數數值塊 | 涵蓋率低的話，省不到錢，數字風險也還在 | 公開素材與本機語料統計整塊對上的比例 |
-| H-16 | worker 限時足以擋下失控的正則 | 擋不住的話，一個壞規則包就能卡死流程 | 用已知的災難性回溯模式測試，並量正常模式的額外耗時 |
+| H-16 | worker 限時足以擋下失控的正則 | 擋不住的話，一個壞規則包就能卡死流程 | 用已知的災難性回溯模式測試，並量正常模式的額外耗時。**已驗證**：2026-11-01 在參考機器，`(a+)+$`、`(a|aa)+$`、`(.*)*x`、`.*a.*b` 都在限時 1 秒後約 1.05 秒內被終止，回報是哪個模式，主執行緒沒有被卡住（`tests/core/patterns.test.ts`）。正常模式 2,000 段、3 個模式，直接跑 1.4 毫秒，走 worker 43 毫秒，多出來的幾乎都是啟動 worker 的約 38 毫秒。限時算的是單段文字沒有進度的時間，不是總時間，每段都慢但不超時的模式擋不下來 |
 | H-17 | 批次意圖紀錄足以避免當機後重複付費 | 送出後、記下遠端 ID 前當機，可能重送一批 | 注入當機故障，確認續跑時能認回遠端批次 |
 | H-18 | LLM 指令語言會影響譯文品質 | 指令用中文或英文，決定提示與快取前綴怎麼寫 | 併入盲評（ADR-0065） |
 
@@ -1267,6 +1274,9 @@ M1 已實作的項目：
 | `tome add`、`tome probe` | `src/core/book.ts`、`src/core/probe.ts`、`src/core/pdf.ts` | `tests/core/book.test.ts`、`tests/core/probe.test.ts`、`tests/cli/book.test.ts` |
 | 合成 PDF 鍛造 | `tests/forge/` | `tests/forge/forge.test.ts` |
 | Q-9 的效能預算 | `tests/perf/probe-budget.test.ts` | `npm test` |
+| 語言設定檔 | `languages/`、`schemas/tome-lang-1.schema.json`、`src/core/language.ts` | `tests/core/language.test.ts` |
+| `tome system new`、`list`、`lint`、`test` | `src/core/pack.ts`、`src/core/pack-lint.ts`、`src/core/pack-test.ts` | `tests/core/pack.test.ts`、`tests/cli/system.test.ts` |
+| 正則的 worker 限時 | `src/core/patterns.ts`、`src/core/pattern-worker.ts` | `tests/core/patterns.test.ts` |
 
 M0 的項目都已實作：
 

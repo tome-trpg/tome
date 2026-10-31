@@ -4,10 +4,12 @@ import { basename, dirname, extname, join, resolve } from 'node:path';
 import { parse, stringify } from 'yaml';
 import { TomeError } from './errors.ts';
 import { finding, type Finding } from './findings.ts';
+import { loadSourceLanguage } from './language.ts';
+import { findPack } from './pack.ts';
 import { openPdf } from './pdf.ts';
 import { probePdf, PROBE_VERSION, summarizeProbe, type Probe, type ProbeSummary } from './probe.ts';
 import { validateBook, validateProbe } from './schema.ts';
-import { assertSafeId, openBookStore, type Store } from './store.ts';
+import { assertSafeId, isReservedName, openBookStore, type Store } from './store.ts';
 import { readWorkspaceConfig } from './workspace.ts';
 
 // 一本書在工作區的樣子（白皮書 §6.3）。來源 PDF 不複製，只記路徑與雜湊（ADR-0053）。
@@ -18,7 +20,6 @@ const PROBE_FILE = join('ir', 'probe.json');
 const PROBE_STAGE = 'probe';
 const DEFAULT_SOURCE_LANG = 'en';
 const MAX_SLUG_LENGTH = 64;
-const RESERVED_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
 export interface BookConfig {
   readonly schema: typeof BOOK_SCHEMA;
@@ -46,7 +47,7 @@ export function slugFromPath(path: string): string {
     .slice(0, MAX_SLUG_LENGTH)
     .replace(/[-_]+$/, '');
   if (cleaned === '') return 'book';
-  return RESERVED_NAME.test(cleaned) ? `book-${cleaned}` : cleaned;
+  return isReservedName(cleaned) ? `book-${cleaned}` : cleaned;
 }
 
 export function hashFile(path: string): Promise<string> {
@@ -74,12 +75,27 @@ export function readBook(home: string, slug: string): Book {
   return { slug, config: checked.value };
 }
 
-export function listBooks(home: string): Book[] {
+export interface BookScan {
+  readonly books: readonly Book[];
+  /** 讀不出來的資料夾。一本壞掉不該擋住其他書，由呼叫端回報。 */
+  readonly unreadable: readonly string[];
+}
+
+export function scanBooks(home: string): BookScan {
   const root = join(home, 'books');
-  if (!existsSync(root)) return [];
-  return readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && existsSync(join(root, entry.name, BOOK_FILE)))
-    .map((entry) => readBook(home, entry.name));
+  if (!existsSync(root)) return { books: [], unreadable: [] };
+  const books: Book[] = [];
+  const unreadable: string[] = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !existsSync(join(root, entry.name, BOOK_FILE))) continue;
+    try {
+      books.push(readBook(home, entry.name));
+    } catch (error) {
+      if (!(error instanceof TomeError)) throw error;
+      unreadable.push(entry.name);
+    }
+  }
+  return { books, unreadable };
 }
 
 function writeBook(home: string, slug: string, config: BookConfig, flag: 'w' | 'wx'): void {
@@ -88,8 +104,10 @@ function writeBook(home: string, slug: string, config: BookConfig, flag: 'w' | '
   writeFileSync(path, stringify(config), { flag });
 }
 
-function fingerprintOf(sha256: string): string {
-  return createHash('sha256').update(`${PROBE_VERSION}\n${sha256}`).digest('hex');
+function fingerprintOf(sha256: string, languageHash: string): string {
+  return createHash('sha256')
+    .update(`${PROBE_VERSION}\n${sha256}\n${languageHash}`)
+    .digest('hex');
 }
 
 function recordStage(store: Store, name: string, fingerprint: string): void {
@@ -114,7 +132,13 @@ function stageFingerprint(store: Store, name: string): string | null {
 export function readProbe(home: string, slug: string): Probe | null {
   const path = join(bookDir(home, slug), PROBE_FILE);
   if (!existsSync(path)) return null;
-  const checked = validateProbe(JSON.parse(readFileSync(path, 'utf8')));
+  let value: unknown;
+  try {
+    value = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    throw new TomeError('file.corrupt', { path });
+  }
+  const checked = validateProbe(value);
   if (!checked.ok) throw new TomeError('config.bad_schema', { path, expected: 'tome-probe/1' });
   return checked.value;
 }
@@ -142,7 +166,8 @@ export async function probeBook(home: string, slug: string): Promise<ProbeOutcom
   const book = readBook(home, slug);
   await verifiedPdf(book);
   const { path, sha256 } = book.config.pdf;
-  const fingerprint = fingerprintOf(sha256);
+  const language = loadSourceLanguage(book.config.source_lang);
+  const fingerprint = fingerprintOf(sha256, language.hash);
   const store = openBookStore(home, slug);
   try {
     const previous = stageFingerprint(store, PROBE_STAGE) === fingerprint ? readProbe(home, slug) : null;
@@ -153,7 +178,7 @@ export async function probeBook(home: string, slug: string): Promise<ProbeOutcom
     // 雜湊對得上卻變成加密，只有 book.yaml 被手改才會發生。
     if (opened.status === 'encrypted') throw new TomeError('book.pdf_changed', { path });
     try {
-      const probe = await probePdf(opened.pdf, sha256);
+      const probe = await probePdf(opened.pdf, sha256, language.profile.text_quality);
       writeProbe(home, slug, probe);
       recordStage(store, PROBE_STAGE, fingerprint);
       return { probe, summary: summarizeProbe(probe), reused: false };
@@ -183,7 +208,12 @@ function sameConfig(a: BookConfig, b: BookConfig): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function existingBook(options: AddOptions, book: Book, path: string): AddResult {
+function existingBook(
+  options: AddOptions,
+  book: Book,
+  path: string,
+  warnings: readonly Finding[],
+): AddResult {
   const next: BookConfig = {
     ...book.config,
     pdf: { ...book.config.pdf, path },
@@ -193,11 +223,14 @@ function existingBook(options: AddOptions, book: Book, path: string): AddResult 
   if (sameConfig(book.config, next)) {
     return {
       book: book.slug,
-      findings: [finding('book.already_added', 'info', { name: book.slug })],
+      findings: [...warnings, finding('book.already_added', 'info', { name: book.slug })],
     };
   }
   writeBook(options.home, book.slug, next, 'w');
-  return { book: book.slug, findings: [finding('book.updated', 'info', { name: book.slug })] };
+  return {
+    book: book.slug,
+    findings: [...warnings, finding('book.updated', 'info', { name: book.slug })],
+  };
 }
 
 /** 登記一本書並探測。加密的 PDF 一律拒絕，也不留下書的目錄（PC-3）。 */
@@ -205,6 +238,10 @@ export async function addBook(options: AddOptions): Promise<AddResult> {
   const { home } = options;
   if (readWorkspaceConfig(home) === null) {
     return { findings: [finding('workspace.missing', 'fail', { path: home })] };
+  }
+  if (options.sourceLang !== undefined) loadSourceLanguage(options.sourceLang);
+  if (options.system !== undefined && findPack(home, options.system) === null) {
+    throw new TomeError('pack.not_found', { id: options.system });
   }
   const path = resolve(options.pdf);
   if (!existsSync(path) || !statSync(path).isFile()) throw new TomeError('pdf.not_found', { path });
@@ -215,13 +252,15 @@ export async function addBook(options: AddOptions): Promise<AddResult> {
   await opened.pdf.close();
 
   const sha256 = await hashFile(path);
-  const existing = listBooks(home).find((book) => book.config.pdf.sha256 === sha256);
-  if (existing !== undefined) return existingBook(options, existing, path);
+  const { books, unreadable } = scanBooks(home);
+  const warnings = unreadable.map((name) => finding('book.unreadable', 'warn', { name }));
+  const existing = books.find((book) => book.config.pdf.sha256 === sha256);
+  if (existing !== undefined) return existingBook(options, existing, path, warnings);
 
   const slug = options.name ?? slugFromPath(path);
   assertSafeId(slug);
   if (existsSync(bookDir(home, slug))) {
-    return { findings: [finding('book.name_taken', 'fail', { name: slug })] };
+    return { findings: [...warnings, finding('book.name_taken', 'fail', { name: slug })] };
   }
   const config: BookConfig = {
     schema: BOOK_SCHEMA,
@@ -234,6 +273,6 @@ export async function addBook(options: AddOptions): Promise<AddResult> {
   return {
     book: slug,
     probe,
-    findings: [finding('book.added', 'info', { name: slug, path: bookDir(home, slug) })],
+    findings: [...warnings, finding('book.added', 'info', { name: slug, path: bookDir(home, slug) })],
   };
 }

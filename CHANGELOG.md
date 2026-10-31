@@ -13,3 +13,12 @@
 - 測試工作流程、相依授權檢查、`npm audit`，以及擋下違規相依與連網呼叫的斷言。
 - `tome add` 登記一本書並探測，加密的 PDF 一律拒絕；`tome probe` 回報文件結構、頁面類型與 GPU。
 - 測試用的合成 PDF 鍛造器，repo 不放 PDF。
+- 語言設定檔 `languages/source/en.yaml`、`languages/target/zh-TW.yaml`，格式是 `tome-lang/1`。
+- `tome system new`、`list`、`lint`、`test`，規則包的正則在 worker thread 裡限時執行。
+- `tome probe` 用來源語言的字母分布抓出字元合法但對應錯的文字層。
+
+### 修正
+
+- `tome add --as con` 這類 Windows 保留名稱現在回報名稱不合法，不再變成內部錯誤。
+- 一本壞掉的書不再擋住 `tome add`，改成回報發現。
+- 壞掉的 `probe.json` 回報成檔案損壞，不再要使用者回報 TOME 的問題。
