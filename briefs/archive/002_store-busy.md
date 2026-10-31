@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-01
 type: defect
 wave: 1
@@ -21,7 +21,16 @@ protectedFiles:
   - docs/adr/**
   - package-lock.json
   - package.json
+integrity: sha256-6e05e5e979a5002251209e757b8ded65c08674ae48c92990769c740914c0cdbd
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-01.**
+> 鎖等滿之後回報 store.busy，不再標成 store.corrupt，開檔、遷移與之後的讀寫都涵蓋。研究文件拿掉本機路徑。
+> Merged in pull request [#3](https://github.com/tome-trpg/tome/pull/3).
+> Recorded at commit `c90839d`: 6 files changed, +147 −12.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 002 — 鎖等滿之後回報 store.busy
 
