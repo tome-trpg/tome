@@ -58,8 +58,8 @@ protectedFiles:
 ## Invariants
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run build`、`npm run licenses` 在本機都通過
-- [ ] `specs` 與 `test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 都通過
-- [ ] 建置後的 `dist` 也跑得起 worker：CI 用建置出來的程式跑 `tome system lint` 與 `test`
+- [x] `specs` 與 `test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 都通過
+- [x] 建置後的 `dist` 也跑得起 worker：CI 用建置出來的程式跑 `tome system lint` 與 `test`
 - [x] 規則包的文字與語言資料不進訊息：發現只帶檔名、ID 與數字
 - [x] 金鑰、本機路徑與商業內容都沒有進 repo，推送前掃描過
 - [x] H-10、H-16 有實測結果，寫回白皮書，沒測到的不標成已驗證
