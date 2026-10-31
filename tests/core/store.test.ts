@@ -186,6 +186,54 @@ describe('openStore', () => {
   });
 });
 
+describe('a lock that outlasts the wait', () => {
+  const shortWait = 20;
+
+  it('is store.busy on a first open, and the next open works', () => {
+    const path = join(tempDir(), 'book.db');
+    const holder = new DatabaseSync(path);
+    holder.exec('BEGIN EXCLUSIVE');
+    try {
+      expect(codeOf(() => openStore(path, 'book', MIGRATIONS.book, shortWait))).toBe('store.busy');
+    } finally {
+      holder.exec('COMMIT');
+      holder.close();
+    }
+    const store = openStore(path, 'book', MIGRATIONS.book, shortWait);
+    expect(store.schemaVersion()).toBe(1);
+    store.close();
+  });
+
+  it('is store.busy while migrating a database already in WAL', () => {
+    const path = join(tempDir(), 'book.db');
+    const holder = openStore(path, 'book');
+    const code = holder.transaction(() =>
+      codeOf(() => openStore(path, 'book', MIGRATIONS.book, shortWait)),
+    );
+    expect(code).toBe('store.busy');
+    holder.close();
+  });
+
+  it('is store.busy on a write and a transaction once open', () => {
+    const path = join(tempDir(), 'book.db');
+    const holder = openStore(path, 'book');
+    const other = openStore(path, 'book', MIGRATIONS.book, shortWait);
+    holder.transaction(() => {
+      expect(codeOf(() => other.run("INSERT INTO tome_meta VALUES ('a', '1')"))).toBe('store.busy');
+      expect(codeOf(() => other.transaction(() => undefined))).toBe('store.busy');
+    });
+    other.close();
+    holder.close();
+  });
+
+  it('leaves other failures alone', () => {
+    const store = openStore(join(tempDir(), 'book.db'), 'book');
+    expect(() => store.run('THIS IS NOT SQL')).toThrow(/syntax error/);
+    expect(codeOf(() => openStore(store.path, 'series'))).toBe('store.wrong_kind');
+    store.close();
+  });
+});
+
 describe('migrations', () => {
   it.each(['book', 'series'] as const)('%s versions run 1, 2, 3 with no gap', (kind) => {
     expect(MIGRATIONS[kind].map((item) => item.version)).toEqual(

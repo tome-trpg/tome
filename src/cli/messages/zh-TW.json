@@ -47,6 +47,7 @@
     "provider.unknown": "不支援這個供應商。目前只支援 {supported}。",
     "secret.invalid": "金鑰不是有效的格式：不能是空的、不能含空白，也不能超過 1024 字元。",
     "store.bad_id": "{id} 不能當識別名稱。只能用文字、數字、底線與連字號。",
+    "store.busy": "資料庫 {path} 正被別的行程使用，等不到鎖。請等它結束再試一次，不用動這個檔案。",
     "store.corrupt": "打不開資料庫 {path}，檔案可能壞了。",
     "store.too_new": "{path} 的版本是 {found}，這版 TOME 只認得到 {supported}。請升級 TOME。",
     "store.wrong_kind": "{path} 不是 {expected} 資料庫。"

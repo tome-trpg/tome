@@ -382,7 +382,7 @@ CAT 標準：XLIFF 2.1（inline `ph`、`pc`、`mrk`、Glossary 模組）、TMX 1
 | 語言支援 ✓ | spec-guard 的 import 斷言涵蓋 Python、TypeScript、Rust、C# |
 | 前例 ✓ | `seekers-journal` 是繁中 repo，四個工具都採用；決策紀錄在它的 ADR-0002 |
 
-來源：`C:\Repos\specs` 的原始碼文件與 `npm view`。
+來源：spec 工具的原始碼文件與 `npm view`。
 
 ### 3.8 開放授權規則包的義務
 
