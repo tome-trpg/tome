@@ -1,0 +1,37 @@
+# 文件與程式碼互相一致的閘門（docs/adr/0014-adopt-spec-tools.md）。
+# 每個工具的結束碼：0 乾淨、1 有發現、2 結果不可信。1 與 2 都讓工作失敗。
+name: specs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  specs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install the spec tools
+        run: npm ci
+
+      - name: 'spec-guard: 程式碼守住文件的承諾'
+        if: ${{ !cancelled() }}
+        run: npx --no-install @spec-family/spec-guard
+
+      - name: 'spec-guard prove: 每條規則都真的會失敗'
+        if: ${{ !cancelled() }}
+        run: npx --no-install @spec-family/spec-guard prove
+
+      - name: 'spec-graph: 文件彼此一致'
+        if: ${{ !cancelled() }}
+        run: npx --no-install @spec-family/spec-graph check

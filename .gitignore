@@ -1,0 +1,11 @@
+node_modules/
+
+# 使用者的書與衍生資料絕不進 repo（ADR-0001）
+*.pdf
+*.db
+*.db-wal
+*.db-shm
+*.jsonl
+.env
+.env.*
+workspace/

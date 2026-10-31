@@ -1,0 +1,24 @@
+{
+  "name": "tome-trpg",
+  "version": "0.0.0",
+  "private": true,
+  "description": "TRPG Omnilingual Markdown Engine: translate TRPG books you own into Traditional Chinese.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dancraft3746/tome-trpg.git"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "spec": "npm run spec:guard && npm run spec:prove && npm run spec:graph",
+    "spec:guard": "spec-guard",
+    "spec:prove": "spec-guard prove",
+    "spec:graph": "spec-graph check"
+  },
+  "devDependencies": {
+    "@spec-family/spec-graph": "0.21.0",
+    "@spec-family/spec-guard": "0.30.0"
+  }
+}

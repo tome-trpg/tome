@@ -1,0 +1,5 @@
+{
+  "specs": ["docs/**/*.md"],
+  "exclude": ["node_modules"],
+  "strict": true
+}

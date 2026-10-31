@@ -89,6 +89,8 @@
 
 ### 1.8 本機推論（RTX 4060 Laptop 8 GB）
 
+第一版預設只走 API，本機模型不測試也不承諾（[ADR-0025](../adr/0025-api-first-local-unpromised.md)）。下面的資料留作紀錄。
+
 大小來自 Hugging Face 上的 GGUF。**沒有找到 zh-TW 翻譯品質的評測，排名未確認。**
 
 | 模型 | 授權 | 大小 | 說明 |
@@ -105,6 +107,20 @@
 | Ollama | 有，原生 Windows | 文件未說明 |
 | LM Studio | 有 | 文件未說明 |
 | vLLM | 有，但**不支援原生 Windows**，要 WSL 或社群分支 | `enable_prefix_caching` |
+
+### 1.9 標籤協定與佔位符的前例
+
+查證時間 2026-10-31，由查證代理讀原始頁面整理。
+
+| 對象 | 事實 | 來源 |
+| :--- | :--- | :--- |
+| Hy-MT2-7B | 模型卡有術語、背景、風格、分隔符與結構化資料範本；沒有多段請求，也沒點名標籤語法；沒有預設 system prompt；`zh-Hant` 是繁體中文 | [模型卡](https://huggingface.co/tencent/Hy-MT2-7B) |
+| TranslateGemma | 只支援 User、Assistant 角色；內容 MUST 恰好一個項目，含 `source_lang_code`、`target_lang_code`；輸入上限 2K token；是否接受 zh-TW 未說明；標籤處理未說明 | [模型卡](https://huggingface.co/google/translategemma-12b-it) |
+| BabelDOC | 在 `il_translator.py` 裡，佔位符對不上只記 debug log，幻覺佔位符會被移除；單段佔位符超過 40 個時關閉該段的 rich text。引擎模組未讀，重試是否在別處未確認 | [il_translator.py](https://github.com/funstory-ai/BabelDOC/blob/main/babeldoc/format/pdf/document_il/midend/il_translator.py) |
+| PDFMathTranslate v1 | 公式佔位符 `{v0}`；越界的標記直接略過，全檔沒有檢查遺失的邏輯；只有公式的片段不送翻譯。v2 未讀 | [converter.py](https://github.com/PDFMathTranslate/PDFMathTranslate/blob/main/pdf2zh/converter.py) |
+| XLIFF 2.1 | `ph` 是獨立代碼，`pc` 是成對的跨距代碼，`mrk` 是註記，術語用 `mrk type="term"`；`canReorder`、`canCopy`、`canDelete` 限制編輯行為 | [XLIFF 2.1](https://docs.oasis-open.org/xliff/xliff-core/v2.1/os/xliff-core-v2.1-os.html) |
+| TEaR | 翻譯、評估、修正三步。GPT-3.5 時代的結果：En-Zh 人工偏好修正版的比例是 32.2%；未說明成本 | [arXiv 2402.16379](https://arxiv.org/abs/2402.16379) |
+| TransAgents | 多代理文學翻譯，dd-BLEU 較低但 Gemba-DA 與人工偏好較高；論文提到執行時間與成本都有明顯開銷（只看到摘要，未逐字核對） | [arXiv 2405.11804](https://arxiv.org/abs/2405.11804) |
 
 ## 二、PDF 解析工具
 
@@ -199,6 +215,24 @@ PDFium 標頭是 `main` 分支，不一定等於 pypdfium2 隨附的版本。
 
 來源：[Links](https://obsidian.md/help/links)、[Callouts](https://obsidian.md/help/callouts)、[Properties](https://obsidian.md/help/properties)
 
+### 2.8 主程式語言選型
+
+查證時間 2026-10-31，由查證代理讀原始頁面整理。「未說明」表示讀到的頁面沒寫，不代表不支援。
+
+| 語言 | 函式庫 | 授權 | 事實 | 來源 |
+| :--- | :--- | :--- | :--- | :--- |
+| TypeScript | pdf.js（`pdfjs-dist`） | Apache-2.0 | `getOutline()`、`getPageLabels()`、`getMarkInfo()`、逐頁 `getStructTree()`、`getAnnotations()`、`getTextContent()`。`TextItem` 有 `str`、`dir`、`transform`、`width`、`height`、`fontName`、`hasEOL`，是否逐字未說明。Node 範例匯入 `pdfjs-dist/legacy/build/pdf.mjs`，範例沒用 canvas 套件 | [API](https://mozilla.github.io/pdf.js/api/draft/module-pdfjsLib-PDFDocumentProxy.html)、[api.js](https://raw.githubusercontent.com/mozilla/pdf.js/master/src/display/api.js)、[範例](https://github.com/mozilla/pdf.js/tree/master/examples/node) |
+| TypeScript | `@hyzyla/pdfium` | MIT | PDFium 的 WASM 包裝，Node 22 以上；書籤、頁碼標籤、連結未說明 | [repo](https://github.com/hyzyla/pdfium) |
+| TypeScript | opencc-js | MIT | 有 `twp`；不保證與官方 OpenCC 完全一致 | [repo](https://github.com/nk2028/opencc-js) |
+| TypeScript、Rust | lindera | MIT | IPADIC、UniDic、SudachiDict；有 Node 與 WASM 綁定 | [repo](https://github.com/lindera/lindera) |
+| TypeScript | `node:sqlite` | Node 內建 | Stability 1.2 Release candidate，22.5 加入 | [文件](https://nodejs.org/api/sqlite.html) |
+| TypeScript | better-sqlite3 | MIT | 有預編譯檔，Windows 與 Node 24 未點名 | [repo](https://github.com/WiseLibs/better-sqlite3) |
+| TypeScript | Node 單一執行檔 | — | Stability 1.1 Active development，Windows 不簽章也能執行 | [文件](https://nodejs.org/api/single-executable-applications.html) |
+| Rust | pdfium-render | Apache-2.0 或 MIT | 不含 PDFium；有逐字文字、書籤、連結；頁碼標籤未說明；結構樹只有低階綁定 | [repo](https://github.com/ajrcarey/pdfium-render) |
+| Rust | sudachi.rs | Apache-2.0 | README 標示 0.7 版不穩定 | [repo](https://github.com/WorksApplications/sudachi.rs) |
+| C# | PdfPig | Apache-2.0 | 逐字座標與字型、書籤、超連結；頁碼標籤與 tagged 結構未說明；1.0 前 API 會變 | [repo](https://github.com/UglyToad/PdfPig) |
+| Python 引擎 | uv | — | 需要時預設自動下載 Python；`uv tool install` 是否也會下載未說明 | [install](https://docs.astral.sh/uv/guides/install-python/)、[tools](https://docs.astral.sh/uv/guides/tools/) |
+
 ## 三、授權、法務與開源營運
 
 ### 3.1 出版社政策
@@ -244,6 +278,8 @@ PDFium 標頭是 `main` 分支，不一定等於 pypdfium2 隨附的版本。
 | PyPI `tome-trpg`、`tome-engine` | 查證當天 404，可用 ✓；名稱要首次發佈才算保留 | 同上 |
 | `tome` 指令 | JFrog `tomescripts`（Apache-2.0）的指令也叫 `tome`，還裝頂層 Python 套件 `tome`；`@tomehq/cli` 也裝 `tome` 指令 | [jfrog/tome](https://github.com/jfrog/tome)、[tomehq/tome](https://github.com/tomehq/tome) |
 | 其他同名 | runebookai/tome（LLM 桌面用戶端）、ToME（Tales of Maj'Eyal） | GitHub |
+| npm `tome` | 已被占用（A modern wiki with minimal external dependencies，1.0.7）✓ | `npm view` |
+| npm `tome-trpg` | 查證當天查無此套件 ✓；要首次發佈才算保留 | `npm view` |
 
 ### 3.5 同類工具
 
@@ -271,3 +307,17 @@ CAT 標準：XLIFF 2.1（inline `ph`、`pc`、`mrk`、Glossary 模組）、TMX 1
 | Immutable releases | 2025-10-28 GA；鎖住 tag 與資產 | [文件](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases) |
 | 細粒度 token 權限 | Rulesets、environments、immutable releases 開關要 Administration；重跑 workflow 要 Actions write；push、merge PR、建 release 要 Contents write；Workflows 列為動 `.github/workflows` 的附加權限（實際拒絕行為文件沒明寫） | [文件](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens) |
 | token 預填網址 ✓ | `settings/personal-access-tokens/new` 接受 `name`、`description`、`target_name`、`expires_in`（1–366 或 `none`）與各權限參數；`workflows` 只有 `write` 一種值 | [文件](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) |
+| npm Trusted Publishing | GitHub Actions 走 OIDC，不用長期 token；需要 npm 11.5.1、Node 22.14 以上與 `id-token: write`；公開 repo 與公開套件自動產生 provenance；只支援 GitHub 託管的 runner；新設定要在 2 天內完成首次發佈 | [文件](https://docs.npmjs.com/trusted-publishers) |
+
+### 3.7 spec 工具
+
+| 項目 | 事實 |
+| :--- | :--- |
+| 版本 ✓ | npm 的 `@spec-family/spec-brief` 0.12.0、`spec-graph` 0.21.0、`spec-guard` 0.30.0、`spec-harness` 0.22.0，都是 MIT，沒有執行期相依 |
+| 需求 ✓ | Node 22 以上；spec-harness 另需 spec-brief 0.12.0、Claude Code 2.1.139、git 2.31 |
+| 語言 ✓ | 正文可用任何語言。狀態字、關係與義務標題只讀英文，中文的已於 spec-graph 0.11.0 移除 |
+| 編號 ✓ | spec-graph 不把單字母前綴當編號家族，`D-7` 這種寫法檢查不到，`ADR-0007` 可以 |
+| 語言支援 ✓ | spec-guard 的 import 斷言涵蓋 Python、TypeScript、Rust、C# |
+| 前例 ✓ | `seekers-journal` 是繁中 repo，四個工具都採用；決策紀錄在它的 ADR-0002 |
+
+來源：`C:\Repos\specs` 的原始碼文件與 `npm view`。
