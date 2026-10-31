@@ -369,3 +369,46 @@ CAT 標準：XLIFF 2.1（inline `ph`、`pc`、`mrk`、Glossary 模組）、TMX 1
 | 前例 ✓ | `seekers-journal` 是繁中 repo，四個工具都採用；決策紀錄在它的 ADR-0002 |
 
 來源：`C:\Repos\specs` 的原始碼文件與 `npm view`。
+
+### 3.8 開放授權規則包的義務
+
+查證時間 2026-11-01。ORC 條文讀 Paizo 頁面與 Chaosium 提供的 PDF，GUMSHOE 讀 SRD 文件本身。這不是法律意見。
+
+**ORC License**
+
+| 項目 | 事實 |
+| :--- | :--- |
+| 回授 ✓ | II.b：要對所有接收者提出同樣的授權要約，且不得附加其他條款。條文沒有用 share-alike 這個詞 |
+| 衍生範圍 ✓ | I.c：單一遊戲系統的產品是整個產品；含多個不可互通系統的產品，是相關的那一部分 |
+| 聲明 ✓ | III：要有 ORC 聲明、署名、Reserved Material 聲明，方式依媒介合理為之 |
+| 違約 | V.a：未遵守就自動終止，發現後 60 天內補正可恢復 |
+| 商標 ✓ | I.b：權利不含商標。I.h：Reserved Material 含商標、專有名詞 |
+| 翻譯 | AxE 說可以翻譯，聲明要同時歸屬原作與譯文 |
+| AI | 條文沒有相關條款 |
+
+Chaosium 要求的聲明：「licensed under the ORC License held in the Library of Congress at TX 9-307-067」。署名範例：「This product is based on the following Licensed Material: "Basic Roleplaying: Universal Game Engine," copyright © 2024 Chaosium Inc., by Jason Durall and Steve Perrin.」另外請使用者加上 Powered by BRP 標示。
+
+Chaosium 的 ORC 文件寫明 Basic Roleplaying 是它的商標 ✓。是否允許用在套件名稱，沒有找到明文。
+
+來源：[ORC License](https://paizo.com/orclicense)、[Chaosium](https://www.chaosium.com/orclicense/)、[BRP ORC 文件](https://www.chaosium.com/content/orclicense/BasicRoleplaying-ORC-Content-Document.pdf)
+
+**GUMSHOE SRD** ✓
+
+| 項目 | 事實 |
+| :--- | :--- |
+| 授權 | Creative Commons Attribution 3.0 Unported |
+| 商標 | GUMSHOE 可用於依此授權產出的作品，但不得暗示與 Pelgrane Press 或 Robin D. Laws 有關係或受背書 |
+| 不可用 | GUMSHOE Logo；Trail of Cthulhu、The Esoterrorists、Night's Black Agents 等具名產品不得放進衍生作品 |
+| 署名 | 文字固定，放在自己的版權聲明處，字級相同 |
+| 翻譯 | CC BY 3.0 允許，要標明更動，例如 The original work was translated from English |
+
+固定署名文字見 [SRD](https://pelgranepress.com/gumshoe/files/GUMSHOESRDCC-3%20241209.docx) 開頭。
+
+**規則包工具**
+
+| 項目 | 事實 | 來源 |
+| :--- | :--- | :--- |
+| `re2` | BSD-3-Clause；原生模組，安裝腳本下載預編譯檔或用 node-gyp 建置，npm 12 要設 `allowScripts`；不支援 lookahead 與反向參照 | [repo](https://github.com/uhop/node-re2) |
+| V8 線性引擎 | 2021 年的文章寫仍是實驗性質，有 `--enable-experimental-regexp-engine`，現況與 Node 用法未確認 | [文章](https://v8.dev/blog/non-backtracking-regexp) |
+| `yaml` | ISC，沒有外部相依 | [repo](https://github.com/eemeli/yaml) |
+| `ajv` | MIT，4 個執行期相依 | [repo](https://github.com/ajv-validator/ajv) |
