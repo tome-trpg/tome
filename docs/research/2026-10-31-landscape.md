@@ -163,6 +163,42 @@ Docling 的 `replace_broken_text_layer`（預設關閉）依控制字元、U+FFF
 5. **相依版本互斥**：Marker 要 `pillow<11`，MinerU 要 `pillow>=11`；pypdfium2 被釘在 4.30.0（YomiToku、NDLOCR-Lite）、5.10.1（pdftext）、≥5.13（MinerU）。**這些引擎裝不進同一個環境。**
 6. **雲端外洩路徑**：Marker `--use_llm` 預設走 Gemini；所有引擎第一次執行都會下載權重，要離線必須先備妥。
 
+### 2.6 Docling 文件模型與 PDF 自帶結構
+
+查證對象是 docling-core 的 `main` 分支與目前的文件網站，沒有鎖定 Docling 2.145.0。
+
+| 項目 | 事實 | 來源 |
+| :--- | :--- | :--- |
+| 區塊標籤 | `DocItemLabel` 30 個、`GroupLabel` 12 個，沒有邊欄、aside、callout 或方框文字 | [labels.py](https://raw.githubusercontent.com/docling-project/docling-core/main/docling_core/types/doc/labels.py) |
+| 出處 | `ProvenanceItem` 有 `bbox`、`charspan`、`page_no`；`prov` 是清單，程式碼顯示表格可以跨頁；段落跨頁是否有多筆未確認 | [reference](https://docling-project.github.io/docling/reference/docling_document/)、[document.py](https://raw.githubusercontent.com/docling-project/docling-core/main/docling_core/types/doc/document.py) |
+| 文字項目 | `TextItem` 成員有 `formatting`、`hyperlink`，**沒有列字型與字級**。`Formatting` 的欄位未逐字核對 | 同上 |
+| 版本 | `DoclingDocument` 有 `schema_name` 與 `version` 欄位 | 同上 |
+| 頁面範圍 | `convert()` 有 `page_range`，是否從 1 起算未確認 | [converter](https://docling-project.github.io/docling/reference/document_converter/) |
+| 離線 | `docling-tools models download` 預先下載，以 `artifacts_path` 或 `DOCLING_ARTIFACTS_PATH` 指定；遠端服務要 `enable_remote_services=True` 才開，否則丟 `OperationNotAllowed` | [advanced options](https://docling-project.github.io/docling/usage/advanced_options/) |
+| PDF 自帶結構 | 文件只提到用書籤推標題層級（`use_bookmarks`），該階段預設關閉；tagged 結構、連結註記、`/PageLabels` 都沒提到 | [heading levels](https://docling-project.github.io/docling/usage/heading_levels/) |
+
+| 函式庫 | 自帶結構的讀取方式 | 來源 |
+| :--- | :--- | :--- |
+| pypdfium2 | `get_toc()`、`get_page_label(index)`、`is_tagged()`；連結與結構樹走原始綁定的 `FPDFLink_*`、`FPDF_StructTree_*`、`FPDF_StructElement_*` | [API](https://pypdfium2.readthedocs.io/en/stable/python_api.html)、[fpdf_doc.h](https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/fpdf_doc.h)、[fpdf_structtree.h](https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/fpdf_structtree.h) |
+| pikepdf | `Page.label`、`pikepdf.models.Outline` | [models](https://pikepdf.readthedocs.io/en/latest/api/models.html) |
+
+PDFium 標頭是 `main` 分支，不一定等於 pypdfium2 隨附的版本。
+
+### 2.7 Obsidian Markdown 語法限制
+
+| 項目 | 事實 |
+| :--- | :--- |
+| 區塊識別碼 | `^id`，只能用拉丁字母、數字與連字號；長度上限未說明 |
+| 區塊位置 | 一般段落放行尾；清單、引言、callout、表格放在獨立一行，前後空行 |
+| 連結 | 區塊 `[[note#^id]]`、標題 `[[note#heading]]`、顯示文字 `[[note#heading\|text]]` |
+| 相容性 | 區塊參照是 Obsidian 專屬語法，在 Obsidian 之外無效 |
+| 內部連結 | 不支援連到引言、callout、表格的內部 |
+| 字元限制 | 含 `#`、`\|`、`^`、`:`、`%%`、`[[`、`]]` 的字串可能無法當連結 |
+| Callout | `> [!type] 標題`，可巢狀、可摺疊；未知類型退回 `note` |
+| 屬性 | 檔案開頭的 YAML；不支援巢狀屬性，也不支援屬性內的 Markdown |
+
+來源：[Links](https://obsidian.md/help/links)、[Callouts](https://obsidian.md/help/callouts)、[Properties](https://obsidian.md/help/properties)
+
 ## 三、授權、法務與開源營運
 
 ### 3.1 出版社政策
