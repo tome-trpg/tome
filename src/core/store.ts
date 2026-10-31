@@ -99,9 +99,10 @@ function connect(path: string): DatabaseSync {
   let db: DatabaseSync | undefined;
   try {
     db = new DatabaseSync(path);
+    // 等待時間要先設：切到 WAL 要拿鎖，第一次開檔撞到別的行程時才會等，不會立刻失敗。
+    db.exec('PRAGMA busy_timeout = 5000');
     db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA foreign_keys = ON');
-    db.exec('PRAGMA busy_timeout = 5000');
     return db;
   } catch {
     db?.close();

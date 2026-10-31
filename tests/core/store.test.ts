@@ -1,3 +1,5 @@
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -127,6 +129,24 @@ describe('openStore', () => {
     const path = join(tempDir(), 'book.db');
     writeFileSync(path, 'this is not a database, and it is long enough to read a header from.');
     expect(codeOf(() => openStore(path, 'book'))).toBe('store.corrupt');
+  });
+
+  it('waits for another process on the first open, instead of failing at once', async () => {
+    const path = join(tempDir(), 'book.db');
+    const script = `
+      const { DatabaseSync } = require('node:sqlite');
+      const db = new DatabaseSync(process.argv[1]);
+      db.exec('BEGIN EXCLUSIVE');
+      process.stdout.write('locked');
+      setTimeout(() => { db.exec('COMMIT'); db.close(); }, 500);
+    `;
+    const holder = spawn(process.execPath, ['-e', script, path], { stdio: ['ignore', 'pipe', 'inherit'] });
+    const exited = once(holder, 'exit');
+    await once(holder.stdout, 'data');
+    const store = openStore(path, 'book');
+    expect(store.schemaVersion()).toBe(1);
+    store.close();
+    await exited;
   });
 
   it('commits a transaction, and undoes one that throws', () => {

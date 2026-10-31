@@ -9,18 +9,27 @@ export interface SecretInput extends AsyncIterable<Buffer | string> {
   off(event: 'data', listener: (chunk: Buffer | string) => void): unknown;
 }
 
+export interface SecretOutput {
+  write(text: string): unknown;
+}
+
 const CTRL_C = '\u0003';
 const CTRL_D = '\u0004';
 const DELETE = '\u007f';
 const BACKSPACE = '\b';
 
-function readHidden(input: SecretInput & { setRawMode(mode: boolean): unknown }): Promise<string> {
+function readHidden(
+  input: SecretInput & { setRawMode(mode: boolean): unknown },
+  output: SecretOutput,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     let value = '';
     const finish = (settle: () => void): void => {
       input.off('data', onData);
       input.setRawMode(false);
       input.pause();
+      // 關掉回顯後，使用者按的 Enter 不會出現在畫面上，要自己換行，下一行輸出才不會黏在提示後面。
+      output.write('\n');
       settle();
     };
     function onData(chunk: Buffer | string): void {
@@ -50,10 +59,14 @@ async function readPiped(input: SecretInput): Promise<string> {
 }
 
 /** 金鑰只從這裡進來，沒有旗標參數，才不會留在 shell 歷史（ADR-0082）。 */
-export function readSecret(input: SecretInput, prompt: () => void): Promise<string> {
+export function readSecret(
+  input: SecretInput,
+  output: SecretOutput,
+  prompt: string,
+): Promise<string> {
   if (input.isTTY && input.setRawMode) {
-    prompt();
-    return readHidden(input as SecretInput & { setRawMode(mode: boolean): unknown });
+    output.write(prompt);
+    return readHidden(input as SecretInput & { setRawMode(mode: boolean): unknown }, output);
   }
   return readPiped(input);
 }
