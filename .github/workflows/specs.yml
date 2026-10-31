@@ -40,6 +40,26 @@ jobs:
         if: ${{ !cancelled() }}
         run: npx --no-install @spec-family/spec-guard prove
 
+      - name: 'spec-guard cites: 註解引用的 ADR 都還有效'
+        if: ${{ !cancelled() }}
+        run: npx --no-install @spec-family/spec-guard cites --strict
+
       - name: 'spec-graph: 文件彼此一致'
         if: ${{ !cancelled() }}
         run: npx --no-install @spec-family/spec-graph check
+
+      - name: 'spec-brief lint: 回合契約寫完整了'
+        if: ${{ !cancelled() }}
+        run: npx --no-install @spec-family/spec-brief lint
+
+      - name: 'spec-brief matrix: 同一波的回合沒有寫到同一個檔案'
+        if: ${{ !cancelled() }}
+        run: npx --no-install @spec-family/spec-brief matrix
+
+      - name: 'spec-brief schedule: 波次與相依一致'
+        if: ${{ !cancelled() }}
+        run: npx --no-install @spec-family/spec-brief schedule
+
+      - name: 'spec-harness premises: 回合的前提還成立'
+        if: ${{ !cancelled() }}
+        run: npx --no-install @spec-family/spec-harness premises

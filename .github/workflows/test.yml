@@ -1,0 +1,69 @@
+# 主程式的測試閘門（docs/adr/0062-test-strategy.md、docs/adr/0068-process-additions.md）。
+# Windows 與 Ubuntu 都跑。公開 repo 的 CI 不放任何金鑰。
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      # 釘在 commit，旁邊註明標籤：標籤被移動就是進入這條流程的路。
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck
+        if: ${{ !cancelled() }}
+        run: npm run typecheck
+
+      - name: Unit, property and CLI tests
+        if: ${{ !cancelled() }}
+        run: npm test
+
+      - name: Build, and run what was built
+        if: ${{ !cancelled() }}
+        run: |
+          npm run build
+          node dist/cli/main.js --version
+
+      # 真的憑證庫。假金鑰，測完就刪，Windows 跑得到 Credential Manager（H-14）。
+      - name: 'H-14: keyring on Windows'
+        if: ${{ !cancelled() && runner.os == 'Windows' }}
+        env:
+          TOME_TEST_KEYRING: '1'
+        run: npx --no-install vitest run tests/core/secrets.test.ts
+
+      # Ubuntu runner 沒有 Secret Service：Linux 二進位檔要載得起來，也要回報不可用，不是當掉（ADR-0083）。
+      - name: 'ADR-0083: no keyring on Linux'
+        if: ${{ !cancelled() && runner.os == 'Linux' }}
+        env:
+          TOME_TEST_NO_KEYRING: '1'
+        run: npx --no-install vitest run tests/core/secrets.test.ts
+
+      # 全部相依都查，開發相依也一樣。門檻見 docs/adr/0082-m0-toolchain-and-conventions.md。
+      - name: npm audit
+        if: ${{ !cancelled() }}
+        run: npm audit --audit-level=moderate
+
+      - name: Dependency licenses
+        if: ${{ !cancelled() }}
+        run: npm run licenses

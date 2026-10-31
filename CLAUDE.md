@@ -26,15 +26,21 @@ TRPG Omnilingual Markdown Engine：把使用者自己擁有的 TRPG 書在本機
 ```bash
 npm ci --ignore-scripts
 npm run spec
+npm run typecheck
+npm test
+npm run licenses
 ```
 
-`npm run spec` 跑 spec-guard、`prove` 與 spec-graph，全綠才能推送。
+`npm run spec` 跑 spec-guard、`prove`、`cites`、spec-graph、spec-brief 與 `premises`，全綠才能推送。`npm test` 不需要金鑰，`npm run licenses` 查全部相依的授權（ADR-0043、ADR-0083）。
+
+`node src/cli/main.ts` 不用建置就能跑 CLI。程式放 `src/core`（函式庫）與 `src/cli`（外層），核心不放給人看的文字。新相依要過 ADR-0077 的冷卻期，主程式的原生套件要先審過（ADR-0083）。
 
 用 `npx` 時一律寫完整套件名並加 `--no-install`，例如 `npx --no-install @spec-family/spec-guard`。不要寫 `npx spec-guard`，也不要寫 `npx tome`：npm 上的 `tome` 是別人的套件。
 
 ## 流程
 
-* 白皮書討論階段可以直接推送 `main`。從第一個實作回合起，程式走 PR，CI 通過後由代理人合併（ADR-0072）。
+* 每個實作回合先寫 brief，放 `briefs/`，分支名稱是 `claude/brief-<編號>-<名稱>`。結束前跑 `npx --no-install @spec-family/spec-harness audit`。
+* 程式走 PR，用 merge commit，CI 通過後由代理人合併（ADR-0072、ADR-0082）。
 * `v*` 標籤只有維護者能推，發佈要維護者用 2FA 核准（ADR-0069）。
 * 相依與 Action 釘死版本。Latest ≠ Newest，新版本要過冷卻期（ADR-0077）。
 * commit 訊息用英文，寫清楚為什麼。

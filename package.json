@@ -8,17 +8,55 @@
     "type": "git",
     "url": "git+https://github.com/tome-trpg/tome.git"
   },
+  "type": "module",
   "engines": {
     "node": ">=24"
   },
+  "bin": {
+    "tome": "dist/cli/main.js",
+    "tome-trpg": "dist/cli/main.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/core/index.d.ts",
+      "default": "./dist/core/index.js"
+    },
+    "./schemas/*": "./schemas/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "schemas"
+  ],
   "scripts": {
-    "spec": "npm run spec:guard && npm run spec:prove && npm run spec:graph",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "licenses": "node tools/check-licenses.ts",
+    "spec": "npm run spec:guard && npm run spec:prove && npm run spec:cites && npm run spec:graph && npm run spec:briefs && npm run spec:matrix && npm run spec:schedule && npm run spec:premises",
     "spec:guard": "spec-guard",
     "spec:prove": "spec-guard prove",
-    "spec:graph": "spec-graph check"
+    "spec:cites": "spec-guard cites --strict",
+    "spec:graph": "spec-graph check",
+    "spec:briefs": "spec-brief lint",
+    "spec:matrix": "spec-brief matrix",
+    "spec:schedule": "spec-brief schedule",
+    "spec:premises": "spec-harness premises",
+    "spec:doctor": "spec-harness doctor"
+  },
+  "dependencies": {
+    "@napi-rs/keyring": "2.1.2",
+    "ajv": "8.20.0",
+    "yaml": "2.9.1"
   },
   "devDependencies": {
+    "@spec-family/spec-brief": "0.12.0",
     "@spec-family/spec-graph": "0.21.0",
-    "@spec-family/spec-guard": "0.30.0"
+    "@spec-family/spec-guard": "0.30.0",
+    "@spec-family/spec-harness": "0.22.0",
+    "@types/node": "24.19.2",
+    "fast-check": "4.10.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
   }
 }

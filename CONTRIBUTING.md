@@ -15,9 +15,14 @@ Node 24 以上。
 ```bash
 npm ci --ignore-scripts
 npm run spec
+npm run typecheck
+npm test
+npm run licenses
 ```
 
 `npm run spec` 檢查文件與 ADR。用 `npx` 時一律寫完整套件名，例如 `npx --no-install @spec-family/spec-guard`，不要只寫指令名。
+
+`node src/cli/main.ts` 不用建置就能跑 CLI。測試一律用合成文字，動到真的憑證庫的測試預設不跑，也 MUST 用假金鑰。
 
 ## 改文件
 

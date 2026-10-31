@@ -1,0 +1,54 @@
+{
+  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   把金鑰存進作業系統憑證庫\n\n選項：\n  --json     輸出給機器讀的 JSON\n  --help     顯示這份說明\n  --version  顯示版本\n",
+  "prompt": {
+    "secret": "請輸入 {provider} 的 API 金鑰（輸入時不會顯示）："
+  },
+  "level": {
+    "fail": "問題",
+    "warn": "警告",
+    "info": "資訊"
+  },
+  "template": {
+    "workspace": "schema: tome-workspace/1\n\n# 設定檔 MUST NOT 放金鑰。金鑰用 tome provider auth set 存進作業系統憑證庫。\n\n# Obsidian vault 的路徑，要在任何 git repo 之外。\n# vault_path:\n\n# 翻譯用的模型，翻譯功能完成後必填。TOME 不內建預設模型，建議組合還沒有盲評。\n# scanner_model:\n# translator_model:\n"
+  },
+  "finding": {
+    "engines.pending": "解析引擎：{milestone} 才有，目前不用檢查。",
+    "key.missing": "找不到 {provider} 的金鑰。請執行 tome provider auth set {provider}，或設定環境變數 {env}。",
+    "key.ok": "{provider} 的金鑰：已設定（來源：{source}）。",
+    "key.stored": "{provider} 的金鑰已存進作業系統憑證庫。",
+    "keyring.unavailable": "作業系統憑證庫不可用。請改用環境變數 {env}。",
+    "node.ok": "Node 版本 {version}。",
+    "node.too_old": "Node {version} 太舊，TOME 需要 {minimum} 以上。",
+    "prices.pending": "價目表：{milestone} 才有，目前不用檢查。",
+    "sqlite.ok": "SQLite 版本 {version}。",
+    "sqlite.unavailable": "這個 Node 不能使用 node:sqlite。",
+    "uv.missing": "找不到 uv。只有安裝解析引擎時才需要，到時再裝就好。",
+    "uv.ok": "uv 版本 {version}。",
+    "vault.in_git_repo": "vault 路徑 {path} 在 git repo {repo} 裡。譯文不能進 repo，請換一個位置。",
+    "vault.sync_folder": "vault 路徑 {path} 在 {provider} 同步資料夾裡，譯文會被傳上雲端。",
+    "workspace.already_exists": "工作區已經存在：{path}。沒有更動任何檔案。",
+    "workspace.created": "工作區已建立：{path}。",
+    "workspace.in_git_repo": "工作區路徑 {path} 在 git repo {repo} 裡。書的片段與譯文不能進 repo，請換一個位置，或用 TOME_HOME 指定。",
+    "workspace.missing": "找不到工作區：{path}。請先執行 tome init。",
+    "workspace.ok": "工作區：{path}。",
+    "workspace.secret_in_config": "tome.yaml 的 {key} 看起來是秘密。設定檔不能放金鑰，請移除，改用 tome provider auth set。",
+    "workspace.sync_folder": "工作區路徑 {path} 在 {provider} 同步資料夾裡，書的片段與譯文會被傳上雲端。建議用 TOME_HOME 換到機器本地目錄。",
+    "workspace.vault_ignored": "工作區已經存在，--vault 沒有生效。要改 vault 請直接編輯 {path}。"
+  },
+  "error": {
+    "cli.bad_args": "參數不正確。請用 tome --help 查看用法。",
+    "cli.cancelled": "已取消。",
+    "cli.internal": "發生未預期的錯誤。這是 TOME 的問題，請回報。",
+    "cli.missing_argument": "缺少參數 {argument}。請用 tome --help 查看用法。",
+    "cli.unknown_command": "沒有這個指令。請用 tome --help 查看用法。",
+    "cli.unknown_option": "沒有這個選項：{option}。請用 tome --help 查看用法。",
+    "config.bad_schema": "{path} 不是 {expected} 格式。",
+    "config.invalid_yaml": "{path} 不是有效的 YAML。",
+    "provider.unknown": "不支援這個供應商。目前只支援 {supported}。",
+    "secret.invalid": "金鑰不是有效的格式：不能是空的、不能含空白，也不能超過 1024 字元。",
+    "store.bad_id": "{id} 不能當識別名稱。只能用文字、數字、底線與連字號。",
+    "store.corrupt": "打不開資料庫 {path}，檔案可能壞了。",
+    "store.too_new": "{path} 的版本是 {found}，這版 TOME 只認得到 {supported}。請升級 TOME。",
+    "store.wrong_kind": "{path} 不是 {expected} 資料庫。"
+  }
+}

@@ -1,4 +1,5 @@
 {
-  "patterns": ["docs/**/*.md"],
+  "patterns": ["docs/**/*.md", "briefs/**/*.md"],
+  "historyPatterns": ["briefs/archive/**"],
   "strict": true
 }
