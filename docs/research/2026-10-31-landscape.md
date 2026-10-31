@@ -122,6 +122,54 @@
 | TEaR | 翻譯、評估、修正三步。GPT-3.5 時代的結果：En-Zh 人工偏好修正版的比例是 32.2%；未說明成本 | [arXiv 2402.16379](https://arxiv.org/abs/2402.16379) |
 | TransAgents | 多代理文學翻譯，dd-BLEU 較低但 Gemba-DA 與人工偏好較高；論文提到執行時間與成本都有明顯開銷（只看到摘要，未逐字核對） | [arXiv 2405.11804](https://arxiv.org/abs/2405.11804) |
 
+### 1.10 第 4 輪補充
+
+查證時間 2026-11-01。Anthropic 的部分讀官方文件與 Claude Code 隨附的 API 指南，其餘讀原始頁面。
+
+**思考與取樣參數（Anthropic）**
+
+| 模型 | 預設 | 關閉方式 |
+| :--- | :--- | :--- |
+| Sonnet 5.5 | adaptive，effort `high` | `thinking: {type: "between_tools"}`，effort 要 `high` 以下；`disabled` 回 400 |
+| Haiku 5.5 | adaptive，effort `medium` | `thinking: {type: "disabled"}`，effort 要 `high` 以下 |
+| Opus 5.5 | adaptive，effort `medium` | 不能關，只能降 effort |
+
+思考會計入輸出 token。API 版本 `2026-10-21` 起，`temperature`、`top_p`、`top_k` 在所有模型都回 400。
+
+**拒答（Anthropic）**
+
+* Batch 裡的拒答回 `result.type: "succeeded"` 加 `stop_reason: "refusal"`，不產生 fallback credit。
+* `fallbacks` 參數不適用 Batch，要自己挑出被拒的項目重送。Haiku 5.5 沒有伺服器端回退。
+* `general_harms` 類別文件明講正常內容也可能觸發，輸出前被拒不計費。
+
+來源：[Refusals and fallback](https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback)、[Batch processing](https://platform.claude.com/docs/en/build-with-claude/batch-processing)
+
+**遠端資料刪除**
+
+| 供應商 | 作法 | 保留 | 來源 |
+| :--- | :--- | :--- | :--- |
+| Anthropic | `DELETE /v1/messages/batches/{batch_id}`，處理完才能刪 | 最長 29 天 | [文件](https://platform.claude.com/docs/en/build-with-claude/batch-processing) |
+| OpenAI | `DELETE /files/{file_id}`。頁面沒明說 Batch 檔案，但上傳走同一個端點 | 輸出檔 30 天 | [Files](https://developers.openai.com/api/reference/resources/files)、[Batch](https://developers.openai.com/api/docs/guides/batch.md) |
+| Gemini | `ai.batches.delete({name})` | 結果 6 週 | [文件](https://ai.google.dev/gemini-api/docs/batch-api.md.txt) |
+
+三家都沒寫刪除後多久真正清除（未確認）。
+
+**官方 TypeScript SDK**
+
+| 套件 | 授權 | 執行期相依 | Node |
+| :--- | :--- | :--- | :--- |
+| `@anthropic-ai/sdk` | Apache-2.0 | `@opentelemetry/api`、`standardwebhooks`、`json-schema-to-ts` | 未列 |
+| `openai` | Apache-2.0 | 無，選用的 peer dependency 有數個 | 22 以上 |
+| `@google/genai` | Apache-2.0 | `google-auth-library`、`p-retry`、`protobufjs`、`ws` | 20 以上 |
+
+來源：各 repo 的 `package.json`。
+
+**其他**
+
+* `@napi-rs/keyring`：MIT，有預編譯檔，API 是 `new Entry(service, name)` 加 `setPassword`、`getPassword`、`deletePassword`。README 沒提 Windows 憑證管理員，要實測。[repo](https://github.com/Brooooooklyn/keyring-node)
+* Gemini 安全過濾：`off` 是 Gemini 2.5 以後的預設，頁面沒有 `BLOCK_NONE`；兒童安全等核心保護不能調整。[文件](https://ai.google.dev/gemini-api/docs/safety-settings.md.txt)
+* OpenRouter：`provider.data_collection` 預設 `allow`，`provider.zdr` 是布林值。[文件](https://openrouter.ai/docs/guides/routing/provider-selection.md)。充值手續費頁面只有未渲染的樣板，比例未確認。
+
 ## 二、PDF 解析工具
 
 ### 2.1 版面與 OCR 引擎
