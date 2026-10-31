@@ -441,3 +441,20 @@ Chaosium 的 ORC 文件寫明 Basic Roleplaying 是它的商標 ✓。是否允�
 | fast-check | MIT；有 model-based 測試；5.x 要 Node 22.12 以上 | [repo](https://github.com/dubzzz/fast-check) |
 | Project Gutenberg | 美國公有領域的作品，移除所有 Project Gutenberg 字樣後可再利用；其他地區依當地法律；要逐本確認 | [授權](https://www.gutenberg.org/policy/license.html) |
 | Wikisource | The Call of Cthulhu 標示美國公有領域，頁尾另有 CC BY-SA | [頁面](https://en.wikisource.org/wiki/The_Call_of_Cthulhu) |
+
+### 3.10 組織與發佈
+
+查證時間 2026-11-01，由查證代理讀原始頁面整理。
+
+| 項目 | 事實 | 來源 |
+| :--- | :--- | :--- |
+| npm 組織 | 公開套件免費；組織名就是 scope；也能管理不帶 scope 的套件；`npm access grant <read-only\|read-write> <org:team> [<package>]` | [organizations](https://docs.npmjs.com/organizations)、[scopes](https://docs.npmjs.com/about-organization-scopes-and-packages) |
+| 帶 scope 的公開套件 | 預設私有，要 `--access public` | [文件](https://docs.npmjs.com/creating-and-publishing-an-organization-scoped-package) |
+| Trusted Publisher | 在套件設定頁設定，可綁 Environment；設定後 2 天內要首次發佈；2026-09-03 後的設定預設允許 `npm stage publish`；驗證可用後建議禁用 token | [文件](https://docs.npmjs.com/trusted-publishers) |
+| GitHub 組織 | Free 公開 repo 不限，Actions 免費，Rulesets 可用；Environment 的 required reviewer 定價頁與文件不一致；建議至少兩位 owner | [pricing](https://github.com/pricing)、[best practices](https://docs.github.com/en/organizations/collaborating-with-groups-in-organizations/best-practices-for-organizations) |
+| 轉移 repo | Issue、PR、星星都會跟著，舊網址自動轉址，舊路徑若建新 repo 轉址就失效；本機要 `git remote set-url` | [文件](https://docs.github.com/en/repositories/creating-and-managing-repositories/transferring-a-repository) |
+| 組織 token | 預設允許細粒度 token 並要求審核，owner 建立的不需審核 | [文件](https://docs.github.com/en/organizations/managing-programmatic-access-to-your-organization/setting-a-personal-access-token-policy-for-your-organization) |
+| DMCA 重複侵權 | 政策寫到「users」與「accounts」，沒有區分組織與個人 | [政策](https://docs.github.com/en/site-policy/content-removal-policies/dmca-takedown-policy) |
+| Immutable releases | 標籤與資產發佈後不能改；要用草稿發佈；是否免費未說明 | [文件](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases) |
+| CodeQL | 公開 repo 可用，支援 TypeScript 與 Python | [文件](https://docs.github.com/en/code-security/code-scanning/enabling-code-scanning/configuring-default-setup-for-code-scanning) |
+| Push protection | repo 層級要管理員開啟；是否免費未明寫 | [文件](https://docs.github.com/en/code-security/secret-scanning/introduction/about-push-protection) |

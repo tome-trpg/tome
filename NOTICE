@@ -1,0 +1,15 @@
+TOME
+Copyright 2026 The TOME Authors
+
+Licensed under the Apache License, Version 2.0, except as stated below.
+
+Rule packs under systems/ are licensed separately. Each pack directory holds
+its own LICENSE and NOTICE, and those terms apply to that directory instead of
+the Apache License:
+
+  systems/generic      Apache License, Version 2.0
+  systems/d100-orc     ORC License
+  systems/gumshoe-srd  Creative Commons Attribution 3.0 Unported
+
+TOME is an independent project. It has no relationship with any tabletop RPG
+publisher and is not endorsed by one. Trademarks belong to their owners.

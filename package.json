@@ -6,7 +6,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Dancraft3746/tome-trpg.git"
+    "url": "git+https://github.com/tome-trpg/tome.git"
   },
   "engines": {
     "node": ">=24"

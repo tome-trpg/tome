@@ -1,0 +1,18 @@
+{
+  "name": "tome-trpg",
+  "version": "0.0.0",
+  "description": "Placeholder that reserves the name. It contains no code. Releases will be published from GitHub Actions with provenance: see https://github.com/tome-trpg/tome",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tome-trpg/tome.git"
+  },
+  "homepage": "https://github.com/tome-trpg/tome#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "README.md",
+    "LICENSE"
+  ]
+}

@@ -1,6 +1,6 @@
 ---
 title: TOME 架構白皮書
-version: 0.9.0-draft
+version: 0.10.0-draft
 status: draft
 date: 2026-10-31
 ---
@@ -11,8 +11,8 @@ date: 2026-10-31
 
 | 文件控制 | |
 | :--- | :--- |
-| 版本 | 0.9.0-draft |
-| 狀態 | 草稿。第 1 到 7 輪的決策已定案（[§9](#9-架構決策)），其餘章節討論中，還沒有任何程式碼 |
+| 版本 | 0.10.0-draft |
+| 狀態 | 草稿。第 1 到 8 輪的決策已定案（[§9](#9-架構決策)），其餘章節討論中，還沒有任何程式碼 |
 | 日期 | 2026-10-31 |
 | 結構 | [arc42](https://arc42.org) 範本加 [C4](https://c4model.com) 視圖 |
 | 正式語言 | 繁體中文（ADR-0003）。README 另有英文版 |
@@ -173,7 +173,8 @@ LC-1 到 LC-3 已確認（ADR-0016、ADR-0043）。原 prompt 指定的 PyMuPDF 
 
 | 項目 | 名稱 | 原因 | 成熟度 |
 | :--- | :--- | :--- | :--- |
-| npm 套件名 | `tome-trpg` | npm 上的 `tome` 已被占用；`tome-trpg` 在 2026-10-31 未被占用 | 已定案（ADR-0006） |
+| npm 套件名 | `tome-trpg`，由 npm 組織管理 | npm 上的 `tome` 已被占用；`tome-trpg` 在 2026-10-31 未被占用 | 已定案（ADR-0006、ADR-0076） |
+| GitHub | `tome-trpg/tome` | 專案不綁個人帳號，現在搬成本最低 | 已定案（ADR-0076） |
 | 指令 | `tome`，另設別名 `tome-trpg` | JFrog 與 `@tomehq/cli` 都用 `tome`；有衝突時用別名 | 已定案（ADR-0006） |
 
 ---
@@ -756,7 +757,77 @@ tome backup|purge <book>               備份與刪除
 
 ## 7. 部署視圖
 
-（第 8 輪討論。安裝方式、CI、發佈。工作區見 [§6.3](#63-工作區)。）
+本章已定案（ADR-0069 到 ADR-0078）。
+
+### 7.1 安裝
+
+```bash
+npm install -g tome-trpg
+```
+
+需要 Node 24 以上。uv 只在安裝解析引擎時需要，`tome doctor` 會指引。第一版不提供單一執行檔，Node 的這項功能還在開發中。
+
+Docling 轉接器的原始碼與 `uv.lock` 隨 npm 包發送，`tome engine add docling` 用 uv 建環境。版本跟主程式一致，不用多維護 PyPI 的發佈流程。
+
+### 7.2 Repo
+
+專案放在 GitHub 組織 `tome-trpg`，repo 是 `tome-trpg/tome`。npm 組織也叫 `tome-trpg`，套件名維持不帶 scope 的 `tome-trpg`，`@tome-trpg/` 留給之後的函式庫與規則包。
+
+```text
+tome/
+├── src/                主程式：核心函式庫與 CLI
+├── systems/            內建規則包，各自有授權
+├── engines/docling/    Python 轉接器與 uv.lock
+├── tests/              測試與合成 PDF 產生器
+├── tools/              維護用工具
+├── docs/               白皮書、ADR、查證資料、評測結果
+└── .github/            CI、發佈、Issue 範本
+```
+
+### 7.3 CI
+
+| 工作流程 | 觸發 | 內容 |
+| :--- | :--- | :--- |
+| `specs` | 每次 push 與 PR | spec-guard、`prove`、spec-graph，Windows 與 Ubuntu |
+| 測試 | 有程式碼後，每次 push 與 PR | 測試、`npm audit`、相依授權檢查、效能預算 |
+| 引擎 | 改到 `engines/` 或手動 | 安裝 Docling 跑合成 PDF |
+| 變異 | 排程 | 六個關鍵模組 |
+| 發佈 | `v*` 標籤或手動演練 | 見下節 |
+
+Action 全部釘在 commit，簽出不保留 token，安裝用 `--ignore-scripts`。Dependabot 更新相依與 Action，有冷卻期：patch 一週、minor 兩週、major 一個月，安全更新不等。
+
+### 7.4 發佈
+
+1. 維護者推 `v*` 標籤，標籤只有維護者能推。
+2. 確認標籤指的 commit 在 `main` 上，標籤、`package.json`、`CHANGELOG.md` 三者一致。
+3. 跑完測試與規格檢查，打包，列出內容並檢查大小，拒絕 PDF、資料庫與測試資料進入 npm 包。
+4. 用 npm Trusted Publishing 執行 `npm stage publish`，版本進入暫存區，誰都裝不到。
+5. 維護者用 2FA 執行 `npm stage approve`，版本才真的發佈。
+
+repo 與 secrets 都沒有 npm token。Trusted Publisher 設定後要在 2 天內完成首次發佈，所以要等第一版才設。設定好之後把套件的發佈權限改成要求 2FA 並禁用 token。手動觸發的演練不花版本號，能先測 OIDC 與打包。
+
+版本從 0.x 起步，1.0 前每個 minor 可以有破壞性變更，寫進 `CHANGELOG.md`。`tome-ir`、`tome-pack`、`tome-engine`、`--json` 各自有版本號，因為工作區資料與第三方規則包會跨版本。
+
+### 7.5 治理
+
+白皮書討論階段維持直接推送 `main`。從第一個實作回合起，程式走 PR，CI 通過後由代理人合併；ruleset 要求 PR 與 CI，第一個實作回合才打開。
+
+Issue 與 PR 開放，不需要 CLA。範本明寫不得貼商業書的文字或譯文。
+
+TOME 零遙測：沒有使用統計，也不自動檢查更新。對外連線只有設定的 LLM API，以及安裝解析引擎時的下載。
+
+token 沒有 Administration 權限，下列設定要維護者在網頁上開：
+
+| 設定 | 時機 |
+| :--- | :--- |
+| `v*` 標籤的 ruleset | 現在 |
+| 機密掃描與 push protection | 現在 |
+| 私下回報漏洞 | 現在 |
+| CodeQL 預設設定 | 有程式碼後 |
+| Immutable releases | 第一版之前 |
+| `main` 的 ruleset | 第一個實作回合 |
+
+---
 
 ## 8. 橫切概念
 
@@ -917,12 +988,16 @@ repo 裡 MUST NOT 有任何 PDF。每個測試素材 MUST 在來源清單登記�
 | [ADR-0066](adr/0066-quality-targets.md) | 品質目標與第一版完成條件 | 7 |
 | [ADR-0067](adr/0067-test-additions.md) | 測試補充項目 | 7 |
 | [ADR-0068](adr/0068-process-additions.md) | 流程補充項目 | 7 |
-
-### Open Questions
-
-後面的輪次要談，目前還沒有答案：
-
-- [ ] 零遙測承諾（第 8 輪）
+| [ADR-0069](adr/0069-release-flow.md) | 發佈流程：標籤、暫存、2FA 核准 | 8 |
+| [ADR-0070](adr/0070-reserve-npm-name.md) | 用佔位版本保留 npm 名稱 | 8 |
+| [ADR-0071](adr/0071-install-and-engine-delivery.md) | 安裝方式與引擎發送 | 8 |
+| [ADR-0072](adr/0072-merge-policy.md) | 合併規則 | 8 |
+| [ADR-0073](adr/0073-versioning.md) | 版本策略 | 8 |
+| [ADR-0074](adr/0074-zero-telemetry.md) | 零遙測 | 8 |
+| [ADR-0075](adr/0075-contributions.md) | 開放貢獻，嚴禁貼書籍內容 | 8 |
+| [ADR-0076](adr/0076-github-and-npm-organizations.md) | 專案放在組織底下 | 8 |
+| [ADR-0077](adr/0077-dependency-updates.md) | 相依更新有冷卻期 | 8 |
+| [ADR-0078](adr/0078-repository-security-settings.md) | repo 的安全設定與文件 | 8 |
 
 ---
 
@@ -1035,5 +1110,5 @@ Gemini 顯式快取也算過：Flash-Lite 上 8k 前綴省下約 0.13，但排�
 | 5 | System Pack 規格與 `tome system init`（決策 2026-11-01 定案） | §5.8 |
 | 6 | 狀態機、SQLite 結構、CLI 指令樹（決策 2026-11-01 定案） | §6 |
 | 7 | QA、評測、測試策略（決策 2026-11-01 定案） | §5.6、§8、§10 |
-| 8 | Repo 治理、CI/CD、發佈（ADR 與 spec 工具的第一階段提前，見 ADR-0014） | §7 |
+| 8 | Repo 治理、CI/CD、發佈（決策 2026-11-01 定案） | §7 |
 | 9 | 路線圖、`CLAUDE.md`、讀者測試（用無上下文的新工作階段驗證文件） | 全部 |

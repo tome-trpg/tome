@@ -1,5 +1,6 @@
 # 文件與程式碼互相一致的閘門（docs/adr/0014-adopt-spec-tools.md）。
 # 每個工具的結束碼：0 乾淨、1 有發現、2 結果不可信。1 與 2 都讓工作失敗。
+# Windows 與 Ubuntu 都跑（docs/adr/0062-test-strategy.md）。
 name: specs
 
 on:
@@ -12,17 +13,24 @@ permissions:
 
 jobs:
   specs:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      # 釘在 commit，旁邊註明標籤：標籤被移動就是進入這條流程的路。
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: "24"
-          cache: npm
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
 
       - name: Install the spec tools
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: 'spec-guard: 程式碼守住文件的承諾'
         if: ${{ !cancelled() }}
