@@ -426,3 +426,18 @@ Chaosium 的 ORC 文件寫明 Basic Roleplaying 是它的商標 ✓。是否允�
 | V8 線性引擎 | 2021 年的文章寫仍是實驗性質，有 `--enable-experimental-regexp-engine`，現況與 Node 用法未確認 | [文章](https://v8.dev/blog/non-backtracking-regexp) |
 | `yaml` | ISC，沒有外部相依 | [repo](https://github.com/eemeli/yaml) |
 | `ajv` | MIT，4 個執行期相依 | [repo](https://github.com/ajv-validator/ajv) |
+
+### 3.9 測試工具與語料
+
+查證時間 2026-11-01，由查證代理讀原始頁面整理。
+
+| 項目 | 事實 | 來源 |
+| :--- | :--- | :--- |
+| `pdfkit` | MIT；可指定座標、嵌入 TTF／OTF／TTC、書籤、連結、tagged PDF；頁碼標籤未說明 | [repo](https://github.com/foliojs/pdfkit)、[outline](https://pdfkit.org/docs/outline.html) |
+| `pdf-lib` | MIT；可用 `PDFName` 寫 catalog；**讀不出頁面文字**；`/PageLabels`、`/ToUnicode` 能否手寫未說明 | [repo](https://github.com/Hopding/pdf-lib) |
+| OpenCC | Apache-2.0；`s2twp` 在字元轉換後套 `TWPhrases`、`TWVariantsPhrases`、`TWVariants`，例如數據庫換成資料庫 | [repo](https://github.com/BYVoid/OpenCC)、[s2twp.json](https://github.com/BYVoid/OpenCC/blob/master/data/config/s2twp.json) |
+| opencc-js | MIT；`OpenCC.Converter({ from: 'cn', to: 'twp' })`，支援 `CustomConverter`；不保證與官方完全一致 | [repo](https://github.com/nk2028/opencc-js) |
+| Stryker | 支援 vitest，`@stryker-mutator/vitest-runner`；不支援 Browser Mode | [文件](https://stryker-mutator.io/docs/stryker-js/vitest-runner/) |
+| fast-check | MIT；有 model-based 測試；5.x 要 Node 22.12 以上 | [repo](https://github.com/dubzzz/fast-check) |
+| Project Gutenberg | 美國公有領域的作品，移除所有 Project Gutenberg 字樣後可再利用；其他地區依當地法律；要逐本確認 | [授權](https://www.gutenberg.org/policy/license.html) |
+| Wikisource | The Call of Cthulhu 標示美國公有領域，頁尾另有 CC BY-SA | [頁面](https://en.wikisource.org/wiki/The_Call_of_Cthulhu) |
