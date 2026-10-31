@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-01
 type: feature
 wave: 2
@@ -23,7 +23,17 @@ protectedFiles:
   - SECURITY.md
   - docs/research/**
   - tools/npm-placeholder/**
+integrity: sha256-0046bb96c03be2f0d76972a634165192ed7188119112981a7b8818aea0189206
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-01.**
+> 路線圖 M1 的第一個回合：tome add 與 tome probe、合成 PDF 鍛造器、ADR-0084 記下維護者回答的 16 個決定，手動設定寫回文件。還沒有解析引擎。
+> Merged in pull request [#5](https://github.com/tome-trpg/tome/pull/5).
+> Recorded at commit `a1eb095`: 31 files changed, +2441 −46.
+> Relative links were rewritten to resolve from `briefs/archive/` (2); no other word changed.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 003 — 合成 PDF 鍛造與探測
 
@@ -31,7 +41,7 @@ protectedFiles:
 
 這個回合結束時，`tome add <pdf>` 能登記一本書並跑探測，加密的 PDF 一律拒絕；`tome probe <book>` 用 pdf.js 回報文件層級（加密、tagged、書籤、頁碼標籤、連結、跨頁攤開）、頁面層級（`native`、`scan`、`broken_text`、`image_only`）與環境層級（GPU、VRAM），不載入任何模型。測試用的合成 PDF 在執行時用 pdfkit 鍛造，帶生成時的標準答案，repo 裡沒有任何 PDF。這是 M1 的第一個回合，後面三個回合都建在這份探測結果與鍛造器上。
 
-Norman 在開工前回答了 16 個決定，全部寫進 [ADR-0084](../docs/adr/0084-m1-parsing-decisions.md)。順便把已完成的手動設定寫回文件：`main` ruleset 與 CodeQL 預設設定在 2026-11-01 開好了，白皮書 §7.5 與 [ADR-0078](../docs/adr/0078-repository-security-settings.md) 的 Open Questions 要更新，immutable releases 還沒開。
+維護者在開工前回答了 16 個決定，全部寫進 [ADR-0084](../../docs/adr/0084-m1-parsing-decisions.md)。順便把已完成的手動設定寫回文件：`main` ruleset 與 CodeQL 預設設定在 2026-11-01 開好了，白皮書 §7.5 與 [ADR-0078](../../docs/adr/0078-repository-security-settings.md) 的 Open Questions 要更新，immutable releases 還沒開。
 
 這一輪新增三個相依。執行期一個：`unpdf` 1.9.1，內含 pdf.js 6.4.299，沒有原生模組，取代會把 `@napi-rs/canvas` 帶進主程式行程的 `pdfjs-dist`。開發用兩個：`pdfkit` 鍛造合成 PDF（ADR-0061），`@types/pdfkit` 是它的型別。
 
@@ -49,7 +59,7 @@ Norman 在開工前回答了 16 個決定，全部寫進 [ADR-0084](../docs/adr/
 
 - 既有 ADR 的決定不能改寫，要改就新增 ADR。ADR-0078 只更新 Open Questions。
 - 主程式的授權白名單不動。放寬的只有 ADR-0084 寫明的開發相依。
-- ADR-0084 的 `status: accepted` 只放 Norman 回答過的 16 項。我自己選的細節寫成提案，列在白皮書的「已實作」段落或回報裡。
+- ADR-0084 的 `status: accepted` 只放維護者回答過的 16 項。我自己選的細節寫成提案，列在白皮書的「已實作」段落或回報裡。
 - 選型、命名、範圍、政策不能自己決定，做到一半發現的當下問。
 
 ## Invariants
