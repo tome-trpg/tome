@@ -32,4 +32,5 @@ push protection 與 immutable releases 是否免費，文件沒明寫，要看�
 ## Open Questions
 
 - [x] 維護者在網頁上開好機密掃描、push protection、私下回報漏洞與 `v*` 標籤的 ruleset（2026-11-01）。
-- [ ] 有程式碼後開 CodeQL，第一版之前開 immutable releases。
+- [x] 有程式碼後開 CodeQL。維護者在 2026-11-01 開好預設設定，`main` 的 ruleset 也同一天生效。
+- [ ] 第一版之前開 immutable releases。

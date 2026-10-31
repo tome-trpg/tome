@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/tome-trpg/tome/main/schemas/tome-book-1.schema.json",
+  "title": "tome-book/1",
+  "description": "book.yaml: one book in the workspace. The source PDF stays where it is, so only its path and hash are kept. A config file MUST NOT hold a secret.",
+  "type": "object",
+  "required": ["schema", "pdf", "source_lang"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "tome-book/1" },
+    "pdf": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "source_lang": {
+      "description": "BCP 47 language tag.",
+      "type": "string",
+      "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
+    },
+    "system": {
+      "description": "The rule pack, by id.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    }
+  }
+}

@@ -12,7 +12,7 @@ date: 2026-11-01
 | 文件控制 | |
 | :--- | :--- |
 | 版本 | 1.0.0 |
-| 狀態 | 已定案。九輪討論已完成，決策見 [§9](#9-架構決策)。M0 的基礎已實作，還沒有翻譯功能，之後的改動走 ADR |
+| 狀態 | 已定案。九輪討論已完成，決策見 [§9](#9-架構決策)。M0 的基礎已實作，M1 進行中，還沒有翻譯功能，之後的改動走 ADR |
 | 日期 | 2026-11-01 |
 | 結構 | [arc42](https://arc42.org) 範本加 [C4](https://c4model.com) 視圖 |
 | 正式語言 | 繁體中文（ADR-0003）。README 另有英文版 |
@@ -72,7 +72,7 @@ TOME 是在使用者自己電腦上執行的 CLI，把使用者擁有的 TRPG �
 
 主程式是 TypeScript，Node 24 以上。解析引擎是獨立行程，預設用 Docling。遊戲系統是資料形式的規則包，第一版附 `generic` 與 `d100-orc`。第一版只接 Anthropic，路線見[附錄 B](#附錄-b討論順序與路線圖)。
 
-這份摘要的內容都已定案，依據見 [§9](#9-架構決策) 的 ADR 索引。目前只完成 M0 的基礎，見[附錄 B](#路線圖)，還沒有翻譯功能。所有品質數字都是目標，尚未量測。
+這份摘要的內容都已定案，依據見 [§9](#9-架構決策) 的 ADR 索引。目前完成 M0 的基礎，M1 解析進行中，見[附錄 B](#路線圖)，還沒有翻譯功能。所有品質數字都是目標，量測狀況見 [§10](#10-品質需求)。
 
 ---
 
@@ -145,11 +145,11 @@ TRPG 書的翻譯跟一般 PDF 翻譯不一樣，難處有六個：
 | LC-2 | AGPL、GPL、非商業、OpenRAIL 類引擎 MUST NOT 在主程式行程內匯入，也不隨附；只能由使用者自行安裝，以獨立行程溝通 | 同上 |
 | LC-3 | 引擎的程式授權與權重授權分開審查。權重授權要留下紀錄，因為兩者常常不同 | 同上（Marker、MinerU、NDLOCR-Lite 都是例子） |
 
-LC-1 到 LC-3 已定案（ADR-0016、ADR-0043）。常見的 PyMuPDF 是 AGPL-3.0，不符合 LC-1。主程式用 pdf.js（Apache-2.0）讀 PDF 結構；Docling 引擎用自己的環境，內含 pypdfium2、RapidOCR 等寬鬆授權的元件。
+LC-1 到 LC-3 已定案（ADR-0016、ADR-0043）。常見的 PyMuPDF 是 AGPL-3.0，不符合 LC-1。主程式用 pdf.js（Apache-2.0）讀 PDF 結構，套件是 `unpdf`（MIT），它內含 pdf.js，沒有原生模組；官方的 `pdfjs-dist` 會把授權在白名單外的 `@napi-rs/canvas` 載入主程式行程，所以不用（ADR-0084）。Docling 引擎用自己的環境，內含 pypdfium2、RapidOCR 等寬鬆授權的元件。
 
 LC-1 有一個明文例外：`@napi-rs/keyring` 的 Linux 二進位檔靜態連結 `libdbus`，TOME 依 AFL-2.1 使用，不重新散布二進位檔，已定案（ADR-0083）。
 
-**已實作**：`tools/check-licenses.ts` 讀 `package-lock.json` 檢查全部相依的授權，沒審過的主程式原生套件也擋下，CI 的 `test` 工作流程執行它（`tests/tools/check-licenses.test.ts`）。ADR-0016 的斷言擋下已知的 AGPL、GPL 與引擎套件進 `src/`。
+**已實作**：`tools/check-licenses.ts` 讀 `package-lock.json` 檢查全部相依的授權，沒審過的主程式原生套件也擋下，CI 的 `test` 工作流程執行它（`tests/tools/check-licenses.test.ts`）。開發相依多收 0BSD，`png-js` 2.0.0 有綁版本的例外，主程式的白名單不變（ADR-0084）。ADR-0016 的斷言擋下已知的 AGPL、GPL 與引擎套件進 `src/`。
 
 ### 2.3 出版社與著作權
 
@@ -313,6 +313,12 @@ flowchart LR
 * 環境層級：GPU 與 VRAM。
 
 分配先看頁面類型，再依 GPU 與 VRAM 決定引擎用 GPU 或 CPU 執行（ADR-0024）。文件允許混用引擎，每頁都記錄來源引擎。0.1.0 只處理 `native` 頁，掃描、壞文字層與純圖片的頁面不翻，列入交付報告，不靜默跳過（ADR-0081）。
+
+**已實作**：`tome add` 與 `tome probe`（`src/core/book.ts`、`src/core/probe.ts`；`tests/core/book.test.ts`、`tests/core/probe.test.ts`、`tests/cli/book.test.ts`）。只有 `src/core/pdf.ts` 碰 pdf.js（ADR-0084）。結果存在 `ir/probe.json`，格式是 `tome-probe/1`，含書籤標題，所以只留在工作區，訊息與 `--json` 只有數字。
+
+頁面分類的做法是提案，數字要等本機語料量過才算定案（H-7、H-8、H-10）：看不見的文字（繪製模式 3、7）占九成以上時，有滿版圖算 `scan`，否則算 `image_only`，所以 OCR 過的掃描檔不會被當成原生頁；最大的單張圖蓋住六成以上且字元少於 40 個算 `scan`，掃描書蓋上一行購買者頁尾也一樣；U+FFFD、私有區與控制字元占 5% 以上算 `broken_text`；沒有字但有圖或大量向量圖形算 `image_only`；全空的頁算 `native`，沒有東西要翻。跨頁攤開的判斷是六成以上的頁面寬高比到 1.2。GPU 用 `nvidia-smi` 查，只認 NVIDIA，因為引擎要的是 CUDA。
+
+頁面的引擎分配要等引擎協定完成，依語言判斷文字層品質的訊號要等語言設定檔完成。
 
 ### 5.2 Document IR
 
@@ -768,7 +774,7 @@ stateDiagram-v2
 
 ### 6.3 工作區
 
-**已實作**：`tome init` 與路徑檢查（`src/core/workspace.ts`、`src/core/path-guard.ts`；`tests/core/workspace.test.ts`、`tests/core/path-guard.test.ts`），資料存取層與遷移（`src/core/store.ts`；`tests/core/store.test.ts`）。檢查會解開 junction 與 symlink。`tome.yaml` 第一行是 `schema: tome-workspace/1`（ADR-0082）。`book.db`、`series.db` 目前只有遷移機制與 `tome_meta`，下面的表到各階段才加。
+**已實作**：`tome init` 與路徑檢查（`src/core/workspace.ts`、`src/core/path-guard.ts`；`tests/core/workspace.test.ts`、`tests/core/path-guard.test.ts`），資料存取層與遷移（`src/core/store.ts`；`tests/core/store.test.ts`）。檢查會解開 junction 與 symlink。`tome.yaml` 第一行是 `schema: tome-workspace/1`（ADR-0082）。`book.yaml` 的格式是 `tome-book/1`（`schemas/tome-book-1.schema.json`），欄位是提案。`book.db` 目前有 `tome_meta` 與 `stage`，`series.db` 只有 `tome_meta`，下面其他的表到各階段才加。
 
 正式支援 Windows 與 Linux，macOS 盡力而為，不測試（ADR-0081）。預設位置是機器本地目錄：Windows 是 `%LOCALAPPDATA%\tome`，Linux 是 `~/.local/share/tome`，macOS 是 `~/Library/Application Support/tome`，可以用 `TOME_HOME` 改。`tome init` MUST 拒絕 git repo 內的路徑，偵測到 OneDrive、Dropbox 這類同步資料夾時要警告，否則譯文與書的片段會被傳上雲端（G-5）。這讓 G-5 成為結構，而不只靠 `.gitignore`。Obsidian vault 用 `tome.yaml` 的 `vault_path` 指定，同樣要過這項檢查。
 
@@ -837,7 +843,7 @@ tome backup|purge <book>               備份與刪除
 
 `tome assemble` 偵測到未回收的 vault 修改就拒絕輸出，列出檔案，要求先跑 `tome sync`，人工譯文不會被覆蓋。
 
-**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`（`src/cli/`；`tests/cli/run.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。各項結束碼見 ADR-0082。其他指令還沒有。
+**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2。其他指令還沒有。
 
 ---
 
@@ -912,9 +918,9 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 | `v*` 標籤的 ruleset | 已完成 |
 | 機密掃描與 push protection | 已完成 |
 | 私下回報漏洞 | 已完成 |
-| CodeQL 預設設定 | 有程式碼後 |
+| CodeQL 預設設定 | 已完成（2026-11-01） |
 | Immutable releases | 第一版之前 |
-| `main` 的 ruleset | 第一個實作回合 |
+| `main` 的 ruleset | 已完成（2026-11-01） |
 
 ---
 
@@ -982,7 +988,7 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 
 CI 跑 Windows 與 Ubuntu。公開 repo 的 CI MUST NOT 放任何 API 金鑰。變異分數的門檻等第一次實測後再定。
 
-**已實作**：單元與性質測試在 `tests/`，用 vitest 與 fast-check，`.github/workflows/test.yml` 在兩個平台都跑。其他層級等對應的功能完成才加。
+**已實作**：單元與性質測試在 `tests/`，用 vitest 與 fast-check，`.github/workflows/test.yml` 在兩個平台都跑。Q-9 的效能預算是 `tests/perf/probe-budget.test.ts`，CI 門檻 120 秒。其他層級等對應的功能完成才加。
 
 ### 8.5 測試語料
 
@@ -996,7 +1002,9 @@ CI 跑 Windows 與 Ubuntu。公開 repo 的 CI MUST NOT 放任何 API 金鑰。�
 
 repo 裡 MUST NOT 有任何 PDF。每個測試素材 MUST 在來源清單登記授權與雜湊值，未登記的讓 CI 失敗（PC-2）。
 
-**合成 PDF 鍛造**（S-11）用 `pdfkit` 排版，用 `pdf-lib` 補底層物件，兩者都只是開發相依。案例有雙欄、跨欄邊欄、跨頁表格、首字放大、標題轉外框、背景紋理、頁尾購買者浮水印、連字、斷字、壞掉的 ToUnicode、隱藏文字、書籤、頁碼標籤、連結。直書與假名標音在日文階段才加。`pdf-lib` 讀不出頁面文字，所以驗證基準一律用生成時的標準答案。
+**合成 PDF 鍛造**（S-11）只用 `pdfkit`，它是開發相依，底層物件用它的低階介面補。`pdf-lib` 五年沒有更新，又帶進白名單外的授權，所以不用（ADR-0084）。案例有雙欄、跨欄邊欄、跨頁表格、首字放大、標題轉外框、背景紋理、頁尾購買者浮水印、連字、斷字、壞掉的 ToUnicode、隱藏文字、書籤、頁碼標籤、連結。直書與假名標音在日文階段才加。驗證基準一律用生成時的標準答案。
+
+**已實作**：鍛造器在 `tests/forge/`（`tests/forge/forge.test.ts`），同一個案例每次產生同樣的位元組，加密案例除外。目前的案例是頁面分類與文件結構用的：純文字、書籤與頁碼標籤與連結、掃描頁、純圖片、壞 ToUnicode、隱藏文字、跨頁攤開、兩種加密、大本效能書。版面案例跟 document 層一起做。頁碼標籤與壞 ToUnicode 都做得出來（ADR-0061 的待驗證項）。
 
 ### 8.6 評測
 
@@ -1107,12 +1115,13 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0081](adr/0081-reader-test-corrections.md) | 讀者測試後的修正 | 9 |
 | [ADR-0082](adr/0082-m0-toolchain-and-conventions.md) | M0 的工具鏈與 CLI 慣例 | M0 |
 | [ADR-0083](adr/0083-keyring-native-license-exception.md) | 憑證庫原生模組的授權例外 | M0 |
+| [ADR-0084](adr/0084-m1-parsing-decisions.md) | M1 解析的選型與範圍 | M1 |
 
 ---
 
 ## 10. 品質需求
 
-下表全部是**目標**，都還沒量測（ADR-0066）。Q-4、Q-5、Q-6、Q-9 的數字是初值，第一次實測後可能調整。
+下表全部是**目標**（ADR-0066）。Q-4、Q-5、Q-6、Q-9 的數字是初值，第一次實測後可能調整。除了下面註明的 Q-9，其他都還沒量測。
 
 | ID | 目標 | 門檻 | 量測方法 | 對應 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -1125,6 +1134,8 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | Q-7 | 當機後已驗證單位重付 | 0 | 當機注入測試 | G-4、H-17 |
 | Q-8 | 盲評分數 | 平均 4 分以上 | 維護者盲評（ADR-0079） | G-1 |
 | Q-9 | 400 頁 `tome probe` | 參考機器 30 秒內 | 在參考機器實測。CI 另設較寬的門檻防止變慢 | ADR-0068 |
+
+**Q-9 的第一次量測**（2026-11-01，參考機器，Node 24.22.1）：`tome add` 含探測與行程啟動，合成的 400 頁雙欄文字書 0.6 MB，三次都約 2.2 秒；合成的 1,200 頁書，其中 400 頁帶滿版圖，313 MB，約 14 秒。合成書的字型與圖片都比商業書單純，真實書籍還沒量過，所以 Q-9 仍是目標。
 
 **第一版的完成條件**：公開的 ORC 文件一章，加本機商業書一章，全流程跑完，Q-1 到 Q-8 達標。
 
@@ -1141,10 +1152,10 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | H-4 | 恐怖題材的拒答率低到可以用回退處理 | 決定是否需要多供應商才能跑完一本書 | 用公有領域的 Lovecraft 文本測各家拒答率 |
 | H-5 | Docling 加自製規則處得好雙欄、邊欄、數值塊 | 解析錯了，翻譯再好也沒用 | 合成 PDF 鍛造 + 本機私有語料 |
 | H-6 | 字級與位移規則足以處理原生日文 PDF 的假名標音 | 沒有現成函式庫 | 合成 PDF 鍛造 |
-| H-7 | 目標書籍多半帶書籤與頁碼標籤 | 沒有的話，章節層級與印刷頁碼要改從版面推斷，「見 p.123」的連結會變差 | 本機私有語料統計；`tome probe` 回報覆蓋率 |
+| H-7 | 目標書籍多半帶書籤與頁碼標籤 | 沒有的話，章節層級與印刷頁碼要改從版面推斷，「見 p.123」的連結會變差 | 本機私有語料統計；`tome probe` 回報覆蓋率。回報已實作（`tests/core/probe.test.ts`），這台機器沒有商業書，統計**還沒做** |
 | H-8 | 字元守恆檢查的假陽性夠低，不會把好頁面擋下來 | 隱藏文字、可選內容圖層、疊印的重複文字都可能造成差異 | 合成 PDF 鍛造 + 本機私有語料，再決定門檻 |
 | H-9 | 內容雜湊夠穩定，換引擎後翻譯記憶仍命中 | 引擎對空白、連字、斷字的處理不同，正規化不夠就白付一次 | 同一份公開素材用兩個引擎解析，比對遮蔽後雜湊的重合率 |
-| H-10 | pdf.js 足以判定文字層品質並做字元守恆 | 查到 PDFium 有 `FPDFText_HasUnicodeMapError`，pdf.js 這邊還沒找到對應訊號 | 合成 PDF 鍛造，故意做壞 ToUnicode；不夠時把深度檢查放進引擎 |
+| H-10 | pdf.js 足以判定文字層品質並做字元守恆 | 查到 PDFium 有 `FPDFText_HasUnicodeMapError`，pdf.js 這邊還沒找到對應訊號 | 合成 PDF 鍛造，故意做壞 ToUnicode；不夠時把深度檢查放進引擎。**部分驗證**：2026-11-01 pdf.js 忠實回傳壞掉的 ToUnicode，映到私有區、U+FFFD 或半數字元壞掉的頁面都判得出 `broken_text`（`tests/core/probe.test.ts`）。字元合法但對應錯的情況字元類別抓不到，還沒驗證 |
 | H-11 | 候選詞加少量上下文的 Pass 0，召回率夠高 | 漏掉的名字會在分塊翻譯時分裂 | 用已知詞表的公開素材量召回率，並與全書掃描比較 |
 | H-12 | `tome sync` 能把 vault 的修改可靠對回區塊 | 對錯段落等於把人工譯文寫到別的地方 | 合成修改集：改字、併段、搬動段落，量對應正確率 |
 | H-13 | 關閉思考後，翻譯品質仍足以上桌 | 思考計入輸出費，開著可能明顯超出附錄 A | 同一段素材開關思考各翻一次，盲評並比較 `usage` |
@@ -1237,17 +1248,25 @@ Gemini 顯式快取也算過：Flash-Lite 上 8k 前綴省下約 0.13，但排�
 
 ### 路線圖
 
-路線與第一版範圍已定案（ADR-0080）。
+路線與第一版範圍已定案（ADR-0080、ADR-0084）。
 
 | 階段 | 內容 | 結束時能做什麼 |
 | :--- | :--- | :--- |
 | M0 基礎 | TypeScript 骨架、`tome-ir` 與 `tome-pack` schema、測試與 CI、spec-brief 與 spec-harness、`tome init`、`tome doctor`、金鑰存放 | 沒有翻譯功能，但閘門都就位 |
-| M1 解析 | `tome add`、`probe`、Docling 引擎、document 層、字元守恆、合成 PDF、語言設定檔、`tome system new`、`lint`、`test` | PDF 能變成乾淨的 IR |
+| M1 解析 | `tome add`、`probe`、`extract`、Docling 引擎、document 層、字元守恆、合成 PDF、語言設定檔、`tome system new`、`list`、`lint`、`test` | PDF 能變成乾淨的 IR |
 | M2 翻譯核心 | `generic` 規則包、遮蔽、標籤、驗證、翻譯記憶、預算、估價、Batch、即時模式、假供應商、`--dry-run`、費用帳本 | 接 Anthropic 翻出一章 |
 | M3 譯名與輸出 | Pass 0、審定、`tome glossary import`、數值塊欄位化、vault、`tome sync`、交付報告、一致性報告、`tome purge`、`tome backup` | 能帶團閱讀的成品 |
 | M4 首版 | `d100-orc`、試翻校準、盲評、發佈流程 | Q-1 到 Q-8 達標，發佈 0.1.0 |
 
-**目前階段**：M0 已完成，下一步是 M1 解析。
+**目前階段**：M0 已完成，M1 解析進行中，分四個回合（ADR-0084）。
+
+M1 已實作的項目：
+
+| 項目 | 路徑 | 測試或斷言 |
+| :--- | :--- | :--- |
+| `tome add`、`tome probe` | `src/core/book.ts`、`src/core/probe.ts`、`src/core/pdf.ts` | `tests/core/book.test.ts`、`tests/core/probe.test.ts`、`tests/cli/book.test.ts` |
+| 合成 PDF 鍛造 | `tests/forge/` | `tests/forge/forge.test.ts` |
+| Q-9 的效能預算 | `tests/perf/probe-budget.test.ts` | `npm test` |
 
 M0 的項目都已實作：
 

@@ -5,6 +5,7 @@
     "module": "nodenext",
     "types": ["node"],
     "strict": true,
+    "skipLibCheck": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "noImplicitOverride": true,

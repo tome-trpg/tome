@@ -6,6 +6,14 @@ import { fileURLToPath } from 'node:url';
 
 const ALLOWED = new Set(['MIT', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause', 'ISC', 'MPL-2.0']);
 
+// 開發相依不進 npm 包，也不進主程式行程，所以多收這些。主程式的白名單不變（ADR-0084）。
+const DEV_ONLY_ALLOWED = new Set(['0BSD']);
+
+// 沒有 license 欄位、人工讀過 LICENSE 檔的開發相依。綁版本，升級時要重讀（ADR-0084）。
+const DEV_LICENSE_EXCEPTIONS: Readonly<Record<string, string>> = {
+  'png-js@2.0.0': 'MIT',
+};
+
 // lockfile 看不到原生二進位檔裡連結了什麼，所以主程式的原生套件要逐一審過才列在這裡（ADR-0083）。
 const REVIEWED_NATIVE = [/^@napi-rs\/keyring-/];
 
@@ -26,7 +34,10 @@ export interface Violation {
 }
 
 /** 解 SPDX 運算式：OR 取其一，AND 全部都要。看不懂的算不通過。 */
-export function isAllowedLicense(expression: string | undefined): boolean {
+export function isAllowedLicense(
+  expression: string | undefined,
+  allowed: ReadonlySet<string> = ALLOWED,
+): boolean {
   if (expression === undefined) return false;
   const tokens = expression.match(/[()]|[^\s()]+/g) ?? [];
   let index = 0;
@@ -60,7 +71,7 @@ export function isAllowedLicense(expression: string | undefined): boolean {
       index += 1;
       return value;
     }
-    return token !== undefined && ALLOWED.has(token);
+    return token !== undefined && allowed.has(token);
   }
 
   try {
@@ -75,6 +86,12 @@ function packageName(path: string): string {
   return path.slice(path.lastIndexOf('node_modules/') + 'node_modules/'.length);
 }
 
+function licensePasses(name: string, entry: LockEntry): boolean {
+  if (entry.dev !== true) return isAllowedLicense(entry.license);
+  const license = entry.license ?? DEV_LICENSE_EXCEPTIONS[`${name}@${entry.version ?? ''}`];
+  return isAllowedLicense(license, new Set([...ALLOWED, ...DEV_ONLY_ALLOWED]));
+}
+
 export function findViolations(packages: Readonly<Record<string, LockEntry>>): Violation[] {
   const violations: Violation[] = [];
   for (const [path, entry] of Object.entries(packages)) {
@@ -82,7 +99,7 @@ export function findViolations(packages: Readonly<Record<string, LockEntry>>): V
     const name = packageName(path);
     const version = entry.version ?? '?';
     const license = entry.license ?? '(none)';
-    if (!isAllowedLicense(entry.license)) {
+    if (!licensePasses(name, entry)) {
       violations.push({ name, version, license, reason: 'license' });
     }
     const native = entry.os !== undefined || entry.cpu !== undefined;

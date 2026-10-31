@@ -1,5 +1,5 @@
 {
-  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   把金鑰存進作業系統憑證庫\n\n選項：\n  --json     輸出給機器讀的 JSON\n  --help     顯示這份說明\n  --version  顯示版本\n",
+  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   把金鑰存進作業系統憑證庫\n  add <pdf>                    加入一本書並探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <書>                   探測文件結構與頁面類型\n\n選項：\n  --json     輸出給機器讀的 JSON\n  --help     顯示這份說明\n  --version  顯示版本\n",
   "prompt": {
     "secret": "請輸入 {provider} 的 API 金鑰（輸入時不會顯示）："
   },
@@ -12,6 +12,10 @@
     "workspace": "schema: tome-workspace/1\n\n# 設定檔 MUST NOT 放金鑰。金鑰用 tome provider auth set 存進作業系統憑證庫。\n\n# Obsidian vault 的路徑，要在任何 git repo 之外。\n# vault_path:\n\n# 翻譯用的模型，翻譯功能完成後必填。TOME 不內建預設模型，建議組合還沒有盲評。\n# scanner_model:\n# translator_model:\n"
   },
   "finding": {
+    "book.added": "已加入 {name}，工作資料在 {path}。PDF 留在原位，不會複製。",
+    "book.already_added": "這本書已經加入過，名稱是 {name}。沒有更動任何檔案。",
+    "book.name_taken": "名稱 {name} 已經有別的書在用。請用 --as <名稱> 指定另一個。",
+    "book.updated": "已更新 {name} 的設定。",
     "engines.pending": "解析引擎：{milestone} 才有，目前不用檢查。",
     "key.missing": "找不到 {provider} 的金鑰。請執行 tome provider auth set {provider}，或設定環境變數 {env}。",
     "key.ok": "{provider} 的金鑰：已設定（來源：{source}）。",
@@ -19,7 +23,15 @@
     "keyring.unavailable": "作業系統憑證庫不可用。請改用環境變數 {env}。",
     "node.ok": "Node 版本 {version}。",
     "node.too_old": "Node {version} 太舊，TOME 需要 {minimum} 以上。",
+    "pdf.encrypted": "{path} 是加密的 PDF，TOME 一律拒絕處理，包含不需密碼就能開啟、只限制複製的檔案。",
     "prices.pending": "價目表：{milestone} 才有，目前不用檢查。",
+    "probe.done": "探測完成，共 {pages} 頁：原生 {native}、掃描 {scan}、壞文字層 {broken_text}、純圖片 {image_only}。",
+    "probe.gpu": "偵測到 GPU：{name}，VRAM {vram} MB。",
+    "probe.no_gpu": "沒有偵測到 NVIDIA GPU，解析引擎會用 CPU。",
+    "probe.pages_skipped": "有 {count} 頁不是原生文字頁。第一版不翻這些頁面，會列在交付報告裡。",
+    "probe.spread": "這本 PDF 看起來是跨頁攤開版型，一個 PDF 頁面可能是印刷的兩頁。",
+    "probe.structure": "文件結構：tagged {tagged}、書籤 {outline} 筆（{unresolved} 筆解析不到）、頁碼標籤 {labels} 頁、連結 {links} 筆。",
+    "probe.unchanged": "PDF 沒有變動，沿用上次的探測結果。",
     "sqlite.ok": "SQLite 版本 {version}。",
     "sqlite.unavailable": "這個 Node 不能使用 node:sqlite。",
     "uv.missing": "找不到 uv。只有安裝解析引擎時才需要，到時再裝就好。",
@@ -36,6 +48,9 @@
     "workspace.vault_ignored": "工作區已經存在，--vault 沒有生效。要改 vault 請直接編輯 {path}。"
   },
   "error": {
+    "book.not_found": "找不到書 {name}。請先用 tome add 加入。",
+    "book.pdf_changed": "{path} 的內容跟加入時不同。要處理原本的檔案，請用 tome add 重新指到它；要處理新檔案，請當成另一本書加入。",
+    "book.pdf_missing": "找不到 PDF：{path}。檔案搬走時，用 tome add 重新指到新位置。",
     "cli.bad_args": "參數不正確。請用 tome --help 查看用法。",
     "cli.cancelled": "已取消。",
     "cli.internal": "發生未預期的錯誤。這是 TOME 的問題，請回報。",
@@ -44,6 +59,8 @@
     "cli.unknown_option": "沒有這個選項：{option}。請用 tome --help 查看用法。",
     "config.bad_schema": "{path} 不是 {expected} 格式。",
     "config.invalid_yaml": "{path} 不是有效的 YAML。",
+    "pdf.not_found": "找不到檔案：{path}。",
+    "pdf.unreadable": "{path} 打不開，可能不是 PDF，或檔案壞了。",
     "provider.unknown": "不支援這個供應商。目前只支援 {supported}。",
     "secret.invalid": "金鑰不是有效的格式：不能是空的、不能含空白，也不能超過 1024 字元。",
     "store.bad_id": "{id} 不能當識別名稱。只能用文字、數字、底線與連字號。",

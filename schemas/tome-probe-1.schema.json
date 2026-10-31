@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/tome-trpg/tome/main/schemas/tome-probe-1.schema.json",
+  "title": "tome-probe/1",
+  "description": "What tome probe found in a PDF: the document level and the page level. It holds bookmark titles, which are book text, so it stays in the workspace.",
+  "type": "object",
+  "required": [
+    "schema",
+    "pdf_sha256",
+    "page_count",
+    "tagged",
+    "spread",
+    "outline",
+    "page_labels",
+    "links",
+    "pages"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "tome-probe/1" },
+    "pdf_sha256": { "$ref": "#/$defs/sha256" },
+    "page_count": { "type": "integer", "minimum": 0 },
+    "tagged": { "type": "boolean" },
+    "spread": { "type": "boolean" },
+    "outline": { "$ref": "#/$defs/outline" },
+    "page_labels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["page", "label"],
+        "additionalProperties": false,
+        "properties": {
+          "page": { "$ref": "#/$defs/pageIndex" },
+          "label": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["page", "bbox"],
+        "additionalProperties": false,
+        "properties": {
+          "page": { "$ref": "#/$defs/pageIndex" },
+          "bbox": { "$ref": "#/$defs/bbox" },
+          "target_page": { "$ref": "#/$defs/pageIndex" },
+          "uri": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["page", "kind", "width", "height", "chars", "bad_chars", "image_coverage"],
+        "additionalProperties": false,
+        "properties": {
+          "page": { "$ref": "#/$defs/pageIndex" },
+          "kind": { "enum": ["native", "scan", "broken_text", "image_only"] },
+          "width": { "type": "number" },
+          "height": { "type": "number" },
+          "chars": { "type": "integer", "minimum": 0 },
+          "bad_chars": { "type": "integer", "minimum": 0 },
+          "image_coverage": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "pageIndex": {
+      "description": "Physical page index, starting at zero.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "bbox": {
+      "description": "x0, y0, x1, y1 in PDF points.",
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": { "type": "number" }
+    },
+    "outline": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "page", "children"],
+        "additionalProperties": false,
+        "properties": {
+          "title": { "type": "string" },
+          "page": { "anyOf": [{ "$ref": "#/$defs/pageIndex" }, { "type": "null" }] },
+          "children": { "$ref": "#/$defs/outline" }
+        }
+      }
+    }
+  }
+}
