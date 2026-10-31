@@ -1,6 +1,6 @@
 ---
 title: TOME 架構白皮書
-version: 0.10.0-draft
+version: 0.10.1-draft
 status: draft
 date: 2026-10-31
 ---
@@ -11,7 +11,7 @@ date: 2026-10-31
 
 | 文件控制 | |
 | :--- | :--- |
-| 版本 | 0.10.0-draft |
+| 版本 | 0.10.1-draft |
 | 狀態 | 草稿。第 1 到 8 輪的決策已定案（[§9](#9-架構決策)），其餘章節討論中，還沒有任何程式碼 |
 | 日期 | 2026-10-31 |
 | 結構 | [arc42](https://arc42.org) 範本加 [C4](https://c4model.com) 視圖 |
@@ -998,6 +998,7 @@ repo 裡 MUST NOT 有任何 PDF。每個測試素材 MUST 在來源清單登記�
 | [ADR-0076](adr/0076-github-and-npm-organizations.md) | 專案放在組織底下 | 8 |
 | [ADR-0077](adr/0077-dependency-updates.md) | 相依更新有冷卻期 | 8 |
 | [ADR-0078](adr/0078-repository-security-settings.md) | repo 的安全設定與文件 | 8 |
+| [ADR-0079](adr/0079-drop-old-translation-baseline.md) | 盲評門檻不再跟舊譯文比較 | 8 |
 
 ---
 
@@ -1014,7 +1015,7 @@ repo 裡 MUST NOT 有任何 PDF。每個測試素材 MUST 在來源清單登記�
 | Q-5 | 閱讀順序正確 | 98% 以上 | 合成 PDF 的標準答案 | H-5 |
 | Q-6 | 試翻校準後的估價誤差 | ±20% 內 | 費用帳本 | G-3 |
 | Q-7 | 當機後已驗證單位重付 | 0 | 當機注入測試 | G-4、H-17 |
-| Q-8 | 盲評分數 | 平均 4 分以上，且不輸舊專案的譯文 | 維護者盲評，舊譯文只在本機對照 | G-1 |
+| Q-8 | 盲評分數 | 平均 4 分以上 | 維護者盲評（ADR-0079） | G-1 |
 | Q-9 | 400 頁 `tome probe` | 參考機器 30 秒內 | CI 的效能預算 | |
 
 **第一版的完成條件**：公開的 ORC 文件一章，加本機商業書一章，全流程跑完，Q-1 到 Q-8 達標。
