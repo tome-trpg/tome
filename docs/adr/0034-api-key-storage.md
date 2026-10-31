@@ -27,4 +27,4 @@ date: 2026-11-01
 
 ## Open Questions
 
-- [ ] 實測 `@napi-rs/keyring` 在 Windows 憑證管理員的行為。
+- [x] 實測 `@napi-rs/keyring` 在 Windows 憑證管理員的行為。2026-11-01 在參考機器實測可行：`@napi-rs/keyring` 2.1.2 存、取、覆寫、刪除都正常，跨行程讀得到，`cmdkey /list` 列得出這筆憑證，刪除後消失。值的上限是 2,560 位元組（UTF-16）。Linux 的做法見 ADR-0083。

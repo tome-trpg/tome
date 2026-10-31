@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/tome-trpg/tome/main/schemas/tome-pack-1.schema.json",
+  "title": "tome-pack/1",
+  "description": "TOME rule pack. The root describes pack.yaml and $defs describes the other data files. A pack is untrusted data, so every object refuses unknown keys: a pack cannot name a network endpoint or a key.",
+  "$ref": "#/$defs/pack",
+  "$defs": {
+    "packId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "lang": {
+      "description": "BCP 47 language tag.",
+      "type": "string",
+      "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
+    },
+    "name": {
+      "description": "A role, entity class or pattern name inside a pack.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+([_-][a-z0-9]+)*$"
+    },
+    "pack": {
+      "type": "object",
+      "required": ["schema", "id", "version", "license", "source_langs"],
+      "additionalProperties": false,
+      "properties": {
+        "schema": { "const": "tome-pack/1" },
+        "id": { "$ref": "#/$defs/packId" },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"
+        },
+        "extends": { "$ref": "#/$defs/packId" },
+        "license": { "type": "string", "minLength": 1 },
+        "source_langs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/lang" }
+        }
+      }
+    },
+    "roles": {
+      "description": "roles.yaml: block roles with detection, style, review and stat block fields.",
+      "type": "object",
+      "required": ["roles"],
+      "additionalProperties": false,
+      "properties": {
+        "roles": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/name" },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "detect": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/name" }
+              },
+              "style": { "type": "string" },
+              "review": { "type": "boolean" },
+              "fields": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/name" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "entities": {
+      "description": "entities.yaml: entity classes, default pronoun and review weight.",
+      "type": "object",
+      "required": ["classes"],
+      "additionalProperties": false,
+      "properties": {
+        "classes": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/name" },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "default_pronoun": { "type": "string", "minLength": 1 },
+              "review_weight": { "type": "number", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "glossary": {
+      "description": "glossary.yaml: core terms, with one or more source languages.",
+      "type": "object",
+      "required": ["terms"],
+      "additionalProperties": false,
+      "properties": {
+        "terms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["source", "target"],
+            "additionalProperties": false,
+            "properties": {
+              "source": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": { "$ref": "#/$defs/lang" },
+                "additionalProperties": { "type": "string", "minLength": 1 }
+              },
+              "target": { "type": "string", "minLength": 1 },
+              "class": { "$ref": "#/$defs/name" },
+              "keep_source": { "type": "boolean" },
+              "match": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "case_sensitive": { "type": "boolean" },
+                  "whole_word": { "type": "boolean" },
+                  "roles": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "syntaxPatterns": {
+      "description": "syntax_patterns.yaml: masking and detection patterns.",
+      "type": "object",
+      "required": ["patterns"],
+      "additionalProperties": false,
+      "properties": {
+        "patterns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "use", "regex"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "$ref": "#/$defs/name" },
+              "use": { "enum": ["mask", "detect"] },
+              "kind": { "$ref": "#/$defs/name" },
+              "regex": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -12,7 +12,7 @@ date: 2026-11-01
 | 文件控制 | |
 | :--- | :--- |
 | 版本 | 1.0.0 |
-| 狀態 | 已定案。九輪討論已完成，決策見 [§9](#9-架構決策)。還沒有任何程式碼，之後的改動走 ADR |
+| 狀態 | 已定案。九輪討論已完成，決策見 [§9](#9-架構決策)。M0 的基礎已實作，還沒有翻譯功能，之後的改動走 ADR |
 | 日期 | 2026-11-01 |
 | 結構 | [arc42](https://arc42.org) 範本加 [C4](https://c4model.com) 視圖 |
 | 正式語言 | 繁體中文（ADR-0003）。README 另有英文版 |
@@ -33,7 +33,7 @@ date: 2026-11-01
 | **假說** | 架構倚賴的假設，必須先驗證 | [§11](#11-風險與假說) 的條目 |
 | **提案** | 原則已定案，欄位名稱這類細節實作時可以調整 | 所在章節的說明 |
 
-**這份文件裡的成本與品質數字都不是實測。** 成本依公開價目推算，價目查證日是 2026-10-31。唯一的實測是 `node:sqlite` 的能力檢查（[佐證 §2.9](research/2026-10-31-landscape.md#29-nodesqlite-實測)）。
+**這份文件裡的成本與品質數字都不是實測。** 成本依公開價目推算，價目查證日是 2026-10-31。實測只有兩項：`node:sqlite` 的能力檢查（[佐證 §2.9](research/2026-10-31-landscape.md#29-nodesqlite-實測)）與憑證庫（[H-14](#11-風險與假說)）。
 
 文中的「輪」是設計討論的回合，見[附錄 B](#附錄-b討論順序與路線圖)。編號不重用，所以 TC、S、H 有跳號，那些項目已撤銷。ADR 裡的 prompt 指專案最初的需求說明，沒有公開，規格都以這份文件為準。「第一版」就是 0.1.0。
 
@@ -72,7 +72,7 @@ TOME 是在使用者自己電腦上執行的 CLI，把使用者擁有的 TRPG �
 
 主程式是 TypeScript，Node 24 以上。解析引擎是獨立行程，預設用 Docling。遊戲系統是資料形式的規則包，第一版附 `generic` 與 `d100-orc`。第一版只接 Anthropic，路線見[附錄 B](#附錄-b討論順序與路線圖)。
 
-這份摘要的內容都已定案，依據見 [§9](#9-架構決策) 的 ADR 索引。目前還沒有任何程式碼，所有品質數字都是目標，尚未量測。
+這份摘要的內容都已定案，依據見 [§9](#9-架構決策) 的 ADR 索引。目前只完成 M0 的基礎，見[附錄 B](#路線圖)，還沒有翻譯功能。所有品質數字都是目標，尚未量測。
 
 ---
 
@@ -146,6 +146,10 @@ TRPG 書的翻譯跟一般 PDF 翻譯不一樣，難處有六個：
 | LC-3 | 引擎的程式授權與權重授權分開審查。權重授權要留下紀錄，因為兩者常常不同 | 同上（Marker、MinerU、NDLOCR-Lite 都是例子） |
 
 LC-1 到 LC-3 已定案（ADR-0016、ADR-0043）。常見的 PyMuPDF 是 AGPL-3.0，不符合 LC-1。主程式用 pdf.js（Apache-2.0）讀 PDF 結構；Docling 引擎用自己的環境，內含 pypdfium2、RapidOCR 等寬鬆授權的元件。
+
+LC-1 有一個明文例外：`@napi-rs/keyring` 的 Linux 二進位檔靜態連結 `libdbus`，TOME 依 AFL-2.1 使用，不重新散布二進位檔，已定案（ADR-0083）。
+
+**已實作**：`tools/check-licenses.ts` 讀 `package-lock.json` 檢查全部相依的授權，沒審過的主程式原生套件也擋下，CI 的 `test` 工作流程執行它（`tests/tools/check-licenses.test.ts`）。ADR-0016 的斷言擋下已知的 AGPL、GPL 與引擎套件進 `src/`。
 
 ### 2.3 出版社與著作權
 
@@ -313,6 +317,8 @@ flowchart LR
 ### 5.2 Document IR
 
 格式名稱是 `tome-ir/1`，有版本號與公開的 JSON Schema，並可遷移。IR 只存在工作區，不進 repo，因為它含有書籍內容（PC-1）。
+
+**已實作**：schema 在 `schemas/tome-ir-1.schema.json`，驗證在 `src/core/schema.ts`，型別在 `src/core/ir.ts`（`tests/core/schema.test.ts`）。一個 JSON 檔是引擎寫的一頁（`layer: source`）或組裝好的全書（`layer: document`）。下表以外另有 `pdf_sha256`、`layer`；`source` 另有 `page`；`document` 另有 `page_map` 與 `sections`，`blocks` 陣列的順序就是閱讀順序。引擎只能填核心角色，`flow` 在 `document` 層才必填。欄位細節是提案，`overrides` 的格式 M1 才定。
 
 **三層**
 
@@ -609,6 +615,8 @@ interface RequestResult {
 
 本節的原則已定案（ADR-0042 到 ADR-0051）。`tome system init` 與 `gumshoe-srd` 排到 0.1.0 之後（ADR-0080）。欄位名稱是提案，第一版實作時可以調整。
 
+**已實作**：`tome-pack/1` 的 schema 在 `schemas/tome-pack-1.schema.json`，涵蓋 `pack.yaml`、`roles.yaml`、`entities.yaml`、`glossary.yaml`、`syntax_patterns.yaml`，驗證在 `src/core/schema.ts`（`tests/core/schema.test.ts`）。每個物件都拒絕未知欄位，所以規則包指定不了連線端點或金鑰。除了 `pack.yaml`，其他檔案的欄位都是提案，M1 實作 `tome system lint` 時會再調整。規則包的內容與 `tome system` 指令都還沒有。
+
 **三層知識**
 
 | 層 | 內容 | 位置 |
@@ -760,6 +768,8 @@ stateDiagram-v2
 
 ### 6.3 工作區
 
+**已實作**：`tome init` 與路徑檢查（`src/core/workspace.ts`、`src/core/path-guard.ts`；`tests/core/workspace.test.ts`、`tests/core/path-guard.test.ts`），資料存取層與遷移（`src/core/store.ts`；`tests/core/store.test.ts`）。檢查會解開 junction 與 symlink。`tome.yaml` 第一行是 `schema: tome-workspace/1`（ADR-0082）。`book.db`、`series.db` 目前只有遷移機制與 `tome_meta`，下面的表到各階段才加。
+
 正式支援 Windows 與 Linux，macOS 盡力而為，不測試（ADR-0081）。預設位置是機器本地目錄：Windows 是 `%LOCALAPPDATA%\tome`，Linux 是 `~/.local/share/tome`，macOS 是 `~/Library/Application Support/tome`，可以用 `TOME_HOME` 改。`tome init` MUST 拒絕 git repo 內的路徑，偵測到 OneDrive、Dropbox 這類同步資料夾時要警告，否則譯文與書的片段會被傳上雲端（G-5）。這讓 G-5 成為結構，而不只靠 `.gitignore`。Obsidian vault 用 `tome.yaml` 的 `vault_path` 指定，同樣要過這項檢查。
 
 ```text
@@ -827,6 +837,8 @@ tome backup|purge <book>               備份與刪除
 
 `tome assemble` 偵測到未回收的 vault 修改就拒絕輸出，列出檔案，要求先跑 `tome sync`，人工譯文不會被覆蓋。
 
+**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`（`src/cli/`；`tests/cli/run.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。各項結束碼見 ADR-0082。其他指令還沒有。
+
 ---
 
 ## 7. 部署視圖
@@ -849,11 +861,14 @@ Docling 轉接器的原始碼與 `uv.lock` 隨 npm 包發送，`tome engine add 
 
 ```text
 tome/
-├── src/                主程式：核心函式庫與 CLI
+├── src/core/           主程式的核心函式庫
+├── src/cli/            CLI，只是核心外面的一層
+├── schemas/            tome-ir、tome-pack 的公開 JSON Schema
 ├── systems/            內建規則包，各自有授權
 ├── engines/docling/    Python 轉接器與 uv.lock
 ├── tests/              測試與合成 PDF 產生器
 ├── tools/              維護用工具
+├── briefs/             spec-brief 的回合契約
 ├── docs/               白皮書、ADR、查證資料、評測結果
 └── .github/            CI、發佈、Issue 範本
 ```
@@ -862,8 +877,8 @@ tome/
 
 | 工作流程 | 觸發 | 內容 |
 | :--- | :--- | :--- |
-| `specs` | push 到 `main` 與 PR | spec-guard、`prove`、spec-graph，Windows 與 Ubuntu |
-| 測試 | 有程式碼後，push 到 `main` 與 PR | 測試、`npm audit`、相依授權檢查、效能預算、`tome system lint` 與 `test`、測試素材清單檢查 |
+| `specs` | push 到 `main` 與 PR | spec-guard、`prove`、`cites`、spec-graph、spec-brief、`premises`，Windows 與 Ubuntu。**已實作**：`.github/workflows/specs.yml` |
+| 測試 | push 到 `main` 與 PR | 測試、`npm audit`、相依授權檢查、效能預算、`tome system lint` 與 `test`、測試素材清單檢查。**已實作**前三項：`.github/workflows/test.yml`，檔名是 `test`，`npm audit` 的門檻是 `moderate`（ADR-0082）；其他項目等對應的功能完成才加 |
 | 引擎 | 改到 `engines/` 或手動 | 安裝 Docling 跑合成 PDF |
 | 變異 | 排程 | 六個關鍵模組 |
 | 發佈 | `v*` 標籤或手動演練 | 見下節 |
@@ -937,15 +952,19 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 
 主程式所有對外網路請求 MUST 走單一模組，其他程式不得自己連網，由 spec-guard 斷言把關。唯一的例外是安裝解析引擎時由 uv 與引擎工具做的下載，那是獨立行程，使用者主動執行（ADR-0081）。個資閘門（DC-1）與端點白名單（DC-2）都在這裡。
 
+**已實作**：ADR-0039 的兩條斷言擋下 `src/core/egress/` 以外的連網模組、供應商 SDK 與全域連網 API，`spec-guard prove` 看過它們失敗。M0 完全不連網，這個模組要到 M2 才建立（ADR-0082）。
+
 本機留外送紀錄，只記內容雜湊、供應商、模型、大小與時間，不記內容。OpenRouter 一律送 `data_collection: deny`，因為它的預設是 `allow`。
 
 ### 8.3 金鑰
 
 本節已定案（ADR-0034）。
 
-`tome provider auth set` 把金鑰存進作業系統憑證庫（ADR-0081）。環境變數可以覆蓋，給沒有憑證庫的環境使用。Windows 的憑證庫支援要先實測（H-14），不可行就退回環境變數。
+`tome provider auth set` 把金鑰存進作業系統憑證庫（ADR-0081）。環境變數 `TOME_ANTHROPIC_API_KEY` 可以覆蓋，給沒有憑證庫的環境使用（ADR-0082）。Windows 的憑證庫實測可行（H-14）。Linux 釘在 Secret Service，沒有時回報憑證庫不可用，改用環境變數，不退回重開機就消失的 keyutils（ADR-0083）。
 
 不論哪種方式，引擎子行程 MUST NOT 繼承金鑰，金鑰也 MUST NOT 出現在紀錄與報告裡。
+
+**已實作**：`src/core/secrets.ts`、`src/core/process.ts`（`tests/core/secrets.test.ts`、`tests/core/doctor.test.ts`）。金鑰只從隱藏輸入或 stdin 讀，沒有旗標參數。子行程一律走 `src/core/process.ts`，環境變數先過濾，由 ADR-0082 的斷言把關。
 
 ### 8.4 測試
 
@@ -962,6 +981,8 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 | 契約 | 真 API 小額跑，防止假供應商跟現實脫節 | 幾個月手動一次 |
 
 CI 跑 Windows 與 Ubuntu。公開 repo 的 CI MUST NOT 放任何 API 金鑰。變異分數的門檻等第一次實測後再定。
+
+**已實作**：單元與性質測試在 `tests/`，用 vitest 與 fast-check，`.github/workflows/test.yml` 在兩個平台都跑。其他層級等對應的功能完成才加。
 
 ### 8.5 測試語料
 
@@ -1084,6 +1105,8 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0079](adr/0079-drop-old-translation-baseline.md) | 盲評門檻不再跟舊譯文比較 | 8 |
 | [ADR-0080](adr/0080-roadmap-and-first-version-scope.md) | 路線圖與第一版範圍 | 9 |
 | [ADR-0081](adr/0081-reader-test-corrections.md) | 讀者測試後的修正 | 9 |
+| [ADR-0082](adr/0082-m0-toolchain-and-conventions.md) | M0 的工具鏈與 CLI 慣例 | M0 |
+| [ADR-0083](adr/0083-keyring-native-license-exception.md) | 憑證庫原生模組的授權例外 | M0 |
 
 ---
 
@@ -1125,7 +1148,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | H-11 | 候選詞加少量上下文的 Pass 0，召回率夠高 | 漏掉的名字會在分塊翻譯時分裂 | 用已知詞表的公開素材量召回率，並與全書掃描比較 |
 | H-12 | `tome sync` 能把 vault 的修改可靠對回區塊 | 對錯段落等於把人工譯文寫到別的地方 | 合成修改集：改字、併段、搬動段落，量對應正確率 |
 | H-13 | 關閉思考後，翻譯品質仍足以上桌 | 思考計入輸出費，開著可能明顯超出附錄 A | 同一段素材開關思考各翻一次，盲評並比較 `usage` |
-| H-14 | `@napi-rs/keyring` 在 Windows 憑證管理員可用 | 文件沒提 Windows，不可行就要退回環境變數 | 在參考機器實測存、取、刪 |
+| H-14 | `@napi-rs/keyring` 在 Windows 憑證管理員可用。**已驗證**：2026-11-01 在參考機器實測 2.1.2，存、取、覆寫、刪都正常，跨行程讀得到，`cmdkey /list` 列得出這筆憑證，刪除後消失；值的上限是 2,560 位元組（UTF-16） | 文件沒提 Windows，不可行就要退回環境變數 | 在參考機器實測存、取、刪：`TOME_TEST_KEYRING=1 npx --no-install vitest run tests/core/secrets.test.ts` |
 | H-15 | 數值塊欄位化能涵蓋多數數值塊 | 涵蓋率低的話，省不到錢，數字風險也還在 | 公開素材與本機語料統計整塊對上的比例 |
 | H-16 | worker 限時足以擋下失控的正則 | 擋不住的話，一個壞規則包就能卡死流程 | 用已知的災難性回溯模式測試，並量正常模式的額外耗時 |
 | H-17 | 批次意圖紀錄足以避免當機後重複付費 | 送出後、記下遠端 ID 前當機，可能重送一批 | 注入當機故障，確認續跑時能認回遠端批次 |
@@ -1224,6 +1247,21 @@ Gemini 顯式快取也算過：Flash-Lite 上 8k 前綴省下約 0.13，但排�
 | M3 譯名與輸出 | Pass 0、審定、`tome glossary import`、數值塊欄位化、vault、`tome sync`、交付報告、一致性報告、`tome purge`、`tome backup` | 能帶團閱讀的成品 |
 | M4 首版 | `d100-orc`、試翻校準、盲評、發佈流程 | Q-1 到 Q-8 達標，發佈 0.1.0 |
 
-**目前階段**：M0 尚未開始。
+**目前階段**：M0 已完成，下一步是 M1 解析。
+
+M0 的項目都已實作：
+
+| 項目 | 路徑 | 測試或斷言 |
+| :--- | :--- | :--- |
+| TypeScript 骨架 | `src/core`、`src/cli`、`tsconfig.json` | ADR-0028 的分層斷言在 ADR-0082 |
+| `tome-ir/1`、`tome-pack/1` | `schemas/`、`src/core/schema.ts` | `tests/core/schema.test.ts` |
+| `tome init` 與路徑檢查 | `src/core/workspace.ts`、`src/core/path-guard.ts` | `tests/core/workspace.test.ts`、`tests/core/path-guard.test.ts` |
+| `tome doctor` | `src/core/doctor.ts` | `tests/core/doctor.test.ts` |
+| 金鑰存放 | `src/core/secrets.ts`、`src/cli/read-secret.ts` | `tests/core/secrets.test.ts`、`tests/cli/read-secret.test.ts` |
+| CLI 慣例與訊息 | `src/cli/run.ts`、`src/cli/messages/zh-TW.json` | `tests/cli/run.test.ts`、`tests/cli/messages.test.ts` |
+| 狀態庫 | `src/core/store.ts` | `tests/core/store.test.ts` |
+| 測試與 CI | `.github/workflows/test.yml`、`.github/workflows/specs.yml` | `npm test`、`npm run spec` |
+| 相依授權與連網斷言 | `tools/check-licenses.ts`、ADR-0016、ADR-0039 | `tests/tools/check-licenses.test.ts`、`spec-guard prove` |
+| spec-brief、spec-harness | `.spec-brief.json`、`.spec-harness.json`、`briefs/` | `npm run spec` |
 
 **排到 0.1.0 之後**：OpenAI 相容協定、Gemini、`tome system init`、系列詞庫與共用翻譯記憶、新版差異更新、LLM 校稿、OCR 與掃描頁、`gumshoe-srd`、日文與簡中來源、本機介面。

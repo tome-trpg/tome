@@ -1,4 +1,6 @@
 node_modules/
+dist/
+coverage/
 
 # 使用者的書與衍生資料絕不進 repo（ADR-0001）
 *.pdf

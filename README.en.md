@@ -4,7 +4,7 @@
 
 [繁體中文](README.md)
 
-> **Status: planning.** There is a whitepaper and a decision record, but no code yet, and nothing to install.
+> **Status: in development.** The foundation is done, with three commands: `tome init`, `tome doctor` and `tome provider auth set`. There is no translation yet, and nothing has been released, so there is nothing to install.
 
 ## What it is
 

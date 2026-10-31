@@ -1,0 +1,75 @@
+import { readFileSync } from 'node:fs';
+import { Ajv2020, type ValidateFunction } from 'ajv/dist/2020.js';
+import type { TomeIr } from './ir.ts';
+
+const IR_FILE = 'tome-ir-1.schema.json';
+const PACK_FILE = 'tome-pack-1.schema.json';
+
+export type PackFileKind = 'pack' | 'roles' | 'entities' | 'glossary' | 'syntaxPatterns';
+
+export interface SchemaIssue {
+  readonly path: string;
+  readonly message: string;
+}
+
+export type Validation<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly issues: readonly SchemaIssue[] };
+
+function loadSchema(file: string): { $id: string } {
+  // src 與 dist 到 repo 根目錄的深度相同。
+  return JSON.parse(readFileSync(new URL(`../../schemas/${file}`, import.meta.url), 'utf8'));
+}
+
+let cached: { ajv: Ajv2020; irId: string; packId: string } | undefined;
+
+function compiled(): NonNullable<typeof cached> {
+  if (cached === undefined) {
+    const ajv = new Ajv2020({ allErrors: true, strict: true, strictRequired: false });
+    const ir = loadSchema(IR_FILE);
+    const pack = loadSchema(PACK_FILE);
+    ajv.addSchema(ir);
+    ajv.addSchema(pack);
+    cached = { ajv, irId: ir.$id, packId: pack.$id };
+  }
+  return cached;
+}
+
+function validator(ref: string): ValidateFunction {
+  const validate = compiled().ajv.getSchema(ref);
+  if (validate === undefined) throw new Error(`unknown schema reference: ${ref}`);
+  return validate;
+}
+
+// 問題只帶路徑與規則，不帶資料本身：IR 含書籍內容，不能進訊息或紀錄（ADR-0059）。
+function issuesOf(validate: ValidateFunction): SchemaIssue[] {
+  return (validate.errors ?? []).map((error) => ({
+    path: error.instancePath || '/',
+    message: error.message ?? error.keyword,
+  }));
+}
+
+function duplicateBlockIds(value: TomeIr): SchemaIssue[] {
+  const seen = new Set<string>();
+  const issues: SchemaIssue[] = [];
+  value.blocks.forEach((block, index) => {
+    if (seen.has(block.id)) {
+      issues.push({ path: `/blocks/${index}/id`, message: 'duplicate block id' });
+    }
+    seen.add(block.id);
+  });
+  return issues;
+}
+
+export function validateIr(data: unknown): Validation<TomeIr> {
+  const validate = validator(compiled().irId);
+  if (!validate(data)) return { ok: false, issues: issuesOf(validate) };
+  const value = data as TomeIr;
+  const issues = duplicateBlockIds(value);
+  return issues.length > 0 ? { ok: false, issues } : { ok: true, value };
+}
+
+export function validatePackFile(kind: PackFileKind, data: unknown): Validation<unknown> {
+  const validate = validator(`${compiled().packId}#/$defs/${kind}`);
+  return validate(data) ? { ok: true, value: data } : { ok: false, issues: issuesOf(validate) };
+}

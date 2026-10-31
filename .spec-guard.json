@@ -1,5 +1,6 @@
 {
   "specs": ["docs/**/*.md"],
-  "exclude": ["node_modules"],
+  "exclude": ["node_modules", "dist", "coverage"],
+  "cites": [{ "id": "ADR-{n}", "files": "docs/adr/{n}-*.md" }],
   "strict": true
 }

@@ -19,7 +19,7 @@ spec 工具的正文可用任何語言，只要求狀態字為英文，也支援
 
 ## 驗證
 
-<!-- @assert-present file="package.json,package-lock.json,.npmrc,.spec-graph.json,.spec-guard.json,.github/workflows/specs.yml" -->
+<!-- @assert-present file="package.json,package-lock.json,.npmrc,.spec-graph.json,.spec-guard.json,.spec-brief.json,.spec-harness.json,.github/workflows/specs.yml" -->
 <!-- @assert-count target=".npmrc" symbol="yes=false" min="1" comments="include" reason="npx 不得在未安裝時自行下載" -->
 <!-- @assert-absence target=".github" regex="true" symbol="npx\s+(--no-install\s+)?spec-(guard|graph|brief|harness)" comments="include" reason="裸名不是本專案的套件" -->
 
@@ -33,4 +33,4 @@ spec 工具的正文可用任何語言，只要求狀態字為英文，也支援
 
 ## Open Questions
 
-- [ ] 第一個實作回合前安裝 spec-brief、spec-harness，並跑 `spec-harness init`。
+- [x] 第一個實作回合前安裝 spec-brief、spec-harness，並跑 `spec-harness init`。2026-11-01 完成，版本釘死在 `package.json`，brief 放 `briefs/`。

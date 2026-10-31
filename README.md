@@ -4,7 +4,7 @@
 
 [English](README.en.md)
 
-> **狀態：規劃中。** 目前只有白皮書與決策紀錄，還沒有程式碼，也還不能安裝。
+> **狀態：開發中。** 基礎已完成，只有 `tome init`、`tome doctor`、`tome provider auth set` 三個指令，還沒有翻譯功能，也還沒有發佈，不能安裝。
 
 ## 這是什麼
 

@@ -1,0 +1,5 @@
+{
+  "base": "origin/main",
+  "outOfScope": "warn",
+  "turnReport": true
+}
