@@ -49,6 +49,8 @@ protectedFiles:
 
 這個回合結束時，repo 有一個能建置、能測試的 TypeScript 主程式骨架，白皮書路線圖 M0 的閘門全部就位，但還沒有任何翻譯功能。核心寫成函式庫（`src/core`），CLI 只是外面一層（`src/cli`），依 [ADR-0028](../docs/adr/0028-cli-first-library-core.md)。`tome init`、`tome doctor`、`tome provider auth set` 三個指令能用，訊息是繁中，集中在資料檔，有 `--json` 與結束碼 0、1、2（[ADR-0059](../docs/adr/0059-cli-conventions.md)）。`tome-ir/1`、`tome-pack/1` 有公開的 JSON Schema 與驗證。狀態庫、金鑰存放、測試工作流程、相依授權檢查與對外連網的斷言都到位，之後的階段不用再補閘門。這一輪的選型與命名記在 [ADR-0082](../docs/adr/0082-m0-toolchain-and-conventions.md)。
 
+這一輪新增九個相依，理由如下。執行期三個：`ajv` 驗證 schema，`yaml` 讀 `tome.yaml` 與規則包，`@napi-rs/keyring` 存取憑證庫。開發用六個：`typescript` 與 `@types/node` 建置與型別檢查，`vitest` 與 `fast-check` 是 ADR-0062 指定的測試工具，`@spec-family/spec-brief` 與 `@spec-family/spec-harness` 是 ADR-0014 的第二階段。授權都在白名單內，例外只有 ADR-0083。
+
 ## Negative Scope
 
 - 不開始 M1：沒有解析、Docling、`tome probe`、`tome add`、規則包內容、語言設定檔。
