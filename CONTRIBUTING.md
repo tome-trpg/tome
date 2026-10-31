@@ -13,7 +13,7 @@
 Node 24 以上。
 
 ```bash
-npm ci
+npm ci --ignore-scripts
 npm run spec
 ```
 

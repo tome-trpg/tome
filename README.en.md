@@ -12,7 +12,7 @@ General PDF translators do not understand tabletop RPGs. Two columns and sidebar
 
 * **Local parsing.** PDFs and page images never leave your computer. Only masked text is sent out.
 * **No wrong dice or numbers.** Text is masked before translation and checked afterwards at no token cost.
-* **One name per entity.** Proper nouns are extracted and reviewed by a person before translation starts.
+* **One name per entity.** Proper nouns are extracted, and the high-impact ones are reviewed by a person before translation starts.
 * **Know the cost first.** Estimates run locally, and the budget is a required hard limit.
 * **Safe to interrupt.** A paragraph that passed verification is never paid for twice.
 * **Made for the table.** Output is Obsidian-compatible Markdown, and edits made in Obsidian can be brought back.
