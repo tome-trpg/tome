@@ -55,7 +55,7 @@ Norman 在開工前回答了 16 個決定，全部寫進 [ADR-0084](../docs/adr/
 ## Invariants
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run build`、`npm run licenses` 在本機都通過
-- [ ] `specs` 與 `test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 都通過
+- [x] `specs` 與 `test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 都通過
 - [x] 只有一個檔案碰 pdf.js，主程式不依賴 pdfkit
 
 <!-- @assert-count target="src/core/pdf.ts" symbol="from 'unpdf'" expected="1" reason="pdf.js 只從這個檔案進主程式" -->
