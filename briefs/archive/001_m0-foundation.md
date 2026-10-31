@@ -41,7 +41,7 @@ protectedFiles:
   - SECURITY.md
   - docs/research/**
   - tools/npm-placeholder/**
-integrity: sha256-effe55909086dfd8fdb0b67ae544bdad4697574d20b9ef211a642da76fbf9e6f
+integrity: sha256-ac4a77fe83af0484923db07ee1c8ee87aad7d6b4cbd5b84b1a4ee8a353e3410e
 ---
 
 <!-- spec-brief:banner -->
@@ -69,7 +69,7 @@ integrity: sha256-effe55909086dfd8fdb0b67ae544bdad4697574d20b9ef211a642da76fbf9e
 - `tome provider auth` 只做 `set`；`list`、`test` 與 `delete` 不在範圍內。
 - 不在 `book.db`、`series.db` 建業務資料表，只有遷移機制與 `tome_meta`。
 - 不放任何商業書籍內容、PDF 或金鑰，測試資料全部是合成文字。
-- 不改 `C:\Repos\specs`、`seekers-journal` 或其他 repo。
+- 不改其他 repo。
 
 ## Not Empowered
 
