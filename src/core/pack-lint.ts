@@ -18,7 +18,6 @@ import { runPatterns, type PatternInput } from './patterns.ts';
 const TARGET_LANGUAGE = 'zh-TW';
 const DATA_EXTENSIONS = new Set(['.yaml', '.yml', '.md']);
 const NOTICE_FILES = new Set(['LICENSE', 'NOTICE']);
-const ATTACK_TIMEOUT_MS = 500;
 const ATTACK_LENGTHS = [32, 5000];
 const ATTACK_ALPHABET = ['a', 'A', '0', ' ', '-', '.'];
 
@@ -130,7 +129,8 @@ function attackTexts(source: string): string[] {
 async function slowPatterns(patterns: readonly PatternInput[]): Promise<string[]> {
   const slow: string[] = [];
   for (const pattern of patterns) {
-    const outcome = await runPatterns([pattern], attackTexts(pattern.regex), ATTACK_TIMEOUT_MS);
+    // 用跟實際執行一樣的限時：lint 判失敗的，就是實際跑起來會被終止的。
+    const outcome = await runPatterns([pattern], attackTexts(pattern.regex));
     if (outcome.status !== 'ok') slow.push(pattern.id);
   }
   return slow;
