@@ -101,9 +101,7 @@ const COMMANDS: readonly Command[] = [
         throw new TomeError('provider.unknown', { supported: PROVIDERS.join(', ') });
       }
       // 提示走 stderr，`--json` 的 stdout 不受影響。
-      const input = await readSecret(io.stdin, () => {
-        io.stderr.write(promptText('secret', { provider }));
-      });
+      const input = await readSecret(io.stdin, io.stderr, promptText('secret', { provider }));
       const key = normalizeKey(input);
       try {
         await secretStore(io).set(provider, key);
