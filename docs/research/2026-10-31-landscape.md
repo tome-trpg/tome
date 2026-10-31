@@ -281,6 +281,20 @@ PDFium 標頭是 `main` 分支，不一定等於 pypdfium2 隨附的版本。
 | C# | PdfPig | Apache-2.0 | 逐字座標與字型、書籤、超連結；頁碼標籤與 tagged 結構未說明；1.0 前 API 會變 | [repo](https://github.com/UglyToad/PdfPig) |
 | Python 引擎 | uv | — | 需要時預設自動下載 Python；`uv tool install` 是否也會下載未說明 | [install](https://docs.astral.sh/uv/guides/install-python/)、[tools](https://docs.astral.sh/uv/guides/tools/) |
 
+### 2.9 node:sqlite 實測
+
+2026-11-01 在參考機器以 Node 24.22.1（LTS）實測，SQLite 3.53.4，執行時沒有實驗性警告 ✓。
+
+| 項目 | 結果 |
+| :--- | :--- |
+| WAL、外鍵、STRICT 表、JSON、FTS5、`user_version`、`VACUUM INTO` | 都可用 |
+| 交易回滾 | 正常 |
+| 第二條連線讀取 WAL 已提交的資料 | 正常 |
+| 2 萬筆寫入單一交易 | 32 ms |
+| 1 千次單筆提交 | 976 ms |
+
+Node 官方文件把它標成 Stability 1.2 Release candidate（[文件](https://nodejs.org/api/sqlite.html)）。
+
 ## 三、授權、法務與開源營運
 
 ### 3.1 出版社政策

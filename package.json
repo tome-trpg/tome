@@ -9,7 +9,7 @@
     "url": "git+https://github.com/Dancraft3746/tome-trpg.git"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "scripts": {
     "spec": "npm run spec:guard && npm run spec:prove && npm run spec:graph",

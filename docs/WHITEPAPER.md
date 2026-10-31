@@ -1,6 +1,6 @@
 ---
 title: TOME 架構白皮書
-version: 0.7.0-draft
+version: 0.8.0-draft
 status: draft
 date: 2026-10-31
 ---
@@ -11,8 +11,8 @@ date: 2026-10-31
 
 | 文件控制 | |
 | :--- | :--- |
-| 版本 | 0.7.0-draft |
-| 狀態 | 草稿。第 1 到 5 輪的決策已定案（[§9](#9-架構決策)），其餘章節討論中，還沒有任何程式碼 |
+| 版本 | 0.8.0-draft |
+| 狀態 | 草稿。第 1 到 6 輪的決策已定案（[§9](#9-架構決策)），其餘章節討論中，還沒有任何程式碼 |
 | 日期 | 2026-10-31 |
 | 結構 | [arc42](https://arc42.org) 範本加 [C4](https://c4model.com) 視圖 |
 | 正式語言 | 繁體中文（ADR-0003）。README 另有英文版 |
@@ -118,7 +118,7 @@ TRPG 書的翻譯跟一般 PDF 翻譯不一樣，難處有六個：
 | TC-1 | 參考機器：Windows 11、Ryzen 7 7735HS（8C/16T）、32 GB RAM、RTX 4060 Laptop 8 GB VRAM。沒有可用的 WSL 發行版 | 2026-10-31 本機探測 |
 | TC-2 | PDF 與頁面影像 MUST NOT 離開本機 | 需求 |
 | TC-5 | 各家 token 數不可比較，切塊 MUST 用與供應商無關的計量，換供應商時段落 ID 才穩定 | [佐證 §1.1](research/2026-10-31-landscape.md#11-模型與價格) |
-| TC-6 | 主程式用 TypeScript，執行環境是 Node 22 以上。解析引擎可以用任何語言；Docling 引擎是 Python，環境由 uv 管理 | ADR-0015，[佐證 §2.8](research/2026-10-31-landscape.md#28-主程式語言選型) |
+| TC-6 | 主程式用 TypeScript，執行環境是 Node 24 以上。解析引擎可以用任何語言；Docling 引擎是 Python，環境由 uv 管理 | ADR-0015、ADR-0052，[佐證 §2.8](research/2026-10-31-landscape.md#28-主程式語言選型) |
 
 ### 2.2 授權限制
 
@@ -216,7 +216,7 @@ flowchart LR
 | :--- | :--- | :--- | :--- | :--- |
 | 來源 PDF | 讀入 | 使用者自己擁有的檔案 | 不修改（PC-4），加密就拒絕（PC-3） | 已定案 |
 | 解析引擎 | 子行程 | manifest 與頁面 JSON（[§5.3](#53-解析引擎協定)） | 執行時離線 | 已定案（ADR-0007） |
-| 工作區 | 讀寫 | IR、狀態、本機規則包、譯文 | MUST 在任何 repo 之外，預設位置第 8 輪定 | 提案（G-5） |
+| 工作區 | 讀寫 | IR、狀態、本機規則包、譯文 | MUST 在任何 repo 之外，預設是機器本地目錄 | 已定案（ADR-0053） |
 | LLM API | 送出、接收 | 遮蔽後的文字 | DC-1、DC-2、DC-3 | 已定案（ADR-0031） |
 | 本機端點 | 送出、接收 | 同上 | OpenAI 相容協定接得上，不測試也不承諾 | 已定案（ADR-0025） |
 | Obsidian vault | 輸出 | [§5.5](#55-輸出obsidian-vault) 的目錄結構 | 譯文不得散布（PC-5） | 已定案（ADR-0005） |
@@ -626,11 +626,131 @@ source_langs: [en]
 
 ## 6. 執行期視圖
 
-（第 6 輪討論。完整資料流與狀態機，含 `REFUSED`、`FAILED_QA` 等狀態。）
+本章的原則已定案（ADR-0052 到 ADR-0059）。資料表與欄位是提案，第一個切片實作時可以調整。
+
+### 6.1 流程
+
+```mermaid
+flowchart TD
+    ADD[add<br/>登記 PDF 並 probe] --> EXTRACT[extract<br/>解析並組裝 document 層]
+    EXTRACT --> SCAN[scan-terms<br/>Pass 0]
+    SCAN --> REVIEW{{人工關卡<br/>審定高影響譯名}}
+    REVIEW --> TRIAL[trial<br/>試翻校準，可選]
+    TRIAL --> ESTIMATE{{人工關卡<br/>確認估價}}
+    ESTIMATE --> TRANSLATE[translate<br/>Batch 或即時]
+    TRANSLATE --> VERIFY[verify<br/>零 token 驗證]
+    VERIFY --> ASSEMBLE[assemble<br/>vault 與交付報告]
+    ASSEMBLE --> SYNC[sync<br/>回收人工修改]
+    SYNC -.-> ASSEMBLE
+```
+
+`tome run` 一路跑到下一個人工關卡，各階段指令也能單獨執行，兩者是同一套流程。兩個關卡都不能跳過：鎖定譯名前審高影響的詞條，花錢前確認估價。試翻後要不要停由使用者設定。
+
+每個階段記下輸入的內容指紋，沒變就跳過，這同時是續跑的基礎。要花錢的重算會先列出單位數與估價。
+
+**長時間的翻譯**在前景執行，沒有常駐服務。`tome translate` 送出批次並輪詢，Ctrl-C 不會遺失進度，批次仍在供應商那邊跑；之後再執行一次，或用 `tome batch collect` 收回。每本書同時只跑一個流程，由鎖檔保證。
+
+**批次提交**先寫入意圖紀錄，再呼叫 API，取得遠端 ID 後才更新。當機時靠這份紀錄比對遠端批次，避免重複付費（H-17）。
+
+### 6.2 翻譯單位的狀態
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING
+    PENDING --> DONE: 翻譯記憶命中
+    PENDING --> BLOCKED: 個資閘門命中
+    PENDING --> QUEUED
+    BLOCKED --> QUEUED: 處理後重新放行
+    QUEUED --> IN_FLIGHT
+    IN_FLIGHT --> QUEUED: 批次過期或網路失敗
+    IN_FLIGHT --> RECEIVED
+    RECEIVED --> DONE: 驗證通過
+    RECEIVED --> QUEUED: 驗證失敗，未達上限
+    RECEIVED --> FAILED_QA: 到達重試上限
+    RECEIVED --> REFUSED: 拒答
+    REFUSED --> QUEUED: 回退
+    FAILED_QA --> QUEUED: 人工要求重試
+    DONE --> STALE: 譯名或規則變動
+    STALE --> DONE: 改譯名替換後通過驗證
+    STALE --> QUEUED
+```
+
+書與階段的狀態由單位狀態推導，不另外存一份。
+
+### 6.3 工作區
+
+預設位置是機器本地目錄，Windows 是 `%LOCALAPPDATA%\tome`，可以用 `TOME_HOME` 改。`tome init` MUST 拒絕 git repo 內的路徑，偵測到 OneDrive、Dropbox 這類同步資料夾時要警告，否則書與譯文會被傳上雲端（TC-2）。這讓 G-5 成為結構，而不只靠 `.gitignore`。Obsidian vault 另外指定。
+
+```text
+<TOME_HOME>/
+├── tome.yaml                  # 工作區設定，不放秘密
+├── systems/                   # 本機規則包
+├── engines/                   # 解析引擎的環境
+├── series/<id>/series.db      # 系列共用的譯名與翻譯記憶
+└── books/<slug>/
+    ├── book.yaml              # PDF 路徑與雜湊、單書覆寫
+    ├── book.db                # 狀態、帳本、外送紀錄、原始回應
+    ├── ir/                    # source 層與 document 層
+    └── overrides.yaml         # 人工修正
+```
+
+來源 PDF 不複製進工作區，只記路徑與雜湊，不多造一份商業書的副本。檔案搬走時用 `tome add` 重新指到同一個雜湊。
+
+**`book.db` 的主要資料表**
+
+| 表 | 內容 |
+| :--- | :--- |
+| `stage` | 各階段的內容指紋與結果 |
+| `unit` | 翻譯單位：`block_id`、內容雜湊、群組、角色、狀態、嘗試次數 |
+| `entity` | 本書的實體卡與審定狀態 |
+| `batch`、`batch_unit` | 批次意圖、遠端 ID、對應單位、遠端刪除時間 |
+| `response` | LLM 原始回應，驗證規則改了可以免費重跑 |
+| `ledger` | 每次嘗試的 `usage` 與花費 |
+| `egress` | 外送紀錄：內容雜湊、供應商、模型、大小、時間 |
+| `issue` | `FAILED_QA`、不可譯旗標、一致性問題 |
+| `render` | 上次輸出的段落與 `block_id` 對應，給 `tome sync` 使用 |
+
+`series.db` 放系列實體卡與翻譯記憶，每筆翻譯記憶記下來自哪本書。
+
+資料庫用內建的 `node:sqlite`，開 WAL，以 `user_version` 做單向遷移。外面包一層資料存取層，它還是 Release candidate，需要時能換（ADR-0052）。
+
+**刪除**：`tome purge <book>` 刪 IR、`book.db`、這本書在系列記憶的項目，並清掉遠端殘留的批次。不動 PDF 與 vault，加 `--vault` 才刪 vault，執行前列出清單要使用者確認。`tome backup` 匯出資料庫與實體卡，不含 PDF，備份檔由使用者自己放在安全的地方。
+
+### 6.4 指令
+
+```text
+tome init                              建立工作區
+tome doctor                            檢查 Node、uv、金鑰、引擎、工作區、價目表
+tome provider list|test|auth           供應商與金鑰
+tome engine add|list|remove            解析引擎
+tome system new|init|list|lint|test    規則包
+tome glossary review|import|why        實體卡與譯名
+tome add <pdf>                         加入一本書並執行 probe
+tome run <book>                        一路跑到下一個人工關卡
+tome probe|extract|scan-terms <book>   各階段單獨執行
+tome trial|estimate|translate <book>
+tome verify|assemble <book>
+tome batch status|collect|cancel <book>
+tome sync <book>                       回收 vault 的修改
+tome status|report <book>              進度與交付報告
+tome backup|purge <book>               備份與刪除
+```
+
+| 慣例 | 內容 |
+| :--- | :--- |
+| 全域旗標 | `--system`、`--source-lang`、`--provider`、`--budget`、`--dry-run`、`--json` |
+| 設定優先序 | 旗標 > 環境變數 > 單書 > 工作區。設定檔 MUST NOT 放秘密 |
+| 結束碼 | 0 正常、1 有發現、2 結果不可信，跟 spec 工具一致 |
+| 輸出 | 訊息是繁中（ADR-0027），`--json` 給機器讀 |
+| 紀錄 | 紀錄檔 MUST NOT 含書本文字 |
+
+`tome assemble` 偵測到未回收的 vault 修改就拒絕輸出，列出檔案，要求先跑 `tome sync`，人工譯文不會被覆蓋。
+
+---
 
 ## 7. 部署視圖
 
-（第 8 輪討論。安裝方式、工作區位置、CI、發佈。）
+（第 8 輪討論。安裝方式、CI、發佈。工作區見 [§6.3](#63-工作區)。）
 
 ## 8. 橫切概念
 
@@ -732,12 +852,19 @@ source_langs: [en]
 | [ADR-0049](adr/0049-pack-regex-safety.md) | 規則包正則的防護 | 5 |
 | [ADR-0050](adr/0050-pack-tooling.md) | 規則包工具 | 5 |
 | [ADR-0051](adr/0051-pack-features.md) | 規則包的功能補充 | 5 |
+| [ADR-0052](adr/0052-node-sqlite.md) | 狀態庫用 node:sqlite，最低 Node 24 | 6 |
+| [ADR-0053](adr/0053-workspace-layout.md) | 工作區的位置與版面 | 6 |
+| [ADR-0054](adr/0054-foreground-resumable-execution.md) | 前景執行，可中斷續跑 | 6 |
+| [ADR-0055](adr/0055-cli-structure.md) | 指令結構與人工關卡 | 6 |
+| [ADR-0056](adr/0056-content-fingerprints.md) | 依內容指紋重算 | 6 |
+| [ADR-0057](adr/0057-assemble-refuses-unsynced.md) | 有未回收修改時拒絕輸出 | 6 |
+| [ADR-0058](adr/0058-local-data-retention.md) | 本機資料的保留與刪除 | 6 |
+| [ADR-0059](adr/0059-cli-conventions.md) | CLI 慣例 | 6 |
 
 ### Open Questions
 
 後面的輪次要談，目前還沒有答案：
 
-- [ ] 刪除單書衍生資料的指令（第 6 輪）
 - [ ] 零遙測承諾（第 8 輪）
 
 ---
@@ -767,6 +894,7 @@ source_langs: [en]
 | H-14 | `@napi-rs/keyring` 在 Windows 憑證管理員可用 | 文件沒提 Windows，不可行就要退回環境變數 | 在參考機器實測存、取、刪 |
 | H-15 | 數值塊欄位化能涵蓋多數數值塊 | 涵蓋率低的話，省不到錢，數字風險也還在 | 公開素材與本機語料統計整塊對上的比例 |
 | H-16 | worker 限時足以擋下失控的正則 | 擋不住的話，一個壞規則包就能卡死流程 | 用已知的災難性回溯模式測試，並量正常模式的額外耗時 |
+| H-17 | 批次意圖紀錄足以避免當機後重複付費 | 送出後、記下遠端 ID 前當機，可能重送一批 | 注入當機故障，確認續跑時能認回遠端批次 |
 
 ---
 
@@ -828,7 +956,7 @@ Gemini 顯式快取也算過：Flash-Lite 上 8k 前綴省下約 0.13，但排�
 | 3 | 翻譯核心：遮蔽、段落協定、實體卡、翻譯記憶，以及起草時未確認的前提（決策 2026-10-31 定案） | §2、§5、§9 |
 | 4 | 供應商與成本：連線協定、快取與 Batch 策略、估價器、資料閘門（決策 2026-11-01 定案） | §5.7、§8 |
 | 5 | System Pack 規格與 `tome system init`（決策 2026-11-01 定案） | §5.8 |
-| 6 | 狀態機、SQLite 結構、CLI 指令樹 | §6 |
+| 6 | 狀態機、SQLite 結構、CLI 指令樹（決策 2026-11-01 定案） | §6 |
 | 7 | QA、評測、測試策略 | §8、§10 |
 | 8 | Repo 治理、CI/CD、發佈（ADR 與 spec 工具的第一階段提前，見 ADR-0014） | §7 |
 | 9 | 路線圖、`CLAUDE.md`、讀者測試（用無上下文的新工作階段驗證文件） | 全部 |
