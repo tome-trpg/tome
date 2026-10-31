@@ -24,6 +24,7 @@ affectedFiles:
   - docs/adr/0034-api-key-storage.md
   - docs/adr/0039-single-egress.md
   - docs/adr/0082-*.md
+  - docs/adr/0083-*.md
   - package-lock.json
   - package.json
   - schemas/**
