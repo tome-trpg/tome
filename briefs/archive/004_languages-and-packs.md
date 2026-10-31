@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-01
 type: feature
 wave: 3
@@ -24,13 +24,23 @@ protectedFiles:
   - docs/research/**
   - package-lock.json
   - tools/**
+integrity: sha256-0c64a3b4340853b55bc0f80c1f5db254cec324ecf4c29d09b28389bcb86af7d1
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-01.**
+> 路線圖 M1 的第二個回合：語言設定檔 tome-lang/1、tome probe 的語言訊號、tome system new、list、lint、test，規則包的正則在 worker thread 裡限時執行。另外修了 brief 003 審查找到的問題。
+> Merged in pull request [#7](https://github.com/tome-trpg/tome/pull/7).
+> Recorded at commit `e7ec9b9`: 49 files changed, +2405 −56.
+> Relative links were rewritten to resolve from `briefs/archive/` (3); no other word changed.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 004 — 語言設定檔與規則包工具
 
 ## Intent
 
-這個回合結束時，來源與目標語言都是資料檔：`languages/source/en.yaml`、`languages/target/zh-TW.yaml`，格式是 `tome-lang/1`（[ADR-0084](../docs/adr/0084-m1-parsing-decisions.md)），引擎核心不依語言代碼分支（[ADR-0009](../docs/adr/0009-target-language-data.md)）。`tome probe` 用來源語言的資料判斷「字元合法但對應錯」的文字層，把 H-10 剩下的部分驗完。規則包工具到位：`tome system new`、`list`、`lint`、`test`，規則包的正則都在 worker thread 裡限時執行（[ADR-0049](../docs/adr/0049-pack-regex-safety.md)、H-16）。內建規則包要到 M2 才有，所以這一輪用測試專用的合成規則包驗證，CI 也跑它。
+這個回合結束時，來源與目標語言都是資料檔：`languages/source/en.yaml`、`languages/target/zh-TW.yaml`，格式是 `tome-lang/1`（[ADR-0084](../../docs/adr/0084-m1-parsing-decisions.md)），引擎核心不依語言代碼分支（[ADR-0009](../../docs/adr/0009-target-language-data.md)）。`tome probe` 用來源語言的資料判斷「字元合法但對應錯」的文字層，把 H-10 剩下的部分驗完。規則包工具到位：`tome system new`、`list`、`lint`、`test`，規則包的正則都在 worker thread 裡限時執行（[ADR-0049](../../docs/adr/0049-pack-regex-safety.md)、H-16）。內建規則包要到 M2 才有，所以這一輪用測試專用的合成規則包驗證，CI 也跑它。
 
 順便修 brief 003 審查找到的問題：README 的現況、白皮書第 36 行的實測說明、`tome add --as con` 在 Windows 變成內部錯誤、一本壞掉的書擋住所有 `tome add`、壞掉的 `probe.json` 被當成 TOME 的錯誤。這些都不是新決定。
 
