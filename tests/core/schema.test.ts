@@ -4,6 +4,7 @@ import type { DocumentBlock, IrDocument, SourceBlock, SourcePage } from '../../s
 import {
   validateBook,
   validateIr,
+  validateLanguage,
   validatePackFile,
   validateProbe,
   type PackFileKind,
@@ -318,5 +319,36 @@ describe('tome-probe/1', () => {
     ['a coverage above one', { ...probe, pages: [{ ...page, image_coverage: 2 }] }],
   ])('refuses %s', (_name, value) => {
     expect(validateProbe(value).ok).toBe(false);
+  });
+});
+
+describe('tome-pack/1 tests', () => {
+  it('accepts a case with expected matches and a role', () => {
+    const value = { cases: [{ id: 'one', text: 'x', matches: { dice: ['1D6'] }, role: 'stat_block' }] };
+    expect(validatePackFile('packTest', value).ok).toBe(true);
+    expect(validatePackFile('packTest', { cases: [{ id: 'two', text: 'x', role: null }] }).ok).toBe(true);
+  });
+
+  it('refuses an unknown key', () => {
+    expect(validatePackFile('packTest', { cases: [{ id: 'one', text: 'x', extra: 1 }] }).ok).toBe(false);
+  });
+
+  it('takes only the flags a pack may add', () => {
+    const pattern = (flags: string): unknown => ({
+      patterns: [{ id: 'one', use: 'mask', regex: 'a', flags }],
+    });
+    expect(validatePackFile('syntaxPatterns', pattern('im')).ok).toBe(true);
+    expect(validatePackFile('syntaxPatterns', pattern('y')).ok).toBe(false);
+  });
+});
+
+describe('tome-lang/1', () => {
+  it('refuses a profile of neither kind', () => {
+    expect(validateLanguage({ schema: 'tome-lang/1', kind: 'other' }).ok).toBe(false);
+  });
+
+  it('refuses an incomplete profile', () => {
+    expect(validateLanguage({ schema: 'tome-lang/1', kind: 'source', lang: 'en' }).ok).toBe(false);
+    expect(validateLanguage({ schema: 'tome-lang/1', kind: 'target', lang: 'en' }).ok).toBe(false);
   });
 });

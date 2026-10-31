@@ -1,0 +1,14 @@
+{
+  "Apache-2.0": {
+    "LICENSE": ["Apache License"],
+    "NOTICE": []
+  },
+  "ORC": {
+    "LICENSE": ["ORC License"],
+    "NOTICE": ["ORC License", "TX 9-307-067", "Licensed Material", "Reserved Material"]
+  },
+  "CC-BY-3.0": {
+    "LICENSE": ["Creative Commons", "Attribution 3.0"],
+    "NOTICE": ["Attribution 3.0"]
+  }
+}

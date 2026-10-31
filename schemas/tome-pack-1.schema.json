@@ -54,6 +54,7 @@
             "additionalProperties": false,
             "properties": {
               "detect": {
+                "description": "Patterns that must all match for a block to take this role.",
                 "type": "array",
                 "items": { "$ref": "#/$defs/name" }
               },
@@ -143,7 +144,45 @@
               "id": { "$ref": "#/$defs/name" },
               "use": { "enum": ["mask", "detect"] },
               "kind": { "$ref": "#/$defs/name" },
-              "regex": { "type": "string", "minLength": 1 }
+              "regex": { "type": "string", "minLength": 1 },
+              "flags": {
+                "description": "Added to the g and u flags, which are always on.",
+                "type": "string",
+                "pattern": "^[ims]*$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "packTest": {
+      "description": "tests/*.yaml: what tome system test checks, without spending tokens.",
+      "type": "object",
+      "required": ["cases"],
+      "additionalProperties": false,
+      "properties": {
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "text"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "$ref": "#/$defs/name" },
+              "text": { "type": "string" },
+              "matches": {
+                "description": "Pattern id to the strings it must find, in order. An empty list means it must find nothing.",
+                "type": "object",
+                "propertyNames": { "$ref": "#/$defs/name" },
+                "additionalProperties": {
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 }
+                }
+              },
+              "role": {
+                "description": "The role that must be detected, without its namespace. Null means none.",
+                "anyOf": [{ "$ref": "#/$defs/name" }, { "type": "null" }]
+              }
             }
           }
         }

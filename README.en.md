@@ -4,7 +4,7 @@
 
 [繁體中文](README.md)
 
-> **Status: in development.** The foundation is done, with three commands: `tome init`, `tome doctor` and `tome provider auth set`. There is no translation yet, and nothing has been released, so there is nothing to install.
+> **Status: in development.** The foundation is done and parsing is under way. The commands so far are `tome init`, `tome doctor`, `tome provider auth set`, `tome add`, `tome probe`, and `tome system new`, `list`, `lint` and `test`. It cannot parse a document yet and there is no translation, and nothing has been released, so there is nothing to install.
 
 ## What it is
 

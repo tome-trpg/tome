@@ -1,5 +1,5 @@
 {
-  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   把金鑰存進作業系統憑證庫\n  add <pdf>                    加入一本書並探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <書>                   探測文件結構與頁面類型\n\n選項：\n  --json     輸出給機器讀的 JSON\n  --help     顯示這份說明\n  --version  顯示版本\n",
+  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   把金鑰存進作業系統憑證庫\n  add <pdf>                    加入一本書並探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <書>                   探測文件結構與頁面類型\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加 --public 查公開包的要求\n  system test <ID 或路徑>      驗證規則包的模式，不花 token\n\n選項：\n  --json     輸出給機器讀的 JSON\n  --help     顯示這份說明\n  --version  顯示版本\n",
   "prompt": {
     "secret": "請輸入 {provider} 的 API 金鑰（輸入時不會顯示）："
   },
@@ -9,12 +9,23 @@
     "info": "資訊"
   },
   "template": {
-    "workspace": "schema: tome-workspace/1\n\n# 設定檔 MUST NOT 放金鑰。金鑰用 tome provider auth set 存進作業系統憑證庫。\n\n# Obsidian vault 的路徑，要在任何 git repo 之外。\n# vault_path:\n\n# 翻譯用的模型，翻譯功能完成後必填。TOME 不內建預設模型，建議組合還沒有盲評。\n# scanner_model:\n# translator_model:\n"
+    "workspace": "schema: tome-workspace/1\n\n# 設定檔 MUST NOT 放金鑰。金鑰用 tome provider auth set 存進作業系統憑證庫。\n\n# Obsidian vault 的路徑，要在任何 git repo 之外。\n# vault_path:\n\n# 翻譯用的模型，翻譯功能完成後必填。TOME 不內建預設模型，建議組合還沒有盲評。\n# scanner_model:\n# translator_model:\n",
+    "pack": {
+      "pack.yaml": "schema: tome-pack/1\nid: {id}\nversion: 0.1.0\n# 沒寫 extends 就是繼承 generic。\n# extends: generic\n# 只自己用的話不用改。要公開貢獻，請改成開放授權，並加上 LICENSE 與 NOTICE。\nlicense: UNLICENSED\nsource_langs: [en]\n",
+      "roles.yaml": "# 區塊角色，寫成 <規則包 ID>:<角色>。detect 列的模式全部命中才算。\nroles: {}\n",
+      "entities.yaml": "# 實體類別，default_pronoun 要在目標語言的代名詞集合裡。\nclasses: {}\n",
+      "glossary.yaml": "# 核心術語。\nterms: []\n",
+      "syntax_patterns.yaml": "# 遮蔽與偵測模式。use 是 mask 或 detect，regex 一律開 g 與 u。\npatterns: []\n",
+      "persona_and_tone.md": "<!-- 文風與時代語境。這段會進入提示，只放你自己寫的文字。 -->\n",
+      "few_shots.md": "<!-- 雙語範例。只放你自己寫的文字，不放商業書的內容。 -->\n",
+      "tests/example.yaml": "# tome system test 的案例。text 用你自己編的文字。\ncases: []\n"
+    }
   },
   "finding": {
     "book.added": "已加入 {name}，工作資料在 {path}。PDF 留在原位，不會複製。",
     "book.already_added": "這本書已經加入過，名稱是 {name}。沒有更動任何檔案。",
     "book.name_taken": "名稱 {name} 已經有別的書在用。請用 --as <名稱> 指定另一個。",
+    "book.unreadable": "書 {name} 的資料讀不出來，已略過。請檢查它的 book.yaml。",
     "book.updated": "已更新 {name} 的設定。",
     "engines.pending": "解析引擎：{milestone} 才有，目前不用檢查。",
     "key.missing": "找不到 {provider} 的金鑰。請執行 tome provider auth set {provider}，或設定環境變數 {env}。",
@@ -23,6 +34,30 @@
     "keyring.unavailable": "作業系統憑證庫不可用。請改用環境變數 {env}。",
     "node.ok": "Node 版本 {version}。",
     "node.too_old": "Node {version} 太舊，TOME 需要 {minimum} 以上。",
+    "pack.bad_file": "{file} 有問題：{issue}。",
+    "pack.bad_regex": "模式 {pattern} 不是有效的正則。",
+    "pack.created": "已建立規則包 {id}：{path}。",
+    "pack.duplicate_pattern": "模式 ID {pattern} 重複了。",
+    "pack.exists": "規則包 {id} 已經存在：{path}。沒有更動任何檔案。",
+    "pack.id_mismatch": "pack.yaml 的 id 是 {id}，資料夾卻叫 {dir}，兩者要相同。",
+    "pack.lint_ok": "規則包 {id} 檢查通過。",
+    "pack.listed": "{id} {version}（來源：{source}）。",
+    "pack.missing_file": "少了 {file}，或檔案是空的。",
+    "pack.missing_notice": "{file} 缺少必要的聲明：{phrase}。",
+    "pack.no_tests": "這個規則包沒有測試案例。公開包必須有，放在 tests/。",
+    "pack.none": "目前沒有任何規則包。可以用 tome system new <ID> 建立一個。",
+    "pack.not_data": "{file} 不是資料檔。規則包只能有 YAML 與 Markdown，也不能有連結。",
+    "pack.parent_cycle": "規則包 {id} 的繼承繞回自己了。",
+    "pack.parent_missing": "規則包 {id} 繼承的 {parent} 找不到。",
+    "pack.risky_regex": "模式 {pattern} 的寫法可能回溯過多（{risk}）。請改寫，真的卡住時會被限時終止。",
+    "pack.slow_regex": "模式 {pattern} 跑太久被終止了，這是災難性回溯，請改寫。",
+    "pack.test_failed": "測試案例 {case} 失敗：模式 {pattern} 抓到的跟預期不同。",
+    "pack.test_passed": "{count} 個測試案例都通過。",
+    "pack.test_role_failed": "測試案例 {case} 失敗：判定出的角色跟預期不同。",
+    "pack.unknown_class": "glossary.yaml 第 {index} 筆的類別 {class} 沒有宣告。",
+    "pack.unknown_license": "授權 {license} 不在公開包的清單裡。",
+    "pack.unknown_pattern": "角色 {role} 用的偵測模式 {pattern} 沒有宣告，或不是 detect 用途。",
+    "pack.unknown_pronoun": "實體類別 {class} 的預設代名詞不在目標語言的代名詞集合裡。",
     "pdf.encrypted": "{path} 是加密的 PDF，TOME 一律拒絕處理，包含不需密碼就能開啟、只限制複製的檔案。",
     "prices.pending": "價目表：{milestone} 才有，目前不用檢查。",
     "probe.done": "探測完成，共 {pages} 頁：原生 {native}、掃描 {scan}、壞文字層 {broken_text}、純圖片 {image_only}。",
@@ -59,6 +94,9 @@
     "cli.unknown_option": "沒有這個選項：{option}。請用 tome --help 查看用法。",
     "config.bad_schema": "{path} 不是 {expected} 格式。",
     "config.invalid_yaml": "{path} 不是有效的 YAML。",
+    "file.corrupt": "{path} 壞了，讀不出內容。它可以重新產生，刪掉後再執行一次就好。",
+    "language.unknown": "沒有語言 {lang} 的設定檔。",
+    "pack.not_found": "找不到規則包 {id}。可以用 tome system list 查看有哪些。",
     "pdf.not_found": "找不到檔案：{path}。",
     "pdf.unreadable": "{path} 打不開，可能不是 PDF，或檔案壞了。",
     "provider.unknown": "不支援這個供應商。目前只支援 {supported}。",

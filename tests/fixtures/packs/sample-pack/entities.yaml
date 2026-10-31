@@ -1,0 +1,6 @@
+classes:
+  deity:
+    default_pronoun: 祂
+    review_weight: 3
+  npc:
+    review_weight: 1

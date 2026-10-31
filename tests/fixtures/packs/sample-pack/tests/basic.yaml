@@ -1,0 +1,17 @@
+cases:
+  - id: dice_in_prose
+    text: The warden rolls 1D100 and then 2d6+1 at the ferry.
+    matches:
+      dice: [1D100, 2d6+1]
+    role: null
+  - id: stat_block
+    text: Tide Warden HP 12 AC 3 Move 8
+    matches:
+      hp_line: [HP 12]
+      ac_line: [AC 3]
+    role: stat_block
+  - id: half_a_stat_block
+    text: The warden has HP 12 but nothing else.
+    matches:
+      dice: []
+    role: null

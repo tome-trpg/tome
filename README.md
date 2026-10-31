@@ -4,7 +4,7 @@
 
 [English](README.en.md)
 
-> **狀態：開發中。** 基礎已完成，只有 `tome init`、`tome doctor`、`tome provider auth set` 三個指令，還沒有翻譯功能，也還沒有發佈，不能安裝。
+> **狀態：開發中。** 基礎已完成，解析正在做。現在有 `tome init`、`tome doctor`、`tome provider auth set`、`tome add`、`tome probe`、`tome system new`、`list`、`lint`、`test`。還不能解析出文件，也沒有翻譯功能，還沒有發佈，不能安裝。
 
 ## 這是什麼
 

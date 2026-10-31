@@ -1,0 +1,62 @@
+schema: tome-lang/1
+kind: source
+lang: en
+name: English
+writing_mode: horizontal-tb
+
+normalize:
+  form: NFC
+  # 連字與軟連字號。字元守恆也要容許這些差異。
+  replace:
+    "ﬀ": ff
+    "ﬁ": fi
+    "ﬂ": fl
+    "ﬃ": ffi
+    "ﬄ": ffl
+    "ﬅ": ft
+    "ﬆ": st
+    "­": ""
+
+# 行尾斷字：連字號前是字母，下一行小寫開頭才接回去。
+dehyphenate:
+  hyphens: ["-", "‐"]
+  next_starts: lower
+
+# 跨欄、跨頁的段落：沒有句尾標點，下一段小寫開頭才接起來。
+join:
+  sentence_end: [".", "!", "?", ":", "…", "\"", "”", "’", ")"]
+  next_starts: lower
+
+# 判斷字元合法但對應錯的文字層（H-10）。
+# 字母少於 min_letters 的頁不判斷，數值塊與表格的字母本來就少。
+# min_similarity 是提案，要等本機語料量過才算定案。
+text_quality:
+  letter_frequency:
+    a: 8.2
+    b: 1.5
+    c: 2.8
+    d: 4.3
+    e: 12.7
+    f: 2.2
+    g: 2.0
+    h: 6.1
+    i: 7.0
+    j: 0.15
+    k: 0.77
+    l: 4.0
+    m: 2.4
+    n: 6.7
+    o: 7.5
+    p: 1.9
+    q: 0.095
+    r: 6.0
+    s: 6.3
+    t: 9.1
+    u: 2.8
+    v: 0.98
+    w: 2.4
+    x: 0.15
+    y: 2.0
+    z: 0.074
+  min_letters: 200
+  min_similarity: 0.8

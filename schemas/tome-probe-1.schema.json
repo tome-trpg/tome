@@ -62,7 +62,8 @@
           "height": { "type": "number" },
           "chars": { "type": "integer", "minimum": 0 },
           "bad_chars": { "type": "integer", "minimum": 0 },
-          "image_coverage": { "type": "number", "minimum": 0, "maximum": 1 }
+          "image_coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+          "language_match": { "type": "number", "minimum": 0, "maximum": 1 }
         }
       }
     }

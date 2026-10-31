@@ -66,6 +66,12 @@ M1 開工前比對白皮書、ADR 與實際套件，留下 16 個沒定的項目
 <!-- @assert-absence target="package.json" symbol="pdf-lib" comments="include" reason="第 8 項：不再用 pdf-lib" -->
 <!-- @assert-count target="tools/check-licenses.ts" symbol="DEV_ONLY_ALLOWED" min="2" reason="第 9 項：0BSD 只對開發相依放行" -->
 <!-- @assert-count target="tools/check-licenses.ts" symbol="DEV_LICENSE_EXCEPTIONS" min="2" reason="第 9 項：沒有授權欄位的開發相依要逐一寫明" -->
+<!-- @assert-present file="languages/source/en.yaml,languages/target/zh-TW.yaml,schemas/tome-lang-1.schema.json,src/core/pack-notices.json" -->
+<!-- @assert-count target="package.json" symbol="languages" min="1" comments="include" reason="第 12 項：語言設定檔隨 npm 包發送" -->
+<!-- @assert-absence target="src" glob="*.ts" regex="true" symbol="[!=]==\s*['\x22](en|ja|zh-TW|zh-Hans)['\x22]" reason="ADR-0009：核心不依語言代碼分支" -->
+<!-- @assert-absence target="src" glob="*.ts" exclude="src/core/pattern-worker.ts src/core/pack-lint.ts" regex="true" symbol="new RegExp\(" reason="ADR-0049：規則包的正則只在 worker 裡執行，lint 只編譯" -->
+<!-- @assert-count target="src/core/patterns.ts" symbol="env: {}" expected="1" reason="ADR-0044：worker 不繼承環境變數，規則包碰不到金鑰" -->
+<!-- @assert-count target=".github/workflows/test.yml" symbol="system lint tests/fixtures/packs/sample-pack --public" expected="1" comments="include" reason="ADR-0050：公開包的檢查由 CI 把關，建置結果也要跑得起 worker" -->
 
 ## 後果
 

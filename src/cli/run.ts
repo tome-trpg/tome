@@ -4,6 +4,9 @@ import { addBook, probeBook, type ProbeOutcome } from '../core/book.ts';
 import { runDoctor } from '../core/doctor.ts';
 import { TomeError } from '../core/errors.ts';
 import { exitCodeOf, finding, type Finding } from '../core/findings.ts';
+import { lintPack } from '../core/pack-lint.ts';
+import { testPack } from '../core/pack-test.ts';
+import { createPack, listPacks, locatePack } from '../core/pack.ts';
 import { detectGpu } from '../core/probe.ts';
 import { runTool, type ToolRunner } from '../core/process.ts';
 import {
@@ -15,8 +18,8 @@ import {
   keyEnvName,
   type SecretStore,
 } from '../core/secrets.ts';
-import { initWorkspace, resolveHome } from '../core/workspace.ts';
-import { errorText, promptText, usageText, workspaceTemplate } from './messages.ts';
+import { initWorkspace, readWorkspaceConfig, resolveHome } from '../core/workspace.ts';
+import { errorText, packTemplate, promptText, usageText, workspaceTemplate } from './messages.ts';
 import { errorEnvelope, renderFinding, successEnvelope } from './output.ts';
 import { readSecret, type SecretInput } from './read-secret.ts';
 
@@ -164,6 +167,57 @@ const COMMANDS: readonly Command[] = [
         data: { book, probe: outcome.summary },
         findings: [...probeFindings(outcome), await gpuFinding(io)],
       };
+    },
+  },
+  {
+    path: ['system', 'new'],
+    options: {},
+    positionals: 1,
+    run: async ({ positionals }, io) => {
+      const id = positionals[0];
+      if (id === undefined) throw new TomeError('cli.missing_argument', { argument: '<id>' });
+      const home = resolveHome(io.env, io.platform);
+      if (readWorkspaceConfig(home) === null) {
+        return { data: { id }, findings: [finding('workspace.missing', 'fail', { path: home })] };
+      }
+      return { data: { id }, findings: createPack(home, id, packTemplate(id)) };
+    },
+  },
+  {
+    path: ['system', 'list'],
+    options: {},
+    positionals: 0,
+    run: async (_parsed, io) => {
+      const packs = listPacks(resolveHome(io.env, io.platform));
+      const findings = packs.map(({ id, version, source }) =>
+        finding('pack.listed', 'info', { id, version, source }),
+      );
+      return { data: { packs }, findings: packs.length > 0 ? findings : [finding('pack.none', 'info')] };
+    },
+  },
+  {
+    path: ['system', 'lint'],
+    options: { public: { type: 'boolean' } },
+    positionals: 1,
+    run: async ({ positionals, values }, io) => {
+      const target = positionals[0];
+      if (target === undefined) throw new TomeError('cli.missing_argument', { argument: '<id>' });
+      const home = resolveHome(io.env, io.platform);
+      const findings = await lintPack(home, locatePack(home, target), {
+        public: values['public'] === true,
+      });
+      return { data: { pack: target }, findings };
+    },
+  },
+  {
+    path: ['system', 'test'],
+    options: {},
+    positionals: 1,
+    run: async ({ positionals }, io) => {
+      const target = positionals[0];
+      if (target === undefined) throw new TomeError('cli.missing_argument', { argument: '<id>' });
+      const home = resolveHome(io.env, io.platform);
+      return { data: { pack: target }, findings: await testPack(home, locatePack(home, target)) };
     },
   },
   {

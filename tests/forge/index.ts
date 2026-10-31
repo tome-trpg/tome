@@ -199,7 +199,7 @@ function broken(): Doc {
   brokenToUnicodePage(doc, 1, (code) => 0xe000 + code);
   brokenToUnicodePage(doc, 2, () => 0xfffd);
   brokenToUnicodePage(doc, 3, (code) => (code % 2 === 0 ? 0xe000 + code : code));
-  // 對應錯但字元合法：字元類別抓不到，要靠語言訊號（H-10）。
+  // 對應錯但字元合法：字元類別抓不到，靠語言訊號（H-10）。
   brokenToUnicodePage(doc, 4, (code) => (code >= 0x61 && code <= 0x7a ? 0x61 + ((code - 0x61 + 13) % 26) : code));
   textPage(doc, 5);
   return doc;
@@ -250,7 +250,7 @@ const CASES = {
   artwork: { build: artwork, truth: { kinds: ['image_only', 'image_only', 'native', 'image_only'] } },
   broken: {
     build: broken,
-    truth: { kinds: ['broken_text', 'broken_text', 'broken_text', 'native', 'native'] },
+    truth: { kinds: ['broken_text', 'broken_text', 'broken_text', 'broken_text', 'native'] },
   },
   spread: { build: spread, truth: { kinds: repeat('native', 4), spread: true } },
   hidden: { build: hidden, truth: { kinds: ['native'] } },

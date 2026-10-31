@@ -9,6 +9,13 @@ function fill(template: string, params: Params): string {
 export const usageText = catalog.usage;
 export const workspaceTemplate = catalog.template.workspace;
 
+/** `tome system new` 的骨架，檔名對應內容。 */
+export function packTemplate(id: string): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(catalog.template.pack).map(([file, text]) => [file, fill(text, { id })]),
+  );
+}
+
 export function promptText(key: keyof typeof catalog.prompt, params: Params): string {
   return fill(catalog.prompt[key], params);
 }

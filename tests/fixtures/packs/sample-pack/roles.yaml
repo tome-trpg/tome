@@ -1,0 +1,7 @@
+roles:
+  stat_block:
+    detect: [hp_line, ac_line]
+    style: Keep every number. Translate the labels only.
+    fields: [hp, ac]
+  narration:
+    style: Read aloud at the table.

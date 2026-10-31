@@ -1,0 +1,37 @@
+schema: tome-lang/1
+kind: target
+lang: zh-TW
+name: 繁體中文（台灣）
+
+# 譯後自動排版的規則，在還原佔位符之前執行，不花 token（ADR-0081）。
+punctuation:
+  replace:
+    ",": "，"
+    ";": "；"
+    ":": "："
+    "?": "？"
+    "!": "！"
+    "(": "（"
+    ")": "）"
+    "...": "……"
+  quotes:
+    open: "「"
+    close: "」"
+    inner_open: "『"
+    inner_close: "』"
+  space_around_latin: false
+
+pronouns: [他, 她, 牠, 它, 祂]
+
+# 長度過短算疑似摘要，會重送（白皮書 §5.6）。數字是提案，要等試翻量過。
+min_length_ratio: 0.3
+
+# 這些句子是提案，M2 接進提示前由維護者審過。
+style_guide:
+  - 用台灣慣用的繁體中文，不用中國大陸用語。
+  - 規則文字同詞同譯，敘事與朗讀文字可以放開一點。
+  - 數字、骰子與單位都照原文，不換算。
+  - 神祇與超自然存在的代名詞依實體卡，預設用祂。
+
+# 用語檢查表，只列報告不重送（ADR-0060）。OpenCC 的片語表在 M2 接上，這裡放自訂清單。
+term_checks: []
