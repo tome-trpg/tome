@@ -49,7 +49,7 @@ protectedFiles:
 ## Invariants
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run build`、`npm run licenses` 在本機都通過
-- [ ] `specs` 與 `test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
+- [x] `specs` 與 `test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
 - [x] 新的測試在舊程式上會失敗：慢啟動、等不到 CPU 的情況都能重現
 - [x] 失控的模式仍然被終止，回報是哪個模式，正常的模式不因機器忙而失敗，`lint` 與 `test` 兩條路徑都涵蓋
 - [x] 在壓力下重新量過，H-16 的敘述照實更新
