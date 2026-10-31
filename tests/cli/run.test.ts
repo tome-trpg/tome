@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Readable } from 'node:stream';
+import { PassThrough, Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
@@ -134,7 +134,6 @@ describe('tome doctor', () => {
 
   it('exits 2 on a config it cannot read', async () => {
     const home = tempDir();
-    const { writeFileSync } = await import('node:fs');
     writeFileSync(join(home, 'tome.yaml'), 'a: [');
     const { io } = capture({ env: { TOME_HOME: home } });
     expect(await run(['doctor'], io)).toBe(2);
@@ -169,6 +168,19 @@ describe('tome provider auth set', () => {
     expect(secrets.keys.size).toBe(0);
   });
 
+  it.each([
+    [['provider', 'auth', 'set', SYNTHETIC_KEY]],
+    [['provider', 'auth', 'get', SYNTHETIC_KEY]],
+    [[SYNTHETIC_KEY]],
+  ])('does not repeat a key pasted in the wrong place: %j', async (argv) => {
+    const { io, stdout, stderr } = capture();
+    expect(await run(argv, io)).toBe(2);
+    expect(stdout() + stderr()).not.toContain(SYNTHETIC_KEY);
+    const json = capture();
+    await run([...argv, '--json'], json.io);
+    expect(json.stdout()).not.toContain(SYNTHETIC_KEY);
+  });
+
   it('refuses a provider 0.1.0 does not ship', async () => {
     const { io, stderr } = capture();
     expect(await run(['provider', 'auth', 'set', 'openai'], io)).toBe(2);
@@ -197,9 +209,13 @@ describe('tome provider auth set', () => {
   });
 
   it('keeps the prompt out of the --json output', async () => {
-    const { io, stdout } = capture({ stdin: Readable.from([SYNTHETIC_KEY]) });
-    expect(await run(['provider', 'auth', 'set', 'anthropic', '--json'], io)).toBe(0);
+    const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode: () => {} });
+    const { io, stdout, stderr } = capture({ stdin });
+    const pending = run(['provider', 'auth', 'set', 'anthropic', '--json'], io);
+    stdin.write(`${SYNTHETIC_KEY}`);
+    expect(await pending).toBe(0);
     expect(envelope(stdout())).toMatchObject({ ok: true, data: { provider: 'anthropic' } });
+    expect(stderr()).toContain('anthropic');
   });
 });
 

@@ -46,7 +46,7 @@ interface Command {
   readonly path: readonly string[];
   readonly options: NonNullable<ParseArgsConfig['options']>;
   readonly positionals: number;
-  run(parsed: Parsed, io: Io, json: boolean): Promise<Result>;
+  run(parsed: Parsed, io: Io): Promise<Result>;
 }
 
 function secretStore(io: Io): SecretStore {
@@ -91,16 +91,18 @@ const COMMANDS: readonly Command[] = [
     path: ['provider', 'auth', 'set'],
     options: {},
     positionals: 1,
-    run: async ({ positionals }, io, json) => {
+    run: async ({ positionals }, io) => {
       const provider = positionals[0];
       if (provider === undefined) {
         throw new TomeError('cli.missing_argument', { argument: '<provider>' });
       }
       if (!isProvider(provider)) {
-        throw new TomeError('provider.unknown', { provider, supported: PROVIDERS.join(', ') });
+        // 不回顯這個值：使用者可能把金鑰貼在這裡。
+        throw new TomeError('provider.unknown', { supported: PROVIDERS.join(', ') });
       }
+      // 提示走 stderr，`--json` 的 stdout 不受影響。
       const input = await readSecret(io.stdin, () => {
-        if (!json) io.stderr.write(promptText('secret', { provider }));
+        io.stderr.write(promptText('secret', { provider }));
       });
       const key = normalizeKey(input);
       try {
@@ -150,7 +152,7 @@ function packageVersion(): string {
 }
 
 function toTomeError(error: unknown): TomeError {
-  // 未預期的錯誤只留代碼：錯誤物件可能帶到書本文字或路徑以外的東西。
+  // 未預期的錯誤只留代碼：錯誤物件可能帶著金鑰或書本文字。
   return error instanceof TomeError ? error : new TomeError('cli.internal');
 }
 
@@ -167,13 +169,13 @@ export async function run(argv: readonly string[], io: Io): Promise<number> {
       io.stdout.write(`${packageVersion()}\n`);
       return 0;
     }
-    const command = findCommand(args);
-    if (command === null) {
-      const words = args.filter((token) => !token.startsWith('-'));
-      throw new TomeError('cli.unknown_command', { command: words.join(' ') });
+    const matched = findCommand(args);
+    if (matched === null) {
+      // 不回顯輸入：使用者可能把金鑰貼在這裡。
+      throw new TomeError('cli.unknown_command');
     }
-    const parsed = parseCommand(command, args);
-    const { data, findings } = await command.run(parsed, io, json);
+    const parsed = parseCommand(matched, args);
+    const { data, findings } = await matched.run(parsed, io);
     const exit = exitCodeOf(findings);
     if (json) {
       io.stdout.write(`${JSON.stringify(successEnvelope(exit === 0, data, findings))}\n`);
