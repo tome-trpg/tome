@@ -68,27 +68,29 @@ protectedFiles:
 ## Invariants
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run build`、`npm run licenses` 在本機都通過
-- [ ] `specs` 與 `test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 都通過
-- [ ] Action 釘在 commit，簽出不保留 token，安裝用 `--ignore-scripts`，公開 repo 的 CI 沒有金鑰
+- [x] `specs` 與 `test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 都通過
+- [x] Action 釘在 commit，簽出不保留 token，安裝用 `--ignore-scripts`，公開 repo 的 CI 沒有金鑰
 
 <!-- @assert-absence target=".github/workflows" regex="true" symbol="^\s*-?\s*uses:\s+[^@\s]+@(?![0-9a-f]{40}\b)" comments="include" reason="Action 一律釘在 commit" -->
 <!-- @assert-absence target=".github/workflows" regex="true" symbol="\$\{\{\s*secrets\." comments="include" reason="公開 repo 的 CI 不放金鑰" -->
 
-- [ ] 相依版本釘死，直接相依都過了 ADR-0077 的冷卻期，例外在 ADR-0082 寫明
+- [x] 相依版本釘死，直接相依都過了 ADR-0077 的冷卻期，例外在 ADR-0082 寫明
 
 <!-- @assert-absence target="package.json" regex="true" symbol="\"[^\"]+\":\s*\"[\^~]" comments="include" reason="版本釘死" -->
 
-- [ ] 金鑰、本機路徑與商業內容都沒有進 repo，推送前掃描過
-- [ ] H-14 有實測結果，寫回白皮書與 ADR-0034 的 Open Questions
-- [ ] ADR-0014、ADR-0016、ADR-0034、ADR-0039 的 Open Questions 已關閉
-- [ ] 白皮書附錄 B 的「目前階段」已更新，已實作的項目標成「已實作」並附路徑與測試
+- [x] 金鑰、本機路徑與商業內容都沒有進 repo，推送前掃描過
+- [x] H-14 有實測結果，寫回白皮書與 ADR-0034 的 Open Questions
+- [x] ADR-0014、ADR-0016、ADR-0034、ADR-0039 的 Open Questions 已關閉
+- [x] 白皮書附錄 B 的「目前階段」已更新，已實作的項目標成「已實作」並附路徑與測試
 
 ## Acceptance Criteria
 
-- [ ] `tome init` 在 git repo 內的路徑回結束碼 1，偵測到同步資料夾時警告，已初始化時重跑回 0 且不覆蓋
-- [ ] `tome doctor` 依 ADR-0082 的分級回報，`--json` 的外層是 `tome-cli/1`
-- [ ] `tome provider auth set anthropic` 只從隱藏輸入或 stdin 讀金鑰，金鑰不出現在任何輸出
-- [ ] `tome-ir/1` 與 `tome-pack/1` 拒絕未知欄位，規則包指定不了連線端點或金鑰
-- [ ] 狀態庫開 WAL，`user_version` 單向遷移，資料庫比程式新時拒絕開啟，開錯種類時拒絕開啟
-- [ ] spec-guard 斷言擋得下：`core` 依賴 `cli`、對外出口模組以外的連網、名單上的 AGPL 與 GPL 套件，`spec-guard prove` 看過每條斷言失敗
-- [ ] 相依授權檢查讀 `package-lock.json`，白名單以外或沒有授權欄位的相依讓 CI 失敗
+- [x] `tome init` 在 git repo 內的路徑回結束碼 1，偵測到同步資料夾時警告，已初始化時重跑回 0 且不覆蓋
+- [x] `tome doctor` 依 ADR-0082 的分級回報，`--json` 的外層是 `tome-cli/1`
+- [x] `tome provider auth set anthropic` 只從隱藏輸入或 stdin 讀金鑰，金鑰不出現在任何輸出
+
+  隱藏輸入只用假的 TTY 測過（`tests/cli/read-secret.test.ts`），沒有在真的終端機上驗證。
+- [x] `tome-ir/1` 與 `tome-pack/1` 拒絕未知欄位，規則包指定不了連線端點或金鑰
+- [x] 狀態庫開 WAL，`user_version` 單向遷移，資料庫比程式新時拒絕開啟，開錯種類時拒絕開啟
+- [x] spec-guard 斷言擋得下：`core` 依賴 `cli`、對外出口模組以外的連網、名單上的 AGPL 與 GPL 套件，`spec-guard prove` 看過每條斷言失敗
+- [x] 相依授權檢查讀 `package-lock.json`，白名單以外或沒有授權欄位的相依讓 CI 失敗
