@@ -40,6 +40,7 @@ npm run licenses
 ## 流程
 
 * 每個實作回合先寫 brief，放 `briefs/`，分支名稱是 `claude/brief-<編號>-<名稱>`。結束前跑 `npx --no-install @spec-family/spec-harness audit`。
+* spec-harness 0.22.0 的 pre-commit hook 會擋下回合分支上的封存 commit。回合分支先合併，再從 `main` 開一條名稱不帶 brief 編號的分支，用 `spec-brief archive <編號> --pr <PR> --base <回合起點的 commit>` 封存，走一個小 PR。
 * 程式走 PR，用 merge commit，CI 通過後由代理人合併（ADR-0072、ADR-0082）。
 * `v*` 標籤只有維護者能推，發佈要維護者用 2FA 核准（ADR-0069）。
 * 相依與 Action 釘死版本。Latest ≠ Newest，新版本要過冷卻期（ADR-0077）。
