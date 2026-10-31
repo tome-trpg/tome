@@ -1,7 +1,13 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import type { DocumentBlock, IrDocument, SourceBlock, SourcePage } from '../../src/core/ir.ts';
-import { validateIr, validatePackFile, type PackFileKind } from '../../src/core/schema.ts';
+import {
+  validateBook,
+  validateIr,
+  validatePackFile,
+  validateProbe,
+  type PackFileKind,
+} from '../../src/core/schema.ts';
 
 const hash = 'a'.repeat(64);
 
@@ -258,5 +264,59 @@ describe('tome-pack/1', () => {
   it('refuses a pattern with an unknown use', () => {
     const data = { patterns: [{ id: 'dice', use: 'run', regex: 'x' }] };
     expect(validatePackFile('syntaxPatterns', data).ok).toBe(false);
+  });
+});
+
+describe('tome-book/1', () => {
+  const book = { schema: 'tome-book/1', pdf: { path: 'book.pdf', sha256: hash }, source_lang: 'en' };
+
+  it('accepts a book, with or without a rule pack', () => {
+    expect(validateBook(book).ok).toBe(true);
+    expect(validateBook({ ...book, system: 'd100-orc' }).ok).toBe(true);
+  });
+
+  it.each([
+    ['an unknown key', { ...book, api_key: 'x' }],
+    ['a bad hash', { ...book, pdf: { path: 'p', sha256: 'abc' } }],
+    ['a bad language', { ...book, source_lang: 'not a tag' }],
+    ['a bad pack id', { ...book, system: 'Bad Id' }],
+    ['another schema', { ...book, schema: 'other/1' }],
+  ])('refuses %s', (_name, value) => {
+    expect(validateBook(value).ok).toBe(false);
+  });
+});
+
+describe('tome-probe/1', () => {
+  const page = {
+    page: 0,
+    kind: 'native',
+    width: 612,
+    height: 792,
+    chars: 10,
+    bad_chars: 0,
+    image_coverage: 0,
+  };
+  const probe = {
+    schema: 'tome-probe/1',
+    pdf_sha256: hash,
+    page_count: 1,
+    tagged: false,
+    spread: false,
+    outline: [{ title: 'Part', page: null, children: [{ title: 'One', page: 0, children: [] }] }],
+    page_labels: [{ page: 0, label: 'i' }],
+    links: [{ page: 0, bbox: [0, 0, 1, 1], uri: 'https://example.com/' }],
+    pages: [page],
+  };
+
+  it('accepts a probe', () => {
+    expect(validateProbe(probe).ok).toBe(true);
+  });
+
+  it.each([
+    ['an unknown page kind', { ...probe, pages: [{ ...page, kind: 'other' }] }],
+    ['an unknown key', { ...probe, extra: 1 }],
+    ['a coverage above one', { ...probe, pages: [{ ...page, image_coverage: 2 }] }],
+  ])('refuses %s', (_name, value) => {
+    expect(validateProbe(value).ok).toBe(false);
   });
 });

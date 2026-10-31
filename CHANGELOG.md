@@ -11,3 +11,5 @@
 - 狀態庫：`book.db`、`series.db` 的資料存取層與單向遷移。
 - 金鑰存進作業系統憑證庫，`TOME_ANTHROPIC_API_KEY` 可以覆蓋。
 - 測試工作流程、相依授權檢查、`npm audit`，以及擋下違規相依與連網呼叫的斷言。
+- `tome add` 登記一本書並探測，加密的 PDF 一律拒絕；`tome probe` 回報文件結構、頁面類型與 GPU。
+- 測試用的合成 PDF 鍛造器，repo 不放 PDF。

@@ -24,7 +24,21 @@ function metaTable(kind: StoreKind): string {
 
 // 只能往後加，不能改已發佈的遷移，也沒有降版。
 export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
-  book: [{ version: 1, sql: metaTable('book') }],
+  book: [
+    { version: 1, sql: metaTable('book') },
+    {
+      // 各階段的內容指紋，以及還沒有單位的階段狀態（ADR-0056、ADR-0081）。
+      version: 2,
+      sql: `
+        CREATE TABLE stage (
+          name TEXT PRIMARY KEY,
+          fingerprint TEXT NOT NULL,
+          status TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        ) STRICT;
+      `,
+    },
+  ],
   series: [{ version: 1, sql: metaTable('series') }],
 };
 
@@ -76,15 +90,16 @@ function migrate(
   const latest = migrations.at(-1)?.version ?? 0;
   inTransaction(db, () => {
     const current = userVersion(db);
+    // 先看種類：book 與 series 的版本各算各的，開錯庫時版本比較沒有意義。
+    if (current > 0 && storedKind(db) !== kind) {
+      throw new TomeError('store.wrong_kind', { path, expected: kind });
+    }
     if (current > latest) {
       throw new TomeError('store.too_new', {
         path,
         found: String(current),
         supported: String(latest),
       });
-    }
-    if (current > 0 && storedKind(db) !== kind) {
-      throw new TomeError('store.wrong_kind', { path, expected: kind });
     }
     if (current === 0) {
       const tables = db.prepare('SELECT 1 AS found FROM sqlite_master LIMIT 1').get();
@@ -159,7 +174,7 @@ export function openStore(
   };
 }
 
-function assertSafeId(id: string): void {
+export function assertSafeId(id: string): void {
   if (!/^[\p{L}\p{N}][\p{L}\p{N}_-]*$/u.test(id)) throw new TomeError('store.bad_id', { id });
 }
 

@@ -1,9 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { Ajv2020, type ValidateFunction } from 'ajv/dist/2020.js';
+import type { BookConfig } from './book.ts';
 import type { TomeIr } from './ir.ts';
+import type { Probe } from './probe.ts';
 
 const IR_FILE = 'tome-ir-1.schema.json';
 const PACK_FILE = 'tome-pack-1.schema.json';
+const BOOK_FILE = 'tome-book-1.schema.json';
+const PROBE_FILE = 'tome-probe-1.schema.json';
 
 export type PackFileKind = 'pack' | 'roles' | 'entities' | 'glossary' | 'syntaxPatterns';
 
@@ -21,16 +25,25 @@ function loadSchema(file: string): { $id: string } {
   return JSON.parse(readFileSync(new URL(`../../schemas/${file}`, import.meta.url), 'utf8'));
 }
 
-let cached: { ajv: Ajv2020; irId: string; packId: string } | undefined;
+interface Compiled {
+  readonly ajv: Ajv2020;
+  readonly irId: string;
+  readonly packId: string;
+  readonly bookId: string;
+  readonly probeId: string;
+}
 
-function compiled(): NonNullable<typeof cached> {
+let cached: Compiled | undefined;
+
+function compiled(): Compiled {
   if (cached === undefined) {
     const ajv = new Ajv2020({ allErrors: true, strict: true, strictRequired: false });
     const ir = loadSchema(IR_FILE);
     const pack = loadSchema(PACK_FILE);
-    ajv.addSchema(ir);
-    ajv.addSchema(pack);
-    cached = { ajv, irId: ir.$id, packId: pack.$id };
+    const book = loadSchema(BOOK_FILE);
+    const probe = loadSchema(PROBE_FILE);
+    for (const schema of [ir, pack, book, probe]) ajv.addSchema(schema);
+    cached = { ajv, irId: ir.$id, packId: pack.$id, bookId: book.$id, probeId: probe.$id };
   }
   return cached;
 }
@@ -69,7 +82,19 @@ export function validateIr(data: unknown): Validation<TomeIr> {
   return issues.length > 0 ? { ok: false, issues } : { ok: true, value };
 }
 
+function validateAs<T>(ref: string, data: unknown): Validation<T> {
+  const validate = validator(ref);
+  return validate(data) ? { ok: true, value: data as T } : { ok: false, issues: issuesOf(validate) };
+}
+
+export function validateBook(data: unknown): Validation<BookConfig> {
+  return validateAs(compiled().bookId, data);
+}
+
+export function validateProbe(data: unknown): Validation<Probe> {
+  return validateAs(compiled().probeId, data);
+}
+
 export function validatePackFile(kind: PackFileKind, data: unknown): Validation<unknown> {
-  const validate = validator(`${compiled().packId}#/$defs/${kind}`);
-  return validate(data) ? { ok: true, value: data } : { ok: false, issues: issuesOf(validate) };
+  return validateAs(`${compiled().packId}#/$defs/${kind}`, data);
 }

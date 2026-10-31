@@ -1,9 +1,11 @@
 import { createRequire } from 'node:module';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
+import { addBook, probeBook, type ProbeOutcome } from '../core/book.ts';
 import { runDoctor } from '../core/doctor.ts';
 import { TomeError } from '../core/errors.ts';
 import { exitCodeOf, finding, type Finding } from '../core/findings.ts';
-import type { ToolRunner } from '../core/process.ts';
+import { detectGpu } from '../core/probe.ts';
+import { runTool, type ToolRunner } from '../core/process.ts';
 import {
   isProvider,
   normalizeKey,
@@ -53,6 +55,42 @@ function secretStore(io: Io): SecretStore {
   return io.secrets ?? osSecretStore();
 }
 
+function stringValue(parsed: Parsed, name: string): string | undefined {
+  const value = parsed.values[name];
+  return typeof value === 'string' ? value : undefined;
+}
+
+/** 只有數字與路徑。書籤標題這類書本文字留在工作區（ADR-0059）。 */
+function probeFindings({ summary, reused }: ProbeOutcome): Finding[] {
+  const { kinds } = summary;
+  const skipped = summary.pages - kinds.native;
+  return [
+    ...(reused ? [finding('probe.unchanged', 'info')] : []),
+    finding('probe.done', 'info', {
+      pages: String(summary.pages),
+      native: String(kinds.native),
+      scan: String(kinds.scan),
+      broken_text: String(kinds.broken_text),
+      image_only: String(kinds.image_only),
+    }),
+    finding('probe.structure', 'info', {
+      tagged: summary.tagged ? 'yes' : 'no',
+      outline: String(summary.outline_items),
+      unresolved: String(summary.outline_unresolved),
+      labels: String(summary.label_pages),
+      links: String(summary.links),
+    }),
+    ...(summary.spread ? [finding('probe.spread', 'warn')] : []),
+    ...(skipped > 0 ? [finding('probe.pages_skipped', 'warn', { count: String(skipped) })] : []),
+  ];
+}
+
+async function gpuFinding(io: Io): Promise<Finding> {
+  const gpu = await detectGpu(io.env, io.tool ?? runTool);
+  if (gpu === null) return finding('probe.no_gpu', 'info');
+  return finding('probe.gpu', 'info', { name: gpu.name, vram: String(gpu.vram_mb) });
+}
+
 const COMMANDS: readonly Command[] = [
   {
     path: ['init'],
@@ -85,6 +123,47 @@ const COMMANDS: readonly Command[] = [
         ...(io.tool === undefined ? {} : { tool: io.tool }),
       });
       return { data: { home }, findings };
+    },
+  },
+  {
+    path: ['add'],
+    options: {
+      as: { type: 'string' },
+      system: { type: 'string' },
+      'source-lang': { type: 'string' },
+    },
+    positionals: 1,
+    run: async (parsed, io) => {
+      const pdf = parsed.positionals[0];
+      if (pdf === undefined) throw new TomeError('cli.missing_argument', { argument: '<pdf>' });
+      const result = await addBook({
+        home: resolveHome(io.env, io.platform),
+        pdf,
+        name: stringValue(parsed, 'as'),
+        system: stringValue(parsed, 'system'),
+        sourceLang: stringValue(parsed, 'source-lang'),
+      });
+      if (result.probe === undefined) {
+        return { data: { book: result.book ?? null }, findings: result.findings };
+      }
+      return {
+        data: { book: result.book ?? null, probe: result.probe.summary },
+        findings: [...result.findings, ...probeFindings(result.probe), await gpuFinding(io)],
+      };
+    },
+  },
+  {
+    path: ['probe'],
+    options: {},
+    positionals: 1,
+    run: async ({ positionals }, io) => {
+      const book = positionals[0];
+      if (book === undefined) throw new TomeError('cli.missing_argument', { argument: '<book>' });
+      const outcome = await probeBook(resolveHome(io.env, io.platform), book);
+      return {
+        data: { book, probe: outcome.summary },
+        findings: [...probeFindings(outcome), await gpuFinding(io)],
+      };
     },
   },
   {

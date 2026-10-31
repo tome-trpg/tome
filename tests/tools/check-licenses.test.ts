@@ -65,6 +65,21 @@ describe('findViolations', () => {
     expect(findViolations(packages)).toHaveLength(1);
   });
 
+  it('takes 0BSD from a development dependency, never from the main program', () => {
+    const dev = { 'node_modules/tslib': { version: '2.9.1', license: '0BSD', dev: true } };
+    const main = { 'node_modules/tslib': { version: '2.9.1', license: '0BSD' } };
+    expect(findViolations(dev)).toEqual([]);
+    expect(findViolations(main)).toEqual([
+      { name: 'tslib', version: '2.9.1', license: '0BSD', reason: 'license' },
+    ]);
+  });
+
+  it('takes the exception for png-js at that version only, and only in development', () => {
+    expect(findViolations({ 'node_modules/png-js': { version: '2.0.0', dev: true } })).toEqual([]);
+    expect(findViolations({ 'node_modules/png-js': { version: '2.0.1', dev: true } })).toHaveLength(1);
+    expect(findViolations({ 'node_modules/png-js': { version: '2.0.0' } })).toHaveLength(1);
+  });
+
   it('names the nested package, not its parent', () => {
     const packages = {
       'node_modules/a/node_modules/@scope/b': { version: '1.0.0', license: 'GPL-3.0-only' },

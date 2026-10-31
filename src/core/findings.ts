@@ -1,6 +1,10 @@
 import type { Params } from './errors.ts';
 
 export const FINDING_CODES = [
+  'book.added',
+  'book.already_added',
+  'book.name_taken',
+  'book.updated',
   'engines.pending',
   'key.missing',
   'key.ok',
@@ -8,7 +12,15 @@ export const FINDING_CODES = [
   'keyring.unavailable',
   'node.ok',
   'node.too_old',
+  'pdf.encrypted',
   'prices.pending',
+  'probe.done',
+  'probe.gpu',
+  'probe.no_gpu',
+  'probe.pages_skipped',
+  'probe.spread',
+  'probe.structure',
+  'probe.unchanged',
   'sqlite.ok',
   'sqlite.unavailable',
   'uv.missing',

@@ -15,6 +15,8 @@ import {
 } from '../../src/core/store.ts';
 import { tempDir } from '../helpers.ts';
 
+const LATEST_BOOK = MIGRATIONS.book.at(-1)?.version ?? 0;
+
 function codeOf(action: () => unknown): string {
   try {
     action();
@@ -52,10 +54,10 @@ describe('openStore', () => {
   it('turns on WAL and records the schema version', () => {
     const path = join(tempDir(), 'book.db');
     const store = openStore(path, 'book');
-    expect(store.schemaVersion()).toBe(1);
+    expect(store.schemaVersion()).toBe(LATEST_BOOK);
     store.close();
     expect(pragma(path, 'journal_mode')).toBe('wal');
-    expect(pragma(path, 'user_version')).toBe(1);
+    expect(pragma(path, 'user_version')).toBe(LATEST_BOOK);
   });
 
   it('enforces foreign keys on each connection', () => {
@@ -79,13 +81,13 @@ describe('openStore', () => {
 
     const later: Migration[] = [
       ...MIGRATIONS.book,
-      { version: 2, sql: 'CREATE TABLE stage (name TEXT PRIMARY KEY) STRICT' },
+      { version: LATEST_BOOK + 1, sql: 'CREATE TABLE later (name TEXT PRIMARY KEY) STRICT' },
     ];
     const second = openStore(path, 'book', later);
-    expect(second.schemaVersion()).toBe(2);
+    expect(second.schemaVersion()).toBe(LATEST_BOOK + 1);
     second.close();
     const third = openStore(path, 'book', later);
-    expect(third.schemaVersion()).toBe(2);
+    expect(third.schemaVersion()).toBe(LATEST_BOOK + 1);
     expect(third.get("SELECT value FROM tome_meta WHERE key = 'note'")).toEqual({ value: 'kept' });
     third.close();
   });
@@ -95,19 +97,19 @@ describe('openStore', () => {
     openStore(path, 'book').close();
     const broken: Migration[] = [
       ...MIGRATIONS.book,
-      { version: 2, sql: 'CREATE TABLE half (id INTEGER) STRICT' },
-      { version: 3, sql: 'THIS IS NOT SQL' },
+      { version: LATEST_BOOK + 1, sql: 'CREATE TABLE half (id INTEGER) STRICT' },
+      { version: LATEST_BOOK + 2, sql: 'THIS IS NOT SQL' },
     ];
     expect(codeOf(() => openStore(path, 'book', broken))).toBe('store.corrupt');
     const store = openStore(path, 'book');
-    expect(store.schemaVersion()).toBe(1);
+    expect(store.schemaVersion()).toBe(LATEST_BOOK);
     expect(store.all("SELECT name FROM sqlite_master WHERE name = 'half'")).toEqual([]);
     store.close();
   });
 
   it('refuses a database newer than the program', () => {
     const path = join(tempDir(), 'book.db');
-    openStore(path, 'book', [...MIGRATIONS.book, { version: 2, sql: 'SELECT 1' }]).close();
+    openStore(path, 'book', [...MIGRATIONS.book, { version: LATEST_BOOK + 1, sql: 'SELECT 1' }]).close();
     expect(codeOf(() => openStore(path, 'book'))).toBe('store.too_new');
   });
 
@@ -144,7 +146,7 @@ describe('openStore', () => {
     const exited = once(holder, 'exit');
     await once(holder.stdout, 'data');
     const store = openStore(path, 'book');
-    expect(store.schemaVersion()).toBe(1);
+    expect(store.schemaVersion()).toBe(LATEST_BOOK);
     store.close();
     await exited;
   });
@@ -200,7 +202,7 @@ describe('a lock that outlasts the wait', () => {
       holder.close();
     }
     const store = openStore(path, 'book', MIGRATIONS.book, shortWait);
-    expect(store.schemaVersion()).toBe(1);
+    expect(store.schemaVersion()).toBe(LATEST_BOOK);
     store.close();
   });
 
