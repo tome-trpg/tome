@@ -11,6 +11,7 @@ export const ERROR_CODES = [
   'provider.unknown',
   'secret.invalid',
   'store.bad_id',
+  'store.busy',
   'store.corrupt',
   'store.too_new',
   'store.wrong_kind',

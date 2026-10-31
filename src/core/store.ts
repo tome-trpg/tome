@@ -5,6 +5,9 @@ import { TomeError } from './errors.ts';
 
 // 資料存取層。`node:sqlite` 還是 Release candidate，只有這個檔案碰它，需要時能換（ADR-0052）。
 
+const BUSY_TIMEOUT_MS = 5000;
+const SQLITE_BUSY = 5;
+
 export type StoreKind = 'book' | 'series';
 
 export interface Migration {
@@ -95,18 +98,29 @@ function migrate(
   });
 }
 
-function connect(path: string): DatabaseSync {
+/** 鎖等滿了還拿不到。延伸代碼的低八位是主代碼，SQLITE_BUSY_SNAPSHOT 這類也算。 */
+function isBusy(error: unknown): boolean {
+  const code = (error as { errcode?: unknown } | null)?.errcode;
+  return typeof code === 'number' && (code & 0xff) === SQLITE_BUSY;
+}
+
+function openFailure(error: unknown, path: string): TomeError {
+  if (error instanceof TomeError) return error;
+  return new TomeError(isBusy(error) ? 'store.busy' : 'store.corrupt', { path });
+}
+
+function connect(path: string, busyTimeoutMs: number): DatabaseSync {
   let db: DatabaseSync | undefined;
   try {
     db = new DatabaseSync(path);
     // 等待時間要先設：切到 WAL 要拿鎖，第一次開檔撞到別的行程時才會等，不會立刻失敗。
-    db.exec('PRAGMA busy_timeout = 5000');
+    db.exec(`PRAGMA busy_timeout = ${busyTimeoutMs}`);
     db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA foreign_keys = ON');
     return db;
-  } catch {
+  } catch (error) {
     db?.close();
-    throw new TomeError('store.corrupt', { path });
+    throw openFailure(error, path);
   }
 }
 
@@ -114,25 +128,33 @@ export function openStore(
   path: string,
   kind: StoreKind,
   migrations: readonly Migration[] = MIGRATIONS[kind],
+  busyTimeoutMs: number = BUSY_TIMEOUT_MS,
 ): Store {
   mkdirSync(dirname(path), { recursive: true });
-  const db = connect(path);
+  const db = connect(path, busyTimeoutMs);
   try {
     migrate(db, path, kind, migrations);
   } catch (error) {
     db.close();
-    if (error instanceof TomeError) throw error;
-    throw new TomeError('store.corrupt', { path });
+    throw openFailure(error, path);
   }
+  const guarded = <T>(action: () => T): T => {
+    try {
+      return action();
+    } catch (error) {
+      throw isBusy(error) ? new TomeError('store.busy', { path }) : error;
+    }
+  };
   return {
     kind,
     path,
     schemaVersion: () => userVersion(db),
-    run: (sql, ...params) => void db.prepare(sql).run(...params),
+    run: (sql, ...params) => guarded(() => void db.prepare(sql).run(...params)),
     get: <T>(sql: string, ...params: SQLInputValue[]) =>
-      db.prepare(sql).get(...params) as T | undefined,
-    all: <T>(sql: string, ...params: SQLInputValue[]) => db.prepare(sql).all(...params) as T[],
-    transaction: (action) => inTransaction(db, action),
+      guarded(() => db.prepare(sql).get(...params) as T | undefined),
+    all: <T>(sql: string, ...params: SQLInputValue[]) =>
+      guarded(() => db.prepare(sql).all(...params) as T[]),
+    transaction: (action) => guarded(() => inTransaction(db, action)),
     close: () => db.close(),
   };
 }
