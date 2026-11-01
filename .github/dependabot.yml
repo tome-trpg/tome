@@ -7,6 +7,8 @@
 #
 # 例外：uv 的 patch 也等兩週，要跟 engines/docling 的 exclude-newer = "14 days"
 # 一致。等得比它短，提出來的版本在鎖定檔裡解析不出來，更新會失敗（ADR-0087）。
+#
+# 例外：@types/node 的 major 跟著 TOME 的最低 Node 版本，不走 Dependabot（ADR-0094）。
 version: 2
 updates:
   - package-ecosystem: npm
@@ -20,6 +22,10 @@ updates:
       semver-major-days: 30
       exclude:
         - '@spec-family/*'
+    ignore:
+      - dependency-name: '@types/node'
+        update-types:
+          - version-update:semver-major
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore
