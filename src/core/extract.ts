@@ -36,7 +36,14 @@ import { detectRole, findPack, patternInputs, resolvePack, type ResolvedPack } f
 import { runPatterns } from './patterns.ts';
 import { openPdf } from './pdf.ts';
 import { detectGpu, type Probe } from './probe.ts';
-import { runStream, runTool, type StreamOutcome, type StreamRunner, type ToolRunner } from './process.ts';
+import {
+  describeExit,
+  runStream,
+  runTool,
+  type StreamOutcome,
+  type StreamRunner,
+  type ToolRunner,
+} from './process.ts';
 import { validateEngineEvent, validateEngineRun, validateIr } from './schema.ts';
 import { openBookStore } from './store.ts';
 
@@ -97,7 +104,7 @@ function isGoodPage(path: string, pdfSha256: string, page: number, configHash: s
   );
 }
 
-interface EngineResult {
+export interface EngineResult {
   readonly name: string;
   readonly version: string;
   readonly device: Device;
@@ -109,6 +116,8 @@ interface EngineResult {
   readonly reused: number;
   readonly failed: readonly { readonly page: number; readonly reason: string }[];
   readonly recorded: boolean;
+  /** 引擎怎麼結束。全部沿用時引擎沒有跑，就沒有這個欄位。 */
+  readonly exit?: string;
 }
 
 function parseEvent(line: string): ReturnType<typeof validateEngineEvent> | null {
@@ -231,7 +240,12 @@ async function runEngine(
     return [{ page, reason: reasonFor(outcome, reported.get(page), wrote) }];
   });
   const exited = outcome.status === 'exited' && outcome.code === 0;
-  return { ...summary, failed, recorded: !exited || hasRunRecord(dir, configHash) };
+  return {
+    ...summary,
+    failed,
+    recorded: !exited || hasRunRecord(dir, configHash),
+    exit: describeExit(outcome),
+  };
 }
 
 /** 內部的頁索引從 0 起算，給人看的是 PDF 閱讀器顯示的頁次（ADR-0091）。 */
@@ -239,11 +253,21 @@ function shownPage(page: number): number {
   return page + 1;
 }
 
-function failedParams(failed: EngineResult['failed']): Readonly<Record<string, string>> {
+/** 有失敗頁的引擎怎麼結束（ADR-0101）。 */
+export function exitParam(results: readonly Pick<EngineResult, 'name' | 'exit' | 'failed'>[]): string {
+  return results
+    .filter(({ failed }) => failed.length > 0)
+    .map(({ name, exit = 'unknown' }) => `${name}:${exit}`)
+    .join(', ');
+}
+
+function failedParams(results: readonly EngineResult[]): Readonly<Record<string, string>> {
+  const failed = results.flatMap((item) => item.failed);
   const shown = failed.slice(0, LISTED_PAGES).map(({ page, reason }) => `${shownPage(page)}:${reason}`);
   return {
     count: String(failed.length),
     pages: `${shown.join(', ')}${failed.length > LISTED_PAGES ? ', …' : ''}`,
+    exit: exitParam(results),
   };
 }
 
@@ -516,7 +540,7 @@ async function extractLocked(options: ExtractOptions): Promise<ExtractResult> {
               reused: String(sum('reused')),
             }),
           ]),
-      ...(failed.length > 0 ? [finding('extract.pages_failed', 'fail', failedParams(failed))] : []),
+      ...(failed.length > 0 ? [finding('extract.pages_failed', 'fail', failedParams(results))] : []),
       ...unrecorded.map(({ name }) => finding('extract.no_run_record', 'fail', { name })),
       ...warnings,
       ...document.findings,

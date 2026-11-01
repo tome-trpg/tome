@@ -67,7 +67,7 @@
     "extract.done": "解析完成 {pages} 頁：本次解析 {ran} 頁，沿用 {reused} 頁。",
     "extract.no_engine": "沒有引擎可以處理這本書的頁面。請先執行 tome engine add docling。",
     "extract.no_run_record": "引擎 {name} 沒有留下 engine.json，本次解析的授權紀錄不完整。這是引擎的問題，請回報給引擎的維護者。",
-    "extract.pages_failed": "有 {count} 頁解析失敗（PDF 頁次:原因）：{pages}。再次執行時只會重新解析這些頁面。",
+    "extract.pages_failed": "有 {count} 頁解析失敗（PDF 頁次:原因）：{pages}。引擎結束狀態：{exit}。再次執行時只會重新解析這些頁面。",
     "key.missing": "找不到 {provider} 的金鑰。請執行 tome provider auth set {provider}，或設定環境變數 {env}。",
     "key.ok": "{provider} 的金鑰：已設定（來源：{source}）。",
     "key.stored": "{provider} 的金鑰已存入作業系統憑證庫。",

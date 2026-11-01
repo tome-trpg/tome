@@ -1,11 +1,39 @@
 import { describe, expect, it } from 'vitest';
-import { runStream, scrubEnv } from '../../src/core/process.ts';
+import { describeExit, runStream, scrubEnv, type StreamOutcome } from '../../src/core/process.ts';
 
 const NODE = process.execPath;
 
 function script(body: string): readonly string[] {
   return ['-e', body];
 }
+
+function exited(code: number | null, signal: NodeJS.Signals | null = null): StreamOutcome {
+  return { status: 'exited', code, signal, stderr: '' };
+}
+
+describe('describeExit (ADR-0101)', () => {
+  it.each([
+    [exited(0), '0'],
+    [exited(3), '3'],
+    [exited(255), '255'],
+    [exited(0xffff), '65535'],
+    [exited(0x10000), '65536 (0x00010000)'],
+    [exited(3221225477), '3221225477 (0xC0000005)'],
+    [exited(3221226505), '3221226505 (0xC0000409)'],
+    [exited(-1073741819), '-1073741819 (0xC0000005)'],
+    [exited(null, 'SIGSEGV'), 'signal SIGSEGV'],
+    [exited(null), 'unknown'],
+    [{ status: 'timeout' } as const, 'timeout'],
+    [{ status: 'not_found' } as const, 'not_found'],
+  ])('%j', (outcome, text) => {
+    expect(describeExit(outcome)).toBe(text);
+  });
+
+  it('never shows stderr, which can carry book text', () => {
+    const outcome: StreamOutcome = { status: 'exited', code: 1, signal: null, stderr: 'a line of the book' };
+    expect(describeExit(outcome)).toBe('1');
+  });
+});
 
 describe('runStream', () => {
   it('hands over stdout line by line, also a last line with no newline', async () => {
@@ -33,11 +61,22 @@ describe('runStream', () => {
     expect(await runStream(NODE, script(body), process.env)).toEqual({
       status: 'exited',
       code: 4,
+      signal: null,
       stderr: '',
     });
     const kept = await runStream(NODE, script(body), process.env, { keepStderr: true });
     expect(kept).toMatchObject({ status: 'exited', code: 4 });
     expect(kept).toHaveProperty('stderr', expect.stringContaining('a line of the book'));
+  });
+
+  it('says which signal ended a process (ADR-0101)', async () => {
+    const outcome = await runStream(NODE, script("process.kill(process.pid, 'SIGKILL')"), process.env);
+    // Windows 沒有訊號，行程被終止時 Node 回報的是結束碼 1。
+    expect(outcome).toEqual(
+      process.platform === 'win32'
+        ? { status: 'exited', code: 1, signal: null, stderr: '' }
+        : { status: 'exited', code: null, signal: 'SIGKILL', stderr: '' },
+    );
   });
 
   it('reports a command that does not exist', async () => {

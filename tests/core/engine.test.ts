@@ -27,7 +27,7 @@ import { tempDir } from '../helpers.ts';
 export const FAKE_ENGINE = resolve('tests/fixtures/engines/fake');
 const NVIDIA: ToolRunner = async () => ({ stdout: 'Forged GPU, 8192, 8000\n' });
 const NO_GPU: ToolRunner = async () => null;
-const CLEAN: StreamOutcome = { status: 'exited', code: 0, stderr: '' };
+const CLEAN: StreamOutcome = { status: 'exited', code: 0, signal: null, stderr: '' };
 
 function workspace(): string {
   const home = join(tempDir(), 'home');
@@ -307,7 +307,7 @@ describe('adding an engine', () => {
       gpu: false,
       env: {},
       tool: NO_GPU,
-      stream: recorder([{ status: 'exited', code: 1, stderr: 'boom' }]).stream,
+      stream: recorder([{ status: 'exited', code: 1, signal: null, stderr: 'boom' }]).stream,
     });
     expect(codes(failed.findings)).not.toContain('engine.proprietary');
 
@@ -325,7 +325,7 @@ describe('adding an engine', () => {
   });
 
   it('stays quiet about the CUDA license when the install fails', async () => {
-    const { stream } = recorder([{ status: 'exited', code: 1, stderr: 'boom' }]);
+    const { stream } = recorder([{ status: 'exited', code: 1, signal: null, stderr: 'boom' }]);
     const { findings } = await addEngine({
       home: workspace(),
       target: uvEngine(),
@@ -375,7 +375,7 @@ describe('adding an engine', () => {
   });
 
   it('shows why uv failed and leaves no record of an install', async () => {
-    const { stream } = recorder([{ status: 'exited', code: 2, stderr: 'noise\nerror: no wheel\n' }]);
+    const { stream } = recorder([{ status: 'exited', code: 2, signal: null, stderr: 'noise\nerror: no wheel\n' }]);
     const home = workspace();
     const { findings } = await addEngine({ home, target: uvEngine(), gpu: false, env: {}, tool: NO_GPU, stream });
     expect(findings.at(-1)).toMatchObject({
@@ -388,7 +388,7 @@ describe('adding an engine', () => {
   });
 
   it('gives only an exit code when the engine fails to prepare', async () => {
-    const { stream } = recorder([CLEAN, { status: 'exited', code: 7, stderr: '' }]);
+    const { stream } = recorder([CLEAN, { status: 'exited', code: 7, signal: null, stderr: '' }]);
     const { findings } = await addEngine({
       home: workspace(),
       target: uvEngine(),
