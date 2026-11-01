@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-01
 type: defect
 wave: 10
@@ -30,7 +30,15 @@ protectedFiles:
   - package-lock.json
   - package.json
   - schemas/**
+integrity: sha256-9fb8c53384e1437e66ce8dbbf22cd67ab2b839ed50515c8b6be412ab19105a55
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-01.**
+> Merged in pull request [#24](https://github.com/tome-trpg/tome/pull/24).
+> Recorded at commit `baf11db`: 18 files changed, +199 −31.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 012 — 訊息要說得清楚
 
