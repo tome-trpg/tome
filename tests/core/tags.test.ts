@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
+  attributeOf,
   escapeAttribute,
   escapeText,
   parseUnits,
@@ -190,10 +191,77 @@ describe('what counts as a protocol error (ADR-0100)', () => {
     expect(JSON.stringify(issues)).not.toContain('祕密');
   });
 
+  it.each([
+    ['text', '祕密文字'],
+    ['a number in text', '12 號祕密'],
+    ['a number too long to be ours', '1234567'],
+    ['an empty id', ''],
+  ])('names a unit only by the short id TOME sent, not %s (ADR-0059)', (_name, id) => {
+    const { issues } = parseUnits(`<s id="${id}">一<b>二</b></s>`);
+    expect(issues.length).toBeGreaterThan(0);
+    expect(issues.every(({ unit }) => unit === null)).toBe(true);
+  });
+
+  it('keeps naming a unit by the short id TOME sent', () => {
+    expect(parseUnits('<s id="123456">一<b></s>').issues).toEqual([{ code: 'unknown_tag', unit: '123456' }]);
+  });
+
   it('goes on to the next unit after a bad one', () => {
     const { units, issues } = parseUnits('<s id="1">一<b></s><s id="2">二</s>');
     expect(issues.length).toBeGreaterThan(0);
     expect(units.map(({ id }) => id)).toContain('2');
+  });
+});
+
+describe('reading an attribute', () => {
+  it('finds the one it wants', () => {
+    expect(attributeOf(' id="1" role="paragraph"', 'role')).toBe('paragraph');
+    expect(attributeOf(' id="1" role="paragraph"', 'id')).toBe('1');
+  });
+
+  it('matches the whole name', () => {
+    expect(attributeOf(' xid="1"', 'id')).toBeUndefined();
+    expect(attributeOf(' data-id="1"', 'id')).toBeUndefined();
+  });
+
+  it('keeps a value with equals signs and spaces, and undoes the escaping', () => {
+    expect(attributeOf(' reason="a=b  c &amp; d"', 'reason')).toBe('a=b  c & d');
+  });
+
+  it('does not take a value for a name', () => {
+    expect(attributeOf(' x="id=" y="2"', 'id')).toBeUndefined();
+  });
+
+  it('says when it is not there', () => {
+    expect(attributeOf('', 'id')).toBeUndefined();
+  });
+});
+
+describe('a long reply', () => {
+  const BUDGET_MS = 1_000;
+  const LONG = 200_000;
+
+  function withinBudget(action: () => void): void {
+    const started = performance.now();
+    action();
+    expect(performance.now() - started).toBeLessThan(BUDGET_MS);
+  }
+
+  it('reads an attribute in linear time, whatever the string holds', () => {
+    withinBudget(() => expect(attributeOf('-'.repeat(LONG), 'id')).toBeUndefined());
+  });
+
+  it.each([
+    ['a long attribute name', `<s id="1" ${'-'.repeat(LONG)}="v">一</s>`],
+    ['a long attribute value', `<s id="1" x="${'-'.repeat(LONG)}">一</s>`],
+    ['many attributes', `<s id="1"${' x="y"'.repeat(LONG / 5)}>一</s>`],
+    ['a long run of spaces in a tag', `<s id="1"${' '.repeat(LONG)}>一</s>`],
+    ['a quote that never closes', `<s id="1" x="${'<'.repeat(LONG)}`],
+    ['many broken tags', `<s id="1">${'a<'.repeat(LONG / 2)}</s>`],
+    ['many stray ampersands', `<s id="1">${'&'.repeat(LONG)}</s>`],
+    ['many units', '<s id="1">一</s>'.repeat(LONG / 10)],
+  ])('parses %s in linear time', (_name, reply) => {
+    withinBudget(() => parseUnits(reply));
   });
 });
 

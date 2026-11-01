@@ -49,7 +49,8 @@ const REQUIRED_ATTRIBUTE: Readonly<Record<ContainerName | 'ph', string>> = {
 };
 
 const TAG = /<(\/?)([A-Za-z][\w-]*)((?:\s+[\w-]+="[^"]*")*)\s*(\/?)>/y;
-const ATTRIBUTE = /([\w-]+)="([^"]*)"/g;
+/** TOME 發出去的單位編號。回應裡的 `id` 可能是任何文字，符合這個格式才放進回報。 */
+const UNIT_ID = /^\d{1,6}$/;
 const ENTITY = /&(amp|lt|gt|quot);/g;
 const ENTITIES: Readonly<Record<string, string>> = { amp: '&', lt: '<', gt: '>', quot: '"' };
 
@@ -79,9 +80,14 @@ function isContainer(name: string): name is ContainerName {
   return name === 's' || name === 'pc' || name === 'new-term' || name === 'flag';
 }
 
-function attributeOf(raw: string, wanted: string): string | undefined {
-  for (const [, name, value] of raw.matchAll(ATTRIBUTE)) {
-    if (name === wanted) return unescapeText(value ?? '');
+/**
+ * 屬性字串是 `TAG` 驗過的一串 `名稱="值"`，值裡沒有 `"`，用引號切開就分得出名稱與值。
+ * 不用未錨定的正規表示式：這裡吃的是 LLM 的回應，耗時要跟長度成正比。
+ */
+export function attributeOf(raw: string, wanted: string): string | undefined {
+  const parts = raw.split('"');
+  for (let index = 0; index + 1 < parts.length; index += 2) {
+    if (parts[index]?.trim() === `${wanted}=`) return unescapeText(parts[index + 1] ?? '');
   }
   return undefined;
 }
@@ -129,7 +135,8 @@ class ReplyParser {
   }
 
   #report(code: TagIssueCode): void {
-    this.#issues.push({ code, unit: this.#stack[0]?.value ?? null });
+    const id = this.#stack[0]?.value;
+    this.#issues.push({ code, unit: id !== undefined && UNIT_ID.test(id) ? id : null });
   }
 
   /** 單位之外的文字不屬於任何單位，略過。 */

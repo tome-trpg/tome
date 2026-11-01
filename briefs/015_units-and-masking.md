@@ -58,6 +58,7 @@ protectedFiles:
 - [x] 新的測試先在舊行為上失敗過
 - [x] 改到 `src/core/extract.ts` 的提交，推送前在本機真的跑過 `tests/engine`
 - [x] `specs`、`test`、`engine` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
+- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示。`Analyze` 工作成功只代表掃描跑完
 - [x] 訊息與 `--json` 只有規則包 ID 與數字，不含書本文字
 - [x] 核心沒有寫死語言或遊戲概念
 
@@ -81,3 +82,5 @@ protectedFiles:
 - 建議規則包的額外耗時：400 頁、約 150 萬字元，3 個規則包、各 3 個關鍵詞與 2 個模式，三次分別 0.5、0.3、0.8 秒。同一輪 `probePdf` 本身花 3.7 到 10.2 秒，波動來自機器當時的負載，沒有另外控制。
 - 3 頁的門檻沒有在商業書上量過，所以是提案。
 - 單位外的文字解析時略過，算不算協定錯誤沒有寫在 ADR-0100，要在 016 的驗證一起問。
+- `499c4da` 的 `CodeQL` 檢查失敗：`js/polynomial-redos`，`src/core/tags.ts` 的 `matchAll` 用未錨定的正規表示式讀屬性。`Analyze` 工作都成功，所以第一次回報時誤報成全綠，後來改看檢查本身。舊寫法直接吃 20 萬個 `-` 要 33.8 秒。經過 `parseUnits` 時 `TAG` 先限定過屬性字串，沒有退化，但回應來自 LLM，維護者對同類警示的決定是修掉（brief 014），所以改成用引號切開。
+- `TagIssue.unit` 原本直接帶回應裡的 `id`，LLM 可能把任意文字寫進去，改成只有 6 位以內的數字才回報，其他回 `null`（ADR-0059）。
