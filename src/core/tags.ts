@@ -120,8 +120,11 @@ class ReplyParser {
       else if (name === 'ph') this.#placeholder(attributes, selfClosing === '/');
       else this.#open(name, attributes, selfClosing === '/');
     }
-    // 沒收尾的單位不算數，016 會當成缺單位。
-    while (this.#stack.pop() !== undefined) this.#issues.push({ code: 'unbalanced_tag', unit: null });
+    // 沒收尾的單位不算數，驗證會當成缺單位。
+    while (this.#stack.length > 0) {
+      this.#report('unbalanced_tag');
+      this.#stack.pop();
+    }
     return { units: this.#units, issues: this.#issues };
   }
 
@@ -146,8 +149,9 @@ class ReplyParser {
   }
 
   #open(name: ContainerName, attributes: string, selfClosing: boolean): void {
-    const isUnit = name === 's';
-    if (selfClosing || isUnit === this.#stack.length > 0) {
+    // `<s>` 只能在最外層，其他標籤只能在 `<s>` 裡。
+    const inUnit = this.#stack.length > 0;
+    if (selfClosing || (name === 's') === inUnit) {
       this.#report('bad_nesting');
       return;
     }

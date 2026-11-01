@@ -139,8 +139,10 @@ describe('what counts as a protocol error (ADR-0100)', () => {
     expect(parseUnits('<s id="7">一<b>二</b></s>').issues).toContainEqual({ code: 'unknown_tag', unit: '7' });
   });
 
-  it('reports a unit that never closes', () => {
-    expect(issueCodes('<s id="1">一')).toEqual(['unbalanced_tag']);
+  it('reports a unit that never closes, says which, and does not keep it', () => {
+    const { units, issues } = parseUnits('<s id="1">一</s><s id="2">二');
+    expect(issues).toEqual([{ code: 'unbalanced_tag', unit: '2' }]);
+    expect(units.map(({ id }) => id)).toEqual(['1']);
   });
 
   it('reports a closing tag that matches nothing', () => {
