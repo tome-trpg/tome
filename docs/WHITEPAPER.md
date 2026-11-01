@@ -1141,6 +1141,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0083](adr/0083-keyring-native-license-exception.md) | 憑證庫原生模組的授權例外 | M0 |
 | [ADR-0084](adr/0084-m1-parsing-decisions.md) | M1 解析的選型與範圍 | M1 |
 | [ADR-0085](adr/0085-engine-protocol-decisions.md) | 引擎協定與 Docling 的選型 | M1 |
+| [ADR-0086](adr/0086-user-document-style.md) | 使用者文件的文字規範 | M1 |
 
 ---
 
