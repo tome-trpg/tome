@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-01
 type: feature
 wave: 9
@@ -26,7 +26,15 @@ protectedFiles:
   - package-lock.json
   - package.json
   - schemas/**
+integrity: sha256-1ba82e5cab9b98608a20b05a6e8b1eebade16375a1a1a3ca5e2b0a4ea7b40ce9
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-01.**
+> Merged in pull request [#22](https://github.com/tome-trpg/tome/pull/22).
+> Recorded at commit `9b6f671`: 13 files changed, +276 −106.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 011 — CLI 訊息的文字規範
 
