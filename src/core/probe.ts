@@ -7,7 +7,7 @@ import type { ToolRunner } from './process.ts';
 export const PROBE_SCHEMA = 'tome-probe/1';
 
 /** 探測的規則一改，這個數字就要加一，舊的結果才會重算（ADR-0056）。 */
-export const PROBE_VERSION = 2;
+export const PROBE_VERSION = 3;
 
 // 下面的數字都是提案，要等本機語料量過才算定案（H-7、H-8、H-10）。
 const SCAN_COVERAGE = 0.6;
@@ -32,6 +32,8 @@ export interface PageProbe {
   readonly image_coverage: number;
   /** 字母分布跟來源語言有多像，0 到 1。字母太少不判斷時沒有這個欄位。 */
   readonly language_match?: number;
+  /** 要交給哪個引擎。沒有引擎能處理時沒有這個欄位。 */
+  readonly engine?: string;
 }
 
 export interface PageLabel {
@@ -55,6 +57,8 @@ export interface Probe {
 export interface ProbeSummary {
   readonly pages: number;
   readonly kinds: Readonly<Record<PageKind, number>>;
+  /** 分配給引擎的頁數。 */
+  readonly assigned: number;
   readonly tagged: boolean;
   readonly spread: boolean;
   readonly outline_items: number;
@@ -66,6 +70,8 @@ export interface ProbeSummary {
 export interface GpuInfo {
   readonly name: string;
   readonly vram_mb: number;
+  /** 現在還沒被占用的量。桌面與別的程式也在用 VRAM，引擎放不放得下要看這個。 */
+  readonly vram_free_mb: number;
 }
 
 const WHITESPACE = /\s/u;
@@ -161,12 +167,15 @@ export async function probePdf(
   pdf: PdfHandle,
   pdfSha256: string,
   quality?: TextQuality,
+  route: (kind: PageKind) => string | undefined = () => undefined,
 ): Promise<Probe> {
   const pages: PageProbe[] = [];
   const links: PdfLink[] = [];
   for (let index = 0; index < pdf.pageCount; index += 1) {
     const facts = await pdf.page(index);
-    pages.push(classifyPage(facts, quality));
+    const page = classifyPage(facts, quality);
+    const engine = route(page.kind);
+    pages.push(engine === undefined ? page : { ...page, engine });
     links.push(...facts.links);
   }
   const labels = (await pdf.pageLabels()) ?? [];
@@ -194,6 +203,7 @@ export function summarizeProbe(probe: Probe): ProbeSummary {
   return {
     pages: probe.page_count,
     kinds,
+    assigned: probe.pages.filter((page) => page.engine !== undefined).length,
     tagged: probe.tagged,
     spread: probe.spread,
     outline_items: outline.length,
@@ -207,11 +217,15 @@ export function summarizeProbe(probe: Probe): ProbeSummary {
 export async function detectGpu(env: NodeJS.ProcessEnv, tool: ToolRunner): Promise<GpuInfo | null> {
   const result = await tool(
     'nvidia-smi',
-    ['--query-gpu=name,memory.total', '--format=csv,noheader,nounits'],
+    ['--query-gpu=name,memory.total,memory.free', '--format=csv,noheader,nounits'],
     env,
   );
   const line = result?.stdout.split(/\r?\n/)[0] ?? '';
-  const match = /^(.+),\s*(\d+)\s*$/.exec(line);
+  const match = /^(.+?),\s*(\d+),\s*(\d+)\s*$/.exec(line);
   if (match === null) return null;
-  return { name: (match[1] ?? '').trim(), vram_mb: Number(match[2]) };
+  return {
+    name: (match[1] ?? '').trim(),
+    vram_mb: Number(match[2]),
+    vram_free_mb: Number(match[3]),
+  };
 }

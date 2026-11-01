@@ -1,0 +1,12 @@
+schema: tome-engine/1
+name: fake
+pages: [native]
+command: [node, main.mjs]
+license:
+  code: Apache-2.0
+  weights: none
+setup:
+  kind: none
+  prepare: true
+env:
+  FAKE_ENGINE_OFFLINE: '1'

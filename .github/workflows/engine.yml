@@ -1,0 +1,73 @@
+# 真的裝 Docling 跑合成 PDF（docs/adr/0064-engine-ci.md、docs/adr/0085-engine-protocol-decisions.md）。
+# 要下載大型相依與權重，所以只在改到 engines/ 或手動時才跑，平常的 CI 用錄好的輸出。
+# 有路徑過濾的工作流程不能設成必要檢查，不跑的時候 PR 會一直等它。
+name: engine
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'engines/**'
+      - '.github/workflows/engine.yml'
+  pull_request:
+    paths:
+      - 'engines/**'
+      - '.github/workflows/engine.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docling:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      # 釘在 commit，旁邊註明標籤：標籤被移動就是進入這條流程的路。
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: '0.13.5'
+          enable-cache: false
+
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Build
+        run: npm run build
+
+      # 指定 bash：Windows 的 pwsh 只看最後一行的結束碼，中間失敗不會讓這一步失敗。
+      - name: Install Docling the way a user does
+        shell: bash
+        env:
+          TOME_HOME: ${{ runner.temp }}/tome
+        run: |
+          node dist/cli/main.js init
+          node dist/cli/main.js engine add docling
+          node dist/cli/main.js engine list
+
+      - name: Extract a forged PDF
+        if: ${{ runner.os == 'Windows' }}
+        env:
+          TOME_ENGINE_HOME: ${{ runner.temp }}/tome
+        run: npx --no-install vitest run tests/engine
+
+      # 執行時 MUST 離線（ADR-0039）。Ubuntu 上把網路整個拿掉再跑，通過只證明解析不需要網路。
+      # 程式吞掉的連線失敗不會讓測試失敗，所以不能證明它沒有嘗試連線（ADR-0085）。
+      - name: Extract a forged PDF with no network
+        if: ${{ runner.os == 'Linux' }}
+        env:
+          TOME_ENGINE_HOME: ${{ runner.temp }}/tome
+        run: sudo -E unshare --net -- sudo -E -u "$USER" env "PATH=$PATH" npx --no-install vitest run tests/engine

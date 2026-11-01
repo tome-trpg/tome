@@ -4,7 +4,7 @@
 
 [繁體中文](README.md)
 
-> **Status: in development.** The foundation is done and parsing is under way. The commands so far are `tome init`, `tome doctor`, `tome provider auth set`, `tome add`, `tome probe`, and `tome system new`, `list`, `lint` and `test`. It cannot parse a document yet and there is no translation, and nothing has been released, so there is nothing to install.
+> **Status: in development.** The foundation is done and parsing is under way. The commands so far are `tome init`, `tome doctor`, `tome provider auth set`, `tome add`, `tome probe`, `tome extract`, `tome engine add`, `list` and `remove`, and `tome system new`, `list`, `lint` and `test`. For now `tome extract` only hands pages to a parsing engine and does not assemble a document, there is no translation, and nothing has been released, so there is nothing to install.
 
 ## What it is
 

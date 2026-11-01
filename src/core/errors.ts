@@ -1,5 +1,6 @@
 // 代碼用英文，訊息由 CLI 查資料檔（ADR-0027）。核心不放給人看的文字。
 export const ERROR_CODES = [
+  'book.busy',
   'book.not_found',
   'book.pdf_changed',
   'book.pdf_missing',
@@ -11,6 +12,7 @@ export const ERROR_CODES = [
   'cli.unknown_option',
   'config.bad_schema',
   'config.invalid_yaml',
+  'engine.not_found',
   'file.corrupt',
   'language.unknown',
   'pack.not_found',

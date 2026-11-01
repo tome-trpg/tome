@@ -1,3 +1,4 @@
+import { checkEngines } from './engine.ts';
 import { finding, type Finding } from './findings.ts';
 import { runTool, type ToolRunner } from './process.ts';
 import {
@@ -77,7 +78,7 @@ export async function runDoctor(options: DoctorOptions): Promise<Finding[]> {
     await checkUv(env, tool),
     ...keys.flat(),
     ...checkWorkspace(home, env, platform),
-    finding('engines.pending', 'info', { milestone: 'M1' }),
+    ...(await checkEngines(home, env, tool, platform)),
     finding('prices.pending', 'info', { milestone: 'M2' }),
   ];
 }

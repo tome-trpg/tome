@@ -4,7 +4,7 @@
 
 [English](README.en.md)
 
-> **狀態：開發中。** 基礎已完成，解析正在做。現在有 `tome init`、`tome doctor`、`tome provider auth set`、`tome add`、`tome probe`、`tome system new`、`list`、`lint`、`test`。還不能解析出文件，也沒有翻譯功能，還沒有發佈，不能安裝。
+> **狀態：開發中。** 基礎已完成，解析正在做。現在有 `tome init`、`tome doctor`、`tome provider auth set`、`tome add`、`tome probe`、`tome extract`、`tome engine add`、`list`、`remove`、`tome system new`、`list`、`lint`、`test`。`tome extract` 目前只把頁面交給解析引擎，還不會組裝成文件，也沒有翻譯功能，還沒有發佈，不能安裝。
 
 ## 這是什麼
 

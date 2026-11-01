@@ -2,13 +2,15 @@ import { createRequire } from 'node:module';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
 import { addBook, probeBook, type ProbeOutcome } from '../core/book.ts';
 import { runDoctor } from '../core/doctor.ts';
+import { addEngine, listEngines, removeEngine } from '../core/engine.ts';
 import { TomeError } from '../core/errors.ts';
+import { extractBook } from '../core/extract.ts';
 import { exitCodeOf, finding, type Finding } from '../core/findings.ts';
 import { lintPack } from '../core/pack-lint.ts';
 import { testPack } from '../core/pack-test.ts';
 import { createPack, listPacks, locatePack } from '../core/pack.ts';
 import { detectGpu } from '../core/probe.ts';
-import { runTool, type ToolRunner } from '../core/process.ts';
+import { runTool, type StreamRunner, type ToolRunner } from '../core/process.ts';
 import {
   isProvider,
   normalizeKey,
@@ -19,7 +21,14 @@ import {
   type SecretStore,
 } from '../core/secrets.ts';
 import { initWorkspace, readWorkspaceConfig, resolveHome } from '../core/workspace.ts';
-import { errorText, packTemplate, promptText, usageText, workspaceTemplate } from './messages.ts';
+import {
+  errorText,
+  packTemplate,
+  progressText,
+  promptText,
+  usageText,
+  workspaceTemplate,
+} from './messages.ts';
 import { errorEnvelope, renderFinding, successEnvelope } from './output.ts';
 import { readSecret, type SecretInput } from './read-secret.ts';
 
@@ -35,6 +44,7 @@ export interface Io {
   readonly platform?: NodeJS.Platform;
   readonly secrets?: SecretStore;
   readonly tool?: ToolRunner;
+  readonly stream?: StreamRunner;
 }
 
 interface Result {
@@ -58,6 +68,16 @@ function secretStore(io: Io): SecretStore {
   return io.secrets ?? osSecretStore();
 }
 
+/** 只有指定了才傳，測試才換得掉，core 也才有自己的預設值。 */
+function hostOptions(io: Io): Pick<Io, 'env' | 'platform' | 'tool' | 'stream'> {
+  return {
+    env: io.env,
+    ...(io.platform === undefined ? {} : { platform: io.platform }),
+    ...(io.tool === undefined ? {} : { tool: io.tool }),
+    ...(io.stream === undefined ? {} : { stream: io.stream }),
+  };
+}
+
 function stringValue(parsed: Parsed, name: string): string | undefined {
   const value = parsed.values[name];
   return typeof value === 'string' ? value : undefined;
@@ -65,7 +85,7 @@ function stringValue(parsed: Parsed, name: string): string | undefined {
 
 /** 只有數字與路徑。書籤標題這類書本文字留在工作區（ADR-0059）。 */
 function probeFindings({ summary, reused }: ProbeOutcome): Finding[] {
-  const { kinds } = summary;
+  const { kinds, assigned } = summary;
   const skipped = summary.pages - kinds.native;
   return [
     ...(reused ? [finding('probe.unchanged', 'info')] : []),
@@ -85,6 +105,9 @@ function probeFindings({ summary, reused }: ProbeOutcome): Finding[] {
     }),
     ...(summary.spread ? [finding('probe.spread', 'warn')] : []),
     ...(skipped > 0 ? [finding('probe.pages_skipped', 'warn', { count: String(skipped) })] : []),
+    assigned > 0
+      ? finding('probe.assigned', 'info', { count: String(assigned) })
+      : finding('probe.no_engine', 'info'),
   ];
 }
 
@@ -93,6 +116,8 @@ async function gpuFinding(io: Io): Promise<Finding> {
   if (gpu === null) return finding('probe.no_gpu', 'info');
   return finding('probe.gpu', 'info', { name: gpu.name, vram: String(gpu.vram_mb) });
 }
+
+const PROGRESS_EVERY = 10;
 
 const COMMANDS: readonly Command[] = [
   {
@@ -167,6 +192,72 @@ const COMMANDS: readonly Command[] = [
         data: { book, probe: outcome.summary },
         findings: [...probeFindings(outcome), await gpuFinding(io)],
       };
+    },
+  },
+  {
+    path: ['extract'],
+    options: {},
+    positionals: 1,
+    run: async ({ positionals }, io) => {
+      const slug = positionals[0];
+      if (slug === undefined) throw new TomeError('cli.missing_argument', { argument: '<book>' });
+      const { data, findings } = await extractBook({
+        ...hostOptions(io),
+        home: resolveHome(io.env, io.platform),
+        slug,
+        onPage: (done, total) => {
+          // 進度走 stderr，`--json` 的 stdout 不受影響。
+          if (done % PROGRESS_EVERY === 0 || done === total) {
+            io.stderr.write(progressText('page', { done: String(done), total: String(total) }));
+          }
+        },
+      });
+      return { data: { book: slug, ...data }, findings };
+    },
+  },
+  {
+    path: ['engine', 'add'],
+    options: { gpu: { type: 'boolean' } },
+    positionals: 1,
+    run: async ({ positionals, values }, io) => {
+      const target = positionals[0];
+      if (target === undefined) throw new TomeError('cli.missing_argument', { argument: '<engine>' });
+      const { engine, findings } = await addEngine({
+        ...hostOptions(io),
+        home: resolveHome(io.env, io.platform),
+        target,
+        gpu: values['gpu'] === true,
+        onStage: (stage) => io.stderr.write(progressText(stage)),
+      });
+      return { data: { engine: engine ?? null }, findings };
+    },
+  },
+  {
+    path: ['engine', 'list'],
+    options: {},
+    positionals: 0,
+    run: async (_parsed, io) => {
+      const engines = listEngines(resolveHome(io.env, io.platform));
+      const findings = engines.map(({ name, version, device, code_license, weights_license }) =>
+        finding('engine.listed', 'info', {
+          name,
+          version,
+          device,
+          code: code_license,
+          weights: weights_license,
+        }),
+      );
+      return { data: { engines }, findings: engines.length > 0 ? findings : [finding('engine.none', 'info')] };
+    },
+  },
+  {
+    path: ['engine', 'remove'],
+    options: {},
+    positionals: 1,
+    run: async ({ positionals }, io) => {
+      const name = positionals[0];
+      if (name === undefined) throw new TomeError('cli.missing_argument', { argument: '<engine>' });
+      return { data: { engine: name }, findings: removeEngine(resolveHome(io.env, io.platform), name) };
     },
   },
   {

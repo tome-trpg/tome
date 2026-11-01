@@ -1,10 +1,28 @@
 # 相依更新一次一個 PR。版本要先過冷卻期才會被提出：patch 一週、minor 兩週、
 # major 一個月，上架頭幾天就被撤回或遭入侵的版本不會進來。安全更新不等。
 # 細節見 docs/adr/0077-dependency-updates.md。
+#
+# 例外：@spec-family/* 不受冷卻期限制，那是維護者自己的工具，上架才幾天，
+# 也沒有更舊的正式版本（ADR-0082 第 21 項）。
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+      semver-patch-days: 7
+      semver-minor-days: 14
+      semver-major-days: 30
+      exclude:
+        - '@spec-family/*'
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+  - package-ecosystem: uv
+    directory: /engines/docling
     schedule:
       interval: weekly
     cooldown:

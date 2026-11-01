@@ -114,7 +114,7 @@ describe('tome probe', () => {
   it('reuses the result and reports the GPU it finds', async () => {
     const env = await workspace();
     await run(['add', await forgeFile('plain', tempDir())], capture({ env }).io);
-    const tool = async () => ({ stdout: 'Forged GPU, 4096\n' });
+    const tool = async () => ({ stdout: 'Forged GPU, 4096, 4000\n' });
     const { io, stdout } = capture({ env, tool });
     expect(await run(['probe', 'plain', '--json'], io)).toBe(0);
     const result = envelope(stdout());
@@ -122,6 +122,7 @@ describe('tome probe', () => {
       'probe.unchanged',
       'probe.done',
       'probe.structure',
+      'probe.no_engine',
       'probe.gpu',
     ]);
     expect(result.findings.at(-1)?.params).toEqual({ name: 'Forged GPU', vram: '4096' });

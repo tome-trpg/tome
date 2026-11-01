@@ -1,0 +1,44 @@
+# TOME 的 Docling 轉接器。隨 npm 包發送，tome engine add docling 用 uv 建環境（ADR-0071）。
+[project]
+name = "tome-engine-docling"
+version = "0.0.0"
+description = "tome-engine/1 adapter for Docling"
+license = "Apache-2.0"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "docling==2.140.0",
+    "docling-core==2.101.1",
+    "huggingface-hub==1.33.0",
+]
+
+# torch 要是直接相依才吃得到下面的來源。CPU 版與 CUDA 版互斥，鎖定檔兩種都有（ADR-0084 第 11 項）。
+[project.optional-dependencies]
+cpu = ["torch==2.14.1", "torchvision==0.29.1"]
+gpu = ["torch==2.14.1", "torchvision==0.29.1"]
+
+[tool.uv]
+# 不是套件，不用安裝這個專案本身。
+package = false
+# 冷卻期：重鎖時只看上架滿 14 天的版本。安全更新用 exclude-newer-package 開例外（ADR-0085）。
+exclude-newer = "14 days"
+conflicts = [[{ extra = "cpu" }, { extra = "gpu" }]]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cuda", extra = "gpu" },
+]
+torchvision = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cuda", extra = "gpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true

@@ -28,6 +28,12 @@ describe('the language profiles', () => {
     expect(profile.punctuation.quotes.open).toBe('「');
   });
 
+  it('leaves pronouns to the entity cards, not to a game concept', () => {
+    const { profile } = loadTargetLanguage('zh-TW');
+    expect(profile.style_guide).toContain('代名詞依實體卡。');
+    expect(profile.style_guide.join('')).not.toMatch(/神祇|超自然/);
+  });
+
   it.each([
     ['source', () => loadSourceLanguage('xx')],
     ['target', () => loadTargetLanguage('xx')],

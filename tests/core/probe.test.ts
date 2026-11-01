@@ -166,6 +166,7 @@ describe('probing forged PDFs', () => {
     expect(summarizeProbe(probe)).toEqual({
       pages: 3,
       kinds: { native: 3, scan: 0, broken_text: 0, image_only: 0 },
+      assigned: 0,
       tagged: false,
       spread: false,
       outline_items: 0,
@@ -192,16 +193,17 @@ describe('probing forged PDFs', () => {
 
 describe('detectGpu', () => {
   it('reads nvidia-smi', async () => {
-    const tool = async () => ({ stdout: 'NVIDIA GeForce RTX 4060 Laptop GPU, 8188\r\n' });
+    const tool = async () => ({ stdout: 'NVIDIA GeForce RTX 4060 Laptop GPU, 8188, 6580\r\n' });
     expect(await detectGpu({}, tool)).toEqual({
       name: 'NVIDIA GeForce RTX 4060 Laptop GPU',
       vram_mb: 8188,
+      vram_free_mb: 6580,
     });
   });
 
   it('takes the first card', async () => {
-    const tool = async () => ({ stdout: 'First, 1024\nSecond, 2048\n' });
-    expect(await detectGpu({}, tool)).toEqual({ name: 'First', vram_mb: 1024 });
+    const tool = async () => ({ stdout: 'First, 1024, 512\nSecond, 2048, 2048\n' });
+    expect(await detectGpu({}, tool)).toEqual({ name: 'First', vram_mb: 1024, vram_free_mb: 512 });
   });
 
   it.each([[null], [{ stdout: '' }], [{ stdout: 'No devices were found' }]])(
