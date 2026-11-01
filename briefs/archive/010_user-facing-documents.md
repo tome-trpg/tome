@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-01
 type: feature
 wave: 8
@@ -29,7 +29,15 @@ protectedFiles:
   - package.json
   - schemas/**
   - src/**
+integrity: sha256-0789ee4e288b899e27257371bc503198d0d264eca09a3b351839d2c0368c1f6d
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-01.**
+> Merged in pull request [#19](https://github.com/tome-trpg/tome/pull/19).
+> Recorded at commit `ade8eae`: 11 files changed, +444 −121.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 010 — 使用者文件的文字規範
 
