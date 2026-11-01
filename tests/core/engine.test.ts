@@ -452,7 +452,7 @@ describe('adding an engine', () => {
     const home = workspace();
     await addEngine({ home, target: FAKE_ENGINE, gpu: false, env: process.env, tool: NO_GPU });
     const text = readFileSync(join(home, 'tome.yaml'), 'utf8');
-    expect(text).toContain('MUST NOT 放金鑰');
+    expect(text).toContain('不得存放金鑰');
     expect((parse(text) as { engines: string[] }).engines).toEqual(['fake']);
   });
 });

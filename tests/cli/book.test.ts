@@ -27,7 +27,7 @@ describe('tome add', () => {
     expect(stdout()).toContain('已加入 structure');
     expect(stdout()).toContain('共 5 頁');
     expect(stdout()).toContain('頁碼標籤 5 頁');
-    expect(stdout()).toContain('沒有偵測到 NVIDIA GPU');
+    expect(stdout()).toContain('未偵測到 NVIDIA GPU');
   });
 
   it('keeps book text out of the output', async () => {
@@ -98,7 +98,7 @@ describe('tome add', () => {
     writeFileSync(join(home, 'books', 'broken', 'book.yaml'), 'a: [');
     const { io, stdout } = capture({ env });
     expect(await run(['add', await forgeFile('plain', tempDir())], io)).toBe(0);
-    expect(stdout()).toContain('書 broken 的資料讀不出來');
+    expect(stdout()).toContain('無法讀取書籍 broken 的資料');
   });
 
   it('warns about pages the first version will not translate', async () => {
@@ -135,7 +135,7 @@ describe('tome probe', () => {
     writeFileSync(join(env['TOME_HOME'] ?? '', 'books', 'plain', 'ir', 'probe.json'), '{ not json');
     const { io, stderr } = capture({ env });
     expect(await run(['probe', 'plain'], io)).toBe(2);
-    expect(stderr()).toContain('壞了');
+    expect(stderr()).toContain('已損毀');
     expect(stderr()).not.toContain('回報');
   });
 
@@ -144,7 +144,7 @@ describe('tome probe', () => {
     expect(await run(['probe'], capture({ env }).io)).toBe(2);
     const unknown = capture({ env });
     expect(await run(['probe', 'nope'], unknown.io)).toBe(2);
-    expect(unknown.stderr()).toContain('找不到書 nope');
+    expect(unknown.stderr()).toContain('找不到書籍 nope');
   });
 
   it('warns about a spread layout', async () => {

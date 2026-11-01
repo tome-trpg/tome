@@ -149,7 +149,7 @@ describe('tome provider auth set', () => {
     });
     expect(await run(['provider', 'auth', 'set', 'anthropic'], io)).toBe(0);
     expect(secrets.keys.get('anthropic')).toBe(SYNTHETIC_KEY);
-    expect(stdout()).toContain('已存進作業系統憑證庫');
+    expect(stdout()).toContain('已存入作業系統憑證庫');
     expect(stdout() + stderr()).not.toContain(SYNTHETIC_KEY);
   });
 

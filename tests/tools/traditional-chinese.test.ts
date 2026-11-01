@@ -33,6 +33,7 @@ const USER_DOCUMENTS = [
   'CHANGELOG.md',
   '.github/ISSUE_TEMPLATE/bug_report.yml',
   '.github/pull_request_template.md',
+  'src/cli/messages/zh-TW.json',
 ];
 
 function standardBig5(): Set<string> {
@@ -96,5 +97,9 @@ describe('the words in user documents', () => {
       return terms.length === 0 ? [] : [`${path}: ${[...new Set(terms)].join(' ')}`];
     });
     expect(found).toEqual([]);
+  });
+
+  it('does not address the reader as you in the CLI messages', () => {
+    expect(readFileSync('src/cli/messages/zh-TW.json', 'utf8')).not.toMatch(/[你您]/u);
   });
 });
