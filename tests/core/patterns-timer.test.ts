@@ -221,4 +221,22 @@ describe('the tools on a busy machine', () => {
     const findings = await testPack(home, pack(home));
     expect(findings.map((item) => item.code)).toEqual(['pack.slow_regex']);
   });
+
+  it('is stricter in lint than in a real run', { timeout: 10_000 }, async () => {
+    // 第一次檢查先定好起點，之後才用掉 CPU，所以兩邊都看得到完整的 800 毫秒。
+    FakeWorker.script = (worker) => {
+      worker.emit('online');
+      worker.say('pattern', 0);
+      setTimeout(() => {
+        worker.cpuMs = 800;
+      }, 150);
+      setTimeout(() => worker.finish(), 300);
+    };
+    const home = tempDir();
+    const location = pack(home);
+    const linted = await lintPack(home, location, { public: false });
+    expect(linted.map((item) => item.code)).toEqual(['pack.slow_regex']);
+    const tested = await testPack(home, location);
+    expect(tested.map((item) => item.code)).toEqual(['pack.test_passed']);
+  });
 });

@@ -49,7 +49,7 @@ protectedFiles:
 ## Invariants
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run build`、`npm run licenses` 在本機都通過
-- [x] `specs` 與 `test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
+- [ ] `specs` 與 `test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
 - [x] 新的測試在舊程式上會失敗：慢啟動、等不到 CPU 的情況都能重現
 - [x] 失控的模式仍然被終止，回報是哪個模式，正常的模式不因機器忙而失敗，`lint` 與 `test` 兩條路徑都涵蓋
 - [x] 在壓力下重新量過，H-16 的敘述照實更新
@@ -78,5 +78,7 @@ protectedFiles:
 修正之後，同樣的壓力下連跑三次 `tests/core/pack.test.ts` 與 `tests/core/patterns.test.ts`，48 個測試全過，舊程式是 7 個失敗。`tests/core/patterns-timer.test.ts` 用假的 worker 重現慢啟動與等不到 CPU，寫好時先在舊程式上跑過，11 個裡 7 個失敗，失控的那 4 個兩邊都通過。
 
 代價：失控模式被終止的牆鐘時間會隨負載拉長。閒置時約 1.06 到 1.12 秒，上面的壓力下要 15 到 18 秒，用掉的 CPU 仍是 1 秒。
+
+`lint` 的 500 毫秒不動，現在也算 CPU 時間。修正不需要放寬它：上面的壓力下，正常模式從第一個訊息到完成也只要 0 到 31 毫秒。比實際執行嚴一倍是有用的餘裕，規則包作者的機器可能比使用者快，同一個限時的話，剛好過關的模式到了較慢的機器就會被終止。`tests/core/patterns-timer.test.ts` 釘住這個差距：用掉 800 毫秒 CPU 的模式，`lint` 判失敗，實際執行照常跑完。
 
 測試框架預設每個測試 5 秒的逾時也是牆鐘，用真 worker 的測試在忙碌的 CI 上會撞到，所以 `vitest.config.ts` 放寬成 30 秒。這是測試的設定，主程式的限時沒有放寬。
