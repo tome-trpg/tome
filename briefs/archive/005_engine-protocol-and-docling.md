@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-01
 type: feature
 wave: 5
@@ -27,7 +27,16 @@ protectedFiles:
   - docs/research/**
   - languages/source/**
   - package-lock.json
+integrity: sha256-4f38c509721731e3abda9c4e88d5a428fe20983630b2096288c57f971178e963
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-01.**
+> 路線圖 M1 的第三個回合：解析引擎協定 tome-engine/1、tome engine add、list、remove、tome extract 的 source 層與 Docling 引擎，連同 CUDA 版的授權審查。組裝、document 層與字元守恆還沒做。
+> Merged in pull request [#11](https://github.com/tome-trpg/tome/pull/11).
+> Recorded at commit `8995c0c`: 48 files changed, +5575 −45.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 005 — 引擎協定與 Docling
 
