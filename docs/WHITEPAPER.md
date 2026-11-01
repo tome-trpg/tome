@@ -279,7 +279,7 @@ flowchart LR
 | S-10 | **QA 加入術語與用語檢查**：命中的詞彙在譯文裡必須是鎖定譯名；用語檢查表抓中國大陸用語。已定案（ADR-0060） | 只查骰子、結構、長度還不夠，術語一致才是 TRPG 翻譯最常出錯的地方；這些檢查都不花 token | 7 |
 | S-11 | **合成 PDF 鍛造**：用程式產生帶標準答案的雙欄、邊欄、直書、假名標音 PDF。已定案（ADR-0061） | 同時解決「不能放商業書測試」與「沒有日文直書的公開評測」兩個問題 | 7 |
 | S-12 | **公開 repo 只放開放授權的規則包**，品牌系統走使用者本機規則包 | [§2.3](#23-出版社與著作權)，已定案（ADR-0001） | 1 |
-| S-13 | **先用 PDF 自帶的結構，再用模型**。書籤、頁碼標籤、連結註記、tagged 結構都先讀。已定案（ADR-0007） | 不用 GPU，可靠度也高。Docling 文件只提到用書籤推標題層級，且預設關閉；印刷頁碼對應與「見 p.123」的連結都要靠這些資料 | 2 |
+| S-13 | **先用 PDF 自帶的結構，再用模型**。書籤、頁碼標籤、連結註記都先讀。0.1.0 不用 tagged 結構（ADR-0099）。已定案（ADR-0007） | 不用 GPU，可靠度也高。Docling 文件只提到用書籤推標題層級，且預設關閉；印刷頁碼對應與「見 p.123」的連結都要靠這些資料 | 2 |
 | S-14 | **字元守恆檢查**。原生文字層的每個字元都要落在某個區塊，或被標成頁面雜訊，否則該頁失敗。已定案（ADR-0007） | 不花 token 就能抓到引擎漏掉的邊欄；判斷解析品質不必等人工審閱 | 2 |
 | S-16 | **改譯名不重翻**：鎖定譯名改動時直接替換翻譯記憶，再跑一次驗證 | 中文沒有詞形變化，替換就夠了，不花 token | 3 |
 | S-17 | **風格依區塊角色**：規則文字同詞同譯，敘事與朗讀文字可以放開一點 | 規則要精確，帶團朗讀的文字要有氣氛，兩者的翻譯要求相反 | 3 |
@@ -619,7 +619,7 @@ flowchart LR
 | 2 | OpenAI 相容 | OpenAI、OpenRouter、DeepSeek；本機端點接得上但不承諾（ADR-0025） | `openai` |
 | 3 | Gemini | Gemini | `@google/genai` |
 
-三個 SDK 都是 Apache-2.0。不用 LiteLLM 這類抽象層，Batch 與快取由各協定自己實作。
+三個 SDK 的授權都在白名單內，Anthropic SDK 的相依另有一個窄例外（ADR-0099）。不用 LiteLLM 這類抽象層，Batch 與快取由各協定自己實作。
 
 **轉接層介面**（提案，第一版實作時可以調整）
 
@@ -655,7 +655,7 @@ interface RequestResult {
 | DeepSeek | 自動快取 | 無，走即時佇列，建議排離峰 |
 | Gemini | 隱式快取 | Batch API |
 
-**模型**：TOME 不內建預設模型，因為便宜模型的品質還沒驗證（H-2），不該替使用者選，也不該在沒注意時花到貴的模型。`scanner_model`（Pass 0 用）與 `translator_model`（主翻譯用）在 `tome.yaml` 必填，可以依區塊角色覆寫，例如規則文字用便宜模型、敘事文字用好模型。同一個群組用第一個單位的角色決定模型。`fallback_model` 選填，拒答時改送。範本會列出建議組合，並註明還沒有盲評。
+**模型**：TOME 不內建預設模型，因為便宜模型的品質還沒驗證（H-2），不該替使用者選，也不該在沒注意時花到貴的模型。`scanner_model`（Pass 0 用）與 `translator_model`（主翻譯用）在 `tome.yaml` 必填，用到時才檢查，可以依區塊角色覆寫，例如規則文字用便宜模型、敘事文字用好模型。同一個群組用第一個單位的角色決定模型。`fallback_model` 選填，拒答時改送。範本會列出建議組合，並註明還沒有盲評。
 
 **思考**：主翻譯預設關閉。能關的模型就關，不能關的用低 effort，估價要計入思考成本。實測後再決定哪些角色值得開（H-13）。
 
@@ -663,7 +663,7 @@ interface RequestResult {
 
 | 模式 | 用途 |
 | :--- | :--- |
-| `batch` | 預設。每章一批，超過供應商上限才拆，省 50% |
+| `batch` | 預設。相鄰章節併到字元上限，過大才拆，省 50%。上限是提案（ADR-0099） |
 | `realtime` | 沒有 Batch 的供應商，或用 `--realtime` 想馬上看到結果。有 RPM／TPM 限流與指數退避，每個請求完成就寫入狀態庫 |
 
 一個請求約 6,000 字元（約 2,000 token），帶約 800 字元上文。用字元數是因為各家 token 計法不同（TC-5）。同組單位不拆開（ADR-0029）。
@@ -890,7 +890,7 @@ tome add <pdf>                         加入一本書並執行 probe
 tome run <book>                        一路跑到下一個人工關卡
 tome probe|extract|scan-terms <book>   各階段單獨執行
 tome trial|estimate|translate <book>
-tome verify|assemble <book>
+tome verify|preview|assemble <book>
 tome batch status|collect|cancel <book>
 tome sync <book>                       回收 vault 的修改
 tome status|report <book>              進度與交付報告
@@ -1195,6 +1195,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0096](adr/0096-engine-workflow-covers-its-tests.md) | 改到引擎測試也要跑引擎工作流程 | M1 |
 | [ADR-0097](adr/0097-engine-workflow-covers-the-core.md) | 改到引擎核心與 schema 也要跑引擎工作流程 | M1 |
 | [ADR-0098](adr/0098-layout-ratios-settled.md) | 閱讀順序通過，版面比例定案 | M1 |
+| [ADR-0099](adr/0099-m2-translation-core-decisions.md) | M2 翻譯核心的選型與範圍 | M2 |
 
 ---
 
@@ -1333,11 +1334,11 @@ Gemini 顯式快取也算過：Flash-Lite 上 8k 前綴省下約 0.13，但排�
 | :--- | :--- | :--- |
 | M0 基礎 | TypeScript 骨架、`tome-ir` 與 `tome-pack` schema、測試與 CI、spec-brief 與 spec-harness、`tome init`、`tome doctor`、金鑰存放 | 沒有翻譯功能，但閘門都就位 |
 | M1 解析 | `tome add`、`probe`、`extract`、Docling 引擎、document 層、字元守恆、合成 PDF、語言設定檔、`tome system new`、`list`、`lint`、`test` | PDF 能變成乾淨的 IR |
-| M2 翻譯核心 | `generic` 規則包、遮蔽、標籤、驗證、翻譯記憶、預算、估價、Batch、即時模式、假供應商、`--dry-run`、費用帳本 | 接 Anthropic 翻出一章 |
-| M3 譯名與輸出 | Pass 0、審定、`tome glossary import`、數值塊欄位化、vault、`tome sync`、交付報告、一致性報告、`tome purge`、`tome backup` | 能帶團閱讀的成品 |
+| M2 翻譯核心 | `generic` 規則包、遮蔽、標籤、驗證、翻譯記憶、預算、估價、Batch、即時模式、假供應商、`--dry-run`、費用帳本、`tome preview`、`tome status`、變異測試 | 接 Anthropic 翻出一章 |
+| M3 譯名與輸出 | Pass 0、審定、`tome glossary import`、數值塊欄位化、vault、`tome sync`、`tome run`、交付報告、一致性報告、`tome purge`、`tome backup` | 能帶團閱讀的成品 |
 | M4 首版 | `d100-orc`、試翻校準、盲評、發佈流程 | Q-1 到 Q-8 達標，發佈 0.1.0 |
 
-**目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。下一階段是 M2，還沒開始。
+**目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。下一階段是 M2，回合與範圍見 ADR-0099，還沒開始。
 
 M1 已實作的項目：
 
