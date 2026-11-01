@@ -40,6 +40,21 @@ describe('the language profiles', () => {
       expect(scriptViolations({ ...check, misused_words: ['渡口'] }, '渡口')).toEqual(['渡口']);
     });
 
+    describe('where an allowed word could hide a misused one', () => {
+      const SHARED_FORM = String.fromCodePoint(0x540e);
+
+      it.each(['三天', '十天', '幾天', '半天', '當天', '昨天', '拆封', '解封'])(
+        'finds %s followed by the wrong form',
+        (start) => {
+          expect(scriptViolations(check, `${start}${SHARED_FORM}再說`)).toEqual([`${start}${SHARED_FORM}`]);
+        },
+      );
+
+      it.each(['天后', '這位天后', '歌壇天后登臺', '封后', '她封后了', '皇后', '后土'])('leaves %s alone', (text) => {
+        expect(scriptViolations(check, text)).toEqual([]);
+      });
+    });
+
     it('lets an allowed word hold a character the encoding does not have', () => {
       const rare = String.fromCodePoint(0x3402);
       expect(scriptViolations(check, rare)).toEqual([rare]);
