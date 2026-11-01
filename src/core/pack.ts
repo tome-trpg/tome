@@ -159,7 +159,7 @@ function readFile<T>(dir: string, kind: DataFile, findings: Finding[]): T | null
   try {
     value = parse(readFileSync(path, 'utf8'));
   } catch {
-    findings.push(finding('pack.bad_file', 'fail', { file, issue: 'yaml' }));
+    findings.push(finding('pack.invalid_yaml', 'fail', { file }));
     return null;
   }
   const checked = validatePackFile(kind, value);
@@ -278,7 +278,7 @@ export function createPack(
   id: string,
   files: Readonly<Record<string, string>>,
 ): Finding[] {
-  if (!isPackId(id)) throw new TomeError('store.bad_id', { id });
+  if (!isPackId(id)) throw new TomeError('pack.bad_id', { id });
   assertSafeId(id);
   const dir = join(workspaceDir(home), id);
   if (existsSync(dir)) return [finding('pack.exists', 'fail', { id, path: dir })];

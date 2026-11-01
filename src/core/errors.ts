@@ -15,6 +15,7 @@ export const ERROR_CODES = [
   'engine.not_found',
   'file.corrupt',
   'language.unknown',
+  'pack.bad_id',
   'pack.not_found',
   'pdf.not_found',
   'pdf.unreadable',

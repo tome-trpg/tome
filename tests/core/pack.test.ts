@@ -100,6 +100,12 @@ describe('createPack', () => {
   it.each(['Bad', 'has space', '../up', 'con'])('refuses the id %j', (id) => {
     expect(() => createPack(tempDir(), id, packTemplate(id))).toThrow(TomeError);
   });
+
+  it('says what a pack id may be, which is stricter than a name', () => {
+    expect(() => createPack(tempDir(), 'Bad', packTemplate('Bad'))).toThrow(
+      expect.objectContaining({ code: 'pack.bad_id' }),
+    );
+  });
 });
 
 describe('resolvePack', () => {
@@ -222,9 +228,20 @@ describe('lintPack', () => {
       'glossary.yaml': 'terms: nope\napi_key: x\n',
     });
     const findings = await lintPack(home, location, { public: false });
+    expect(findings.find((item) => item.code === 'pack.invalid_yaml')?.params).toEqual({ file: 'roles.yaml' });
     expect(findings.filter((item) => item.code === 'pack.bad_file').map((item) => item.params['file'])).toEqual(
-      expect.arrayContaining(['roles.yaml', 'glossary.yaml']),
+      expect.arrayContaining(['glossary.yaml']),
     );
+  });
+
+  it('counts glossary entries from one, the way a person does', async () => {
+    const home = tempDir();
+    const location = writePack(home, 'counted', {
+      'pack.yaml': manifest('counted'),
+      'glossary.yaml': 'terms:\n  - { source: { en: Word }, target: 字, class: nothing }\n',
+    });
+    const findings = await lintPack(home, location, { public: false });
+    expect(findings.find((item) => item.code === 'pack.unknown_class')?.params['index']).toBe('1');
   });
 
   it('cannot go on without pack.yaml, and says so', async () => {
@@ -368,7 +385,7 @@ describe('testPack', () => {
   it('reports a test file it cannot read', async () => {
     const { home, location } = sampleCopy();
     writeFileSync(join(location.dir, 'tests', 'basic.yaml'), 'cases: [');
-    expect(codes(await testPack(home, location))).toEqual(['pack.bad_file']);
+    expect(codes(await testPack(home, location))).toEqual(['pack.invalid_yaml']);
     rmSync(join(location.dir, 'tests'), { recursive: true });
     expect(codes(await testPack(home, location))).toEqual(['pack.no_tests']);
   });

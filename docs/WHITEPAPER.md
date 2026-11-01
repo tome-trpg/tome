@@ -1148,6 +1148,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0088](adr/0088-pillow-security-override.md) | Docling 環境的安全更新 | M1 |
 | [ADR-0089](adr/0089-cli-message-style.md) | CLI 訊息的文字規範 | M1 |
 | [ADR-0090](adr/0090-engine-detail-decisions.md) | 引擎協定的實作細節定案 | M1 |
+| [ADR-0091](adr/0091-message-params-for-people.md) | 訊息參數給人看 | M1 |
 
 ---
 

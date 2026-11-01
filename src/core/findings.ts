@@ -39,6 +39,7 @@ export const FINDING_CODES = [
   'pack.duplicate_pattern',
   'pack.exists',
   'pack.id_mismatch',
+  'pack.invalid_yaml',
   'pack.lint_ok',
   'pack.listed',
   'pack.missing_file',
