@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-02
 type: feature
 wave: 16
@@ -28,7 +28,16 @@ protectedFiles:
   - docs/research/**
   - engines/**
   - package-lock.json
+integrity: sha256-92ce01baf870ce6ea74c64d4b426141e8ec6c871b03eeb4d6b1f8e3f510b7fed
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-02.**
+> M2 的第三個回合：模型資料、維護者審過的提示、請求組成、估價、預算、費用帳本、tome estimate 與 tome translate --dry-run。這個回合不連網。
+> Merged in pull request [#46](https://github.com/tome-trpg/tome/pull/46).
+> Recorded at commit `10a7c05`: 44 files changed, +2643 −32.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 017 — 成本與請求
 
