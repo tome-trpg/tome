@@ -22,6 +22,8 @@ export interface ForgeTruth {
   readonly spread?: boolean;
   readonly labels?: readonly string[];
   readonly encrypted?: boolean;
+  /** 每頁畫上去的文字。引擎不管怎麼分區塊，這些字都要在。 */
+  readonly text?: readonly (readonly string[])[];
 }
 
 export interface Forged {
@@ -245,24 +247,37 @@ function ruledTable(doc: Doc, left: number, top: number): void {
   });
 }
 
+const BLOCK_PAGES = 2;
+
+function blockText(page: number): Record<'title' | 'first' | 'second' | 'caption' | 'footer', string> {
+  return {
+    title: page === 0 ? 'The Salt Marsh Ledger' : 'Tolls of the Old Ferry',
+    first: prose(page, 70),
+    second: prose(page + 2, 60),
+    caption: `Figure ${page + 1}. Grey reeds beside the ferry.`,
+    footer: `Forged ledger, page ${page + 1}`,
+  };
+}
+
 /** 引擎測試用：標題、段落、有框線的表格、圖與圖說、頁尾各有一個。 */
 function blocks(): Doc {
   const doc = open();
   const figure = noisePng(120, 80, 4);
-  for (let page = 0; page < 2; page += 1) {
+  for (let page = 0; page < BLOCK_PAGES; page += 1) {
+    const text = blockText(page);
     doc.addPage({ size: LETTER });
     doc.font('Helvetica-Bold').fontSize(20).fillColor('black');
-    doc.text(page === 0 ? 'The Salt Marsh Ledger' : 'Tolls of the Old Ferry', 72, 72);
+    doc.text(text.title, 72, 72);
     doc.font('Times-Roman').fontSize(11);
-    doc.text(prose(page, 70), 72, 110, { width: 468 });
+    doc.text(text.first, 72, 110, { width: 468 });
     ruledTable(doc, 72, 220);
     doc.font('Times-Roman').fontSize(11);
-    doc.text(prose(page + 2, 60), 72, 340, { width: 468 });
+    doc.text(text.second, 72, 340, { width: 468 });
     doc.image(figure, 72, 450, { width: 240 });
     doc.font('Times-Italic').fontSize(9);
-    doc.text(`Figure ${page + 1}. Grey reeds beside the ferry.`, 72, 620);
+    doc.text(text.caption, 72, 620);
     doc.font('Helvetica').fontSize(8);
-    doc.text(`Forged ledger, page ${page + 1}`, 72, 740, { lineBreak: false });
+    doc.text(text.footer, 72, 740, { lineBreak: false });
   }
   return doc;
 }
@@ -285,7 +300,16 @@ const repeat = (kind: PageKind, count: number): PageKind[] => Array<PageKind>(co
 
 const CASES = {
   plain: { build: plain, truth: { kinds: repeat('native', 3) } },
-  blocks: { build: blocks, truth: { kinds: repeat('native', 2) } },
+  blocks: {
+    build: blocks,
+    truth: {
+      kinds: repeat('native', BLOCK_PAGES),
+      text: Array.from({ length: BLOCK_PAGES }, (_, page) => [
+        ...Object.values(blockText(page)),
+        ...TOLLS.flat(),
+      ]),
+    },
+  },
   structure: {
     build: structure,
     truth: { kinds: repeat('native', 5), tagged: true, labels: ['i', 'ii', '1', '2', '3'] },

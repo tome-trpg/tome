@@ -7,7 +7,7 @@ import { readEngineSpec, locateEngine } from '../../src/core/engine.ts';
 import type { SourcePage } from '../../src/core/ir.ts';
 import { runTool } from '../../src/core/process.ts';
 import { validateEngineRun, validateIr } from '../../src/core/schema.ts';
-import { forgeFile } from '../forge/index.ts';
+import { forge, forgeFile } from '../forge/index.ts';
 import { capture, tempDir } from '../helpers.ts';
 
 // 真的跑 Docling（ADR-0064）。平常的 CI 跳過，`.github/workflows/engine.yml` 裝好引擎後才跑。
@@ -46,14 +46,19 @@ describe.skipIf(home === undefined)('Docling on a forged PDF', () => {
       });
     expect(pages.map((page) => page.page)).toEqual([0, 1]);
 
+    // 角色是版面模型的判斷，會隨平台與字型渲染變動，所以印出來比對，不當成契約。
+    // 轉接器要保證的是字都在，頁首頁尾也一樣，字元守恆看的是整頁（S-14）。
+    const { truth } = await forge('blocks');
     for (const page of pages) {
+      console.log(JSON.stringify(page.blocks.map((block) => [block.role, block.text.slice(0, 24)])));
       expect(page.blocks.every((block) => block.spans.every((span) => span.page === page.page))).toBe(true);
-      expect(new Set(page.blocks.map((block) => block.role))).toEqual(
-        new Set(['heading', 'paragraph', 'table', 'figure', 'caption', 'furniture']),
-      );
+      const found = page.blocks
+        .flatMap((block) => block.table?.cells.map((cell) => cell.text) ?? [block.text])
+        .join(' ')
+        .replace(/\s+/g, ' ');
+      for (const text of truth.text?.[page.page] ?? []) expect(found).toContain(text);
       const table = page.blocks.find((block) => block.role === 'table')?.table;
       expect(table).toMatchObject({ rows: 4, cols: 4 });
-      expect(table?.cells.map((cell) => cell.text)).toContain('Crossing');
     }
 
     const record = files.find((path) => path.endsWith('engine.json')) ?? '';
