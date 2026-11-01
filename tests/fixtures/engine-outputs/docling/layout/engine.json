@@ -1,0 +1,1 @@
+{"schema": "tome-engine/1", "name": "docling", "version": "2.140.0", "license": {"code": "MIT", "weights": "Apache-2.0 AND CDLA-Permissive-2.0"}, "config_hash": "2a5e8471c7f48ac3dfc4e99f64c204d1579cacfaa3b97b0baae8f1e64a83a49c", "pages": [{"page": 0, "status": "ok"}, {"page": 1, "status": "ok"}, {"page": 2, "status": "ok"}]}

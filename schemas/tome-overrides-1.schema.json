@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/tome-trpg/tome/main/schemas/tome-overrides-1.schema.json",
+  "title": "tome-overrides/1",
+  "description": "Hand corrections to one book, applied in order after assembly. The file lives in the workspace and survives a re-parse.",
+  "type": "object",
+  "required": ["schema", "operations"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "tome-overrides/1" },
+    "operations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/operation" }
+    }
+  },
+  "$defs": {
+    "blockId": {
+      "type": "string",
+      "pattern": "^p[0-9]{4,}-[0-9a-f]{6}(-[0-9]+)?$"
+    },
+    "role": {
+      "description": "A core role or a rule pack role. Table is left out because a block cannot become one without its cells.",
+      "type": "string",
+      "pattern": "^([a-z]+|[a-z0-9]+(-[a-z0-9]+)*:[a-z0-9]+([_-][a-z0-9]+)*)$",
+      "not": { "const": "table" }
+    },
+    "setRole": {
+      "type": "object",
+      "required": ["op", "block", "role"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "role" },
+        "block": { "$ref": "#/$defs/blockId" },
+        "role": { "$ref": "#/$defs/role" }
+      }
+    },
+    "move": {
+      "type": "object",
+      "required": ["op", "block", "after"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "move" },
+        "block": { "$ref": "#/$defs/blockId" },
+        "after": {
+          "description": "The block to follow. Null moves it to the front.",
+          "anyOf": [{ "$ref": "#/$defs/blockId" }, { "type": "null" }]
+        }
+      }
+    },
+    "merge": {
+      "type": "object",
+      "required": ["op", "blocks"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "merge" },
+        "blocks": {
+          "description": "Joined in this order. The result keeps the id of the first.",
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/blockId" }
+        }
+      }
+    },
+    "split": {
+      "type": "object",
+      "required": ["op", "block", "before"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "split" },
+        "block": { "$ref": "#/$defs/blockId" },
+        "before": {
+          "description": "The second block starts at the first place this text appears.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "skip": {
+      "type": "object",
+      "required": ["op", "block"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "skip" },
+        "block": { "$ref": "#/$defs/blockId" }
+      }
+    },
+    "redact": {
+      "type": "object",
+      "required": ["op", "block", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "redact" },
+        "block": { "$ref": "#/$defs/blockId" },
+        "text": {
+          "description": "Every occurrence in this block becomes [REDACTED].",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "operation": {
+      "oneOf": [
+        { "$ref": "#/$defs/setRole" },
+        { "$ref": "#/$defs/move" },
+        { "$ref": "#/$defs/merge" },
+        { "$ref": "#/$defs/split" },
+        { "$ref": "#/$defs/skip" },
+        { "$ref": "#/$defs/redact" }
+      ]
+    }
+  }
+}

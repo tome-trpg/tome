@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-01
 type: feature
 wave: 6
@@ -27,7 +27,16 @@ protectedFiles:
   - languages/**
   - package-lock.json
   - package.json
+integrity: sha256-5ffe0af981411388053714e705040d05af5b89a5e709a4e04f9f845cc761b386
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-01.**
+> 引擎可以在 engine.yaml 的 license.proprietary 宣告環境裡的專有元件，裝完會提示，Docling 宣告 Intel oneMKL。uv 的 patch 冷卻期改成 14 天，跟 exclude-newer 一致。
+> Merged in pull request [#16](https://github.com/tome-trpg/tome/pull/16).
+> Recorded at commit `b1a58a2`: 13 files changed, +233 −11.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 008 — 引擎的專有元件提示與 uv 的冷卻期
 

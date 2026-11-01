@@ -53,6 +53,12 @@ describe('the command line', () => {
     expect(envelope(json.stdout()).ok).toBe(false);
   });
 
+  it('names a missing argument the way --help does', async () => {
+    const { io, stderr } = capture();
+    await run(['provider', 'auth', 'set'], io);
+    expect(stderr()).toContain('<供應商>');
+  });
+
   it('takes --json before the command too', async () => {
     const { io, stdout } = capture({ env: { TOME_HOME: join(tempDir(), 'home') } });
     expect(await run(['--json', 'init'], io)).toBe(0);
@@ -149,7 +155,7 @@ describe('tome provider auth set', () => {
     });
     expect(await run(['provider', 'auth', 'set', 'anthropic'], io)).toBe(0);
     expect(secrets.keys.get('anthropic')).toBe(SYNTHETIC_KEY);
-    expect(stdout()).toContain('已存進作業系統憑證庫');
+    expect(stdout()).toContain('已存入作業系統憑證庫');
     expect(stdout() + stderr()).not.toContain(SYNTHETIC_KEY);
   });
 

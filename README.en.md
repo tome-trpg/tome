@@ -1,52 +1,95 @@
 # TOME
 
-**TRPG Omnilingual Markdown Engine**: parse the tabletop RPG books you own on your own machine, and translate them with your own LLM API key into Traditional Chinese that is ready for the table.
+TOME (TRPG Omnilingual Markdown Engine) is a command-line tool that runs locally. It parses tabletop RPG books that the user owns and translates them into Traditional Chinese with the user's own LLM API key.
 
 [繁體中文](README.md)
 
-> **Status: in development.** The foundation is done and parsing is under way. The commands so far are `tome init`, `tome doctor`, `tome provider auth set`, `tome add`, `tome probe`, `tome extract`, `tome engine add`, `list` and `remove`, and `tome system new`, `list`, `lint` and `test`. For now `tome extract` only hands pages to a parsing engine and does not assemble a document, there is no translation, and nothing has been released, so there is nothing to install.
+> [!IMPORTANT]
+> **Status: in development, not yet released.** The foundation and part of the parsing work are complete. Translation is not available yet, and npm holds only a placeholder version with no code. See [Development status](#development-status) for the state of each feature.
 
-## What it is
+## Overview
 
-General PDF translators do not understand tabletop RPGs. Two columns and sidebars scramble the reading order, one changed character in `1D100` breaks a rule, and a single NPC ends up with several names across four hundred pages. TOME is built for these problems.
+General-purpose PDF translators are not designed for tabletop RPG books. Common problems include:
 
-* **Local parsing.** PDFs and page images never leave your computer. Only masked text is sent out.
-* **No wrong dice or numbers.** Text is masked before translation and checked afterwards at no token cost.
-* **One name per entity.** Proper nouns are extracted, and the high-impact ones are reviewed by a person before translation starts.
-* **Know the cost first.** Estimates run locally, and the budget is a required hard limit.
-* **Safe to interrupt.** A paragraph that passed verification is never paid for twice.
-* **Made for the table.** Output is Obsidian-compatible Markdown, and edits made in Obsidian can be brought back.
-* **No telemetry.** There are no usage statistics and no update checks. TOME connects only to the LLM APIs you configure, and to the downloads when you install a parsing engine.
+* Two-column and sidebar layouts scramble the reading order.
+* Dice notation such as `1D100` or numeric values change during translation, which breaks the rules.
+* A single character or proper noun ends up with several translations across the book.
 
-The design and its reasons are in the [whitepaper](docs/WHITEPAPER.md), written in Traditional Chinese, with each decision in [docs/adr](docs/adr).
+TOME is designed to solve these problems and to produce translations that can be used directly in play.
 
-## What it is not
+## Features
 
-* It provides no book content and does not distribute translations.
-* It does not bypass DRM, and refuses every encrypted PDF.
-* It does not modify source PDFs or produce PDFs.
-* It is not an online service.
+The following features are design goals. See [Development status](#development-status) for what is implemented.
 
-TOME is for books **you own**. Translations are for your own use and must not be distributed.
+| Feature | Description |
+| :--- | :--- |
+| Local parsing | PDFs and page images are processed locally and never leave the user's computer. Only masked text is sent out. |
+| Dice and number protection | Dice notation and formulas are masked before translation, and numbers are checked afterwards by a verification step that uses no tokens. |
+| Consistent terminology | Proper nouns are extracted before translation, and the high-impact ones are reviewed by a person before translation starts. |
+| Cost control | The cost is estimated locally before translation starts. A budget limit is required, and work stops when it is reached. |
+| Resuming after interruption | The process can be interrupted at any time. Paragraphs that passed verification are not charged again. |
+| Obsidian compatibility | The output is Obsidian-compatible Markdown, and edits made in Obsidian can be imported back into TOME. |
+| No telemetry | TOME collects no usage statistics and does not check for updates automatically. It connects to the network in only two cases: calling the LLM APIs the user configures, and downloading files when a parsing engine is installed. |
 
-## Install
+## Development status
 
-After the first release:
+| Feature | Commands | Status |
+| :--- | :--- | :--- |
+| Workspace setup and environment checks | `tome init`, `tome doctor` | Implemented |
+| API key setup | `tome provider auth set` | Implemented |
+| Book registration and PDF probing | `tome add`, `tome probe` | Implemented |
+| Rule pack management | `tome system new`, `list`, `lint`, `test` | Implemented |
+| Parsing engine management | `tome engine add`, `list`, `remove` | Implemented |
+| Page parsing | `tome extract` | Implemented: native text pages are handed to a parsing engine, assembled into a document, and checked for lost characters |
+| Translation and output | Not available | Planned |
+
+## Out of scope
+
+The following are outside the scope of TOME:
+
+* Providing book content or distributing translations.
+* Bypassing DRM. Every encrypted PDF is refused.
+* Modifying source PDFs or producing PDFs.
+* Operating as an online service.
+
+TOME is intended only for books the user owns. Translations are for personal use and must not be distributed.
+
+## Requirements
+
+* Node.js 24 or later.
+* [uv](https://docs.astral.sh/uv/), only when installing a parsing engine.
+
+## Installation
+
+TOME has no official release yet. After the first release, it can be installed with:
 
 ```bash
 npm install -g tome-trpg
 ```
 
-It needs Node 24 or later. Installing a parsing engine also needs [uv](https://docs.astral.sh/uv/).
+> [!WARNING]
+> Do not run `npx tome`. The `tome` package on npm belongs to another author and is unrelated to this project.
 
-**Do not run `npx tome`.** The `tome` package on npm belongs to someone else and has nothing to do with this project.
+## Documentation
 
-## Licence
+All project documents other than this README are written in Traditional Chinese.
 
-The code is [Apache-2.0](LICENSE). Built-in rule packs carry their own licences, listed in [NOTICE](NOTICE).
+| Document | Contents |
+| :--- | :--- |
+| [Whitepaper](docs/WHITEPAPER.md) | System design and rationale |
+| [Architecture decision records](docs/adr) | The background and outcome of each decision |
+| [Changelog](CHANGELOG.md) | Changes in each version |
+| [Contributing guide](CONTRIBUTING.md) | Development environment and contribution rules |
+| [Security policy](SECURITY.md) | How to report a security vulnerability |
 
-TOME is an independent project. It has no relationship with any tabletop RPG publisher and is not endorsed by one. Trademarks mentioned in the documents belong to their owners. Nothing here is legal advice.
+## License
+
+The code is licensed under [Apache-2.0](LICENSE). Built-in rule packs, once added, will carry their own licenses, listed in [NOTICE](NOTICE).
+
+TOME is an independent project. It is not affiliated with or endorsed by any tabletop RPG publisher. Trademarks mentioned in the documentation belong to their respective owners. Legal notes in this project's documentation are not legal advice.
 
 ## Contributing
 
-Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first. **Do not paste text or translations from any commercial book.** Use a synthetic example to report a problem. For security issues, see [SECURITY.md](SECURITY.md).
+Issues and pull requests are welcome. Please read the [contributing guide](CONTRIBUTING.md) before submitting one.
+
+**Do not post text or translations from any commercial book.** Use a synthetic example when reporting a problem. Report security issues as described in the [security policy](SECURITY.md).
