@@ -392,7 +392,7 @@ flowchart LR
 | 環境 | 每個引擎一個獨立環境與鎖定檔，放在工作區。Python 引擎用 uv，其他語言照 `engine.yaml` 的寫法 |
 | 選擇 | 同一種頁面有多個引擎時，依 `tome.yaml` 的 `engines` 順序 |
 | 權重 | 只在 `tome engine add` 時下載，這是對外出口模組之外唯一的例外（ADR-0081）。執行時 MUST 離線 |
-| 授權 | 主程式 MUST NOT 依賴任何引擎套件。不符合 LC-1 的引擎由使用者自行安裝（LC-2）。CUDA 版的 NVIDIA 專有元件比照辦理，TOME 不隨附，`--gpu` 裝完會提示（ADR-0085） |
+| 授權 | 主程式 MUST NOT 依賴任何引擎套件。不符合 LC-1 的引擎由使用者自行安裝（LC-2）。CUDA 版的 NVIDIA 專有元件比照辦理，TOME 不隨附，`--gpu` 裝完會提示（ADR-0085）。環境裡其他的專有元件由引擎在 `license.proprietary` 宣告，裝完一樣提示，Docling 宣告 Intel oneMKL（ADR-0087） |
 
 Docling 是預設引擎，走同一套協定，沒有特權。它的轉接器是 Python，主程式是 TypeScript，兩邊只靠 `tome-ir` 的 JSON Schema 溝通。它能配合的地方都查過：`convert()` 有 `page_range`，權重可用 `docling-tools models download` 預先下載，再以 `artifacts_path` 指定，遠端服務預設關閉。
 
@@ -913,7 +913,7 @@ tome/
 | 變異 | 排程 | 六個關鍵模組 |
 | 發佈 | `v*` 標籤或手動演練 | 見下節 |
 
-Action 全部釘在 commit，簽出不保留 token，安裝用 `--ignore-scripts`。Dependabot 更新相依與 Action，有冷卻期：npm 與 uv 的 patch 一週、minor 兩週、major 一個月，Action 一律一週，安全更新不等。`@spec-family/*` 是維護者自己的工具，不受冷卻期限制（ADR-0082）。`engines/docling/` 另外用 `exclude-newer = "14 days"`，重鎖時只看上架滿 14 天的版本，安全更新用 `exclude-newer-package` 開例外（ADR-0085）。Dependabot 對這份設定的實際行為**還沒驗證**，要等第一次週更。
+Action 全部釘在 commit，簽出不保留 token，安裝用 `--ignore-scripts`。Dependabot 更新相依與 Action，有冷卻期：npm 的 patch 一週、minor 兩週、major 一個月，uv 的 patch 與 minor 都是兩週、major 一個月，Action 一律一週，安全更新不等。`@spec-family/*` 是維護者自己的工具，不受冷卻期限制（ADR-0082）。`engines/docling/` 另外用 `exclude-newer = "14 days"`，重鎖時只看上架滿 14 天的版本，安全更新用 `exclude-newer-package` 開例外（ADR-0085）。**已驗證**：Dependabot 第一次跑就重鎖得動這份鎖定檔，但安全更新過不了 `exclude-newer`，要手動開例外（ADR-0087）。
 
 ### 7.4 發佈
 

@@ -45,6 +45,7 @@
     "engine.none": "還沒有安裝解析引擎。要解析書的時候，用 tome engine add docling 安裝。",
     "engine.not_installed": "沒有安裝引擎 {name}。可以用 tome engine list 查看。",
     "engine.ok": "引擎 {name} {version}（{device}）可以啟動。",
+    "engine.proprietary": "引擎 {name} 的環境含專有授權的元件：{components}。TOME 不隨附，是你自己下載到這台機器的，使用時適用原廠的條款。",
     "engine.removed": "已移除引擎 {name}。書裡已經存好的引擎輸出不受影響。",
     "engine.third_party": "引擎 {name} 不是 TOME 隨附的。TOME 會執行它，也擋不住它連網，請自己判斷能不能信任。",
     "extract.done": "解析完成 {pages} 頁：這次跑了 {ran} 頁，沿用 {reused} 頁。",

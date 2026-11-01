@@ -92,6 +92,10 @@ describe('reading engine.yaml', () => {
     expect(readEngineSpec(locateEngine('docling').dir).setup.kind).toBe('uv');
   });
 
+  it('declares the Intel library the Docling environment carries (ADR-0087)', () => {
+    expect(readEngineSpec(locateEngine('docling').dir).license.proprietary).toEqual(['Intel oneMKL']);
+  });
+
   it('says the same licenses in the adapter as in engine.yaml (LC-3)', () => {
     const { dir } = locateEngine('docling');
     const { license } = readEngineSpec(dir);
@@ -265,6 +269,59 @@ describe('adding an engine', () => {
     expect(gpu.findings.at(-2)).toMatchObject({ code: 'engine.added', level: 'info' });
     expect(gpu.findings.at(-1)).toMatchObject({ code: 'engine.gpu_license', level: 'info' });
     expect(exitCodeOf(gpu.findings)).toBe(0);
+  });
+
+  it('names the proprietary components an engine declares, on both builds (ADR-0087)', async () => {
+    const home = workspace();
+    const target = uvEngine({ license: { ...UV_SPEC.license, proprietary: ['Forged Library', 'Forged Runtime'] } });
+    const cpu = await addEngine({ home, target, gpu: false, env: {}, tool: NO_GPU, stream: recorder().stream });
+    expect(cpu.findings.at(-1)).toMatchObject({
+      code: 'engine.proprietary',
+      level: 'info',
+      params: { name: 'uvish', components: 'Forged Library, Forged Runtime' },
+    });
+    expect(exitCodeOf(cpu.findings)).toBe(0);
+
+    const gpu = await addEngine({ home, target, gpu: true, env: {}, tool: NVIDIA, stream: recorder().stream });
+    expect(codes(gpu.findings)).toEqual(['engine.third_party', 'engine.added', 'engine.proprietary', 'engine.gpu_license']);
+  });
+
+  it('says nothing about proprietary components an engine does not declare', async () => {
+    const { findings } = await addEngine({
+      home: workspace(),
+      target: uvEngine(),
+      gpu: false,
+      env: {},
+      tool: NO_GPU,
+      stream: recorder().stream,
+    });
+    expect(codes(findings)).not.toContain('engine.proprietary');
+  });
+
+  it('names them only when something was installed', async () => {
+    const home = workspace();
+    const target = uvEngine({ license: { ...UV_SPEC.license, proprietary: ['Forged Library'] } });
+    const failed = await addEngine({
+      home,
+      target,
+      gpu: false,
+      env: {},
+      tool: NO_GPU,
+      stream: recorder([{ status: 'exited', code: 1, stderr: 'boom' }]).stream,
+    });
+    expect(codes(failed.findings)).not.toContain('engine.proprietary');
+
+    await addEngine({ home, target, gpu: false, env: {}, tool: NO_GPU, stream: recorder().stream });
+    const again = await addEngine({ home, target, gpu: false, env: {}, tool: NO_GPU, stream: recorder().stream });
+    expect(codes(again.findings)).toContain('engine.already_added');
+    expect(codes(again.findings)).not.toContain('engine.proprietary');
+  });
+
+  it('refuses an empty or malformed list of proprietary components', () => {
+    for (const proprietary of [[], [''], [1], 'Forged Library']) {
+      const target = uvEngine({ license: { ...UV_SPEC.license, proprietary } });
+      expect(() => readEngineSpec(target)).toThrow(TomeError);
+    }
   });
 
   it('stays quiet about the CUDA license when the install fails', async () => {

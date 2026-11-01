@@ -43,7 +43,13 @@
       "additionalProperties": false,
       "properties": {
         "code": { "type": "string", "minLength": 1 },
-        "weights": { "type": "string", "minLength": 1 }
+        "weights": { "type": "string", "minLength": 1 },
+        "proprietary": {
+          "description": "Proprietary components the environment carries. TOME names them after an install (ADR-0087).",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
       }
     },
     "spec": {
