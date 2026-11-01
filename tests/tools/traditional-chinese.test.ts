@@ -10,6 +10,7 @@ const SKIPPED = /(^|\/)(package-lock\.json|uv\.lock|LICENSE)$/;
 const EXCEPTIONS: ReadonlyMap<string, string> = new Map([
   ['tests/tools/traditional-chinese.test.ts', '測試樣本本身就是簡體字'],
   ['languages/target/zh-TW.yaml', '翻譯驗證的字表本身就是簡體字，其他欄位由下面的測試檢查'],
+  ['docs/research/2026-11-02-personal-translation-law.md', '保留日文條號與案名原文（ADR-0105）'],
 ]);
 /** U+9FFF 是這個 repo 裡正規表示式範圍的端點，不是文字。 */
 const ALLOWED_HAN = new Set(['鿿']);
