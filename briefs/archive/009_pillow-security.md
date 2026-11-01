@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-01
 type: defect
 wave: 7
@@ -25,7 +25,16 @@ protectedFiles:
   - package.json
   - schemas/**
   - src/**
+integrity: sha256-a59ed0090daa035e201b424e2fd8c0d80f90665e4067c9c744c33bc6ac479107
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-01.**
+> Docling 環境的 pillow、certifi、setuptools 升到修掉安全通報的版本。Pillow 用 override-dependencies 蓋過 Docling 2.140.0 這條相依的限制，Docling 版本不動。
+> Merged in pull request [#17](https://github.com/tome-trpg/tome/pull/17).
+> Recorded at commit `439b7dd`: 6 files changed, +210 −44.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 009 — Docling 環境的安全更新
 
