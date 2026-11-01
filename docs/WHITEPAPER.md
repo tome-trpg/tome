@@ -467,7 +467,7 @@ Docling 環境的 `pillow` 用 `override-dependencies` 蓋過 Docling 2.140.0 �
 
 目標語言只測試與承諾 zh-TW。評測與 QA 的成本會隨語言數相乘，所以 G-2 的目標語言部分只保證「加語言時不必改架構」。
 
-**已實作**：`languages/source/en.yaml`、`languages/target/zh-TW.yaml`，格式是 `tome-lang/1`（`schemas/tome-lang-1.schema.json`），載入在 `src/core/language.ts`（`tests/core/language.test.ts`），隨 npm 包發送（ADR-0084）。欄位是提案。來源設定檔的文字品質資料已接進 `tome probe`；正規化、斷字還原與接段的資料要到組裝步驟才用到；Pass 0 提示到 M3 才加。目標設定檔目前只有資料，風格指南要在 M2 接進提示前由維護者審過，用語檢查表留空，OpenCC 的片語表在 M2 接上。語言代碼只拿來組檔名，有斷言擋下核心依語言代碼分支。
+**已實作**：`languages/source/en.yaml`、`languages/target/zh-TW.yaml`，格式是 `tome-lang/1`（`schemas/tome-lang-1.schema.json`），載入在 `src/core/language.ts`（`tests/core/language.test.ts`），隨 npm 包發送（ADR-0084）。欄位是提案。來源設定檔的文字品質資料已接進 `tome probe`；正規化、斷字還原與接段的資料要到組裝步驟才用到；Pass 0 提示到 M3 才加。目標設定檔的排版規則、長度比例與 `script_check` 已接進驗證，OpenCC 的片語表接進只報告的用語檢查（ADR-0102）。風格指南要在 M2 接進提示前由維護者審過，用語檢查表留空。語言代碼只拿來組檔名，有斷言擋下核心依語言代碼分支。
 
 ### 5.5 輸出：Obsidian vault
 
@@ -505,7 +505,9 @@ vault 可以直接修改（ADR-0012）。`tome sync` 比對上次輸出與目前
 
 本節的原則已定案（ADR-0026、ADR-0029、ADR-0081）。標記名稱與欄位是提案，第一版實作時可以調整。
 
-**已實作**：`document` 層轉翻譯單位、遮蔽與還原、標籤協定（`src/core/units.ts`、`src/core/mask.ts`、`src/core/tags.ts`；`tests/core/units.test.ts`、`tests/core/mask.test.ts`、`tests/core/tags.test.ts`）。遮蔽再還原回到原樣由 fast-check 把關，文字裡有 `<`、`&`、`</s>` 也一樣，書本文字關不掉 `<s>`。下列細節已定案（ADR-0100）：`furniture`、`toc`、`index`、`credits`、`figure` 不產生單位，沒有文字的也不產生；表格的每個儲存格一個單位，用 `block_id` 當群組；重疊時起點較前的優先，同起點取較長的；佔位符編號在單位內從 1 起算。單位目前只在記憶體裡，還不寫 `book.db`，驗證、翻譯記憶與請求組成也還沒有。
+**已實作**：`document` 層轉翻譯單位、遮蔽與還原、標籤協定（`src/core/units.ts`、`src/core/mask.ts`、`src/core/tags.ts`；`tests/core/units.test.ts`、`tests/core/mask.test.ts`、`tests/core/tags.test.ts`）。遮蔽再還原回到原樣由 fast-check 把關，文字裡有 `<`、`&`、`</s>` 也一樣，書本文字關不掉 `<s>`。下列細節已定案（ADR-0100）：`furniture`、`toc`、`index`、`credits`、`figure` 不產生單位，沒有文字的也不產生；表格的每個儲存格一個單位，用 `block_id` 當群組；重疊時起點較前的優先，同起點取較長的；佔位符編號在單位內從 1 起算。
+
+**已實作**：零 token 驗證、譯後自動排版、翻譯記憶、單位寫進 `book.db`（`src/core/verify.ts`、`src/core/format.ts`、`src/core/memory.ts`、`src/core/opencc.ts`、`src/core/units.ts`；`tests/core/verify.test.ts`、`tests/core/format.test.ts`、`tests/core/memory.test.ts`、`tests/core/units.test.ts`）。細節見 ADR-0102。請求組成與 LLM 呼叫都還沒有，所以驗證目前只用得到存下來的回應。
 
 ```mermaid
 flowchart LR
@@ -562,9 +564,11 @@ flowchart LR
 | 機翻腔訊號、長度過長、代名詞與實體卡不符 | 列報告 |
 | 輸出的標題與表格結構跟 IR 不符 | 輸出失敗，這是程式錯誤 |
 
+機翻腔訊號、代名詞與實體卡不符、輸出的標題與表格結構排到 M3（ADR-0102）。混入簡體字沿用 repo 的判定：標準 Big5 以外的漢字，加上 Big5 也收錄的簡體字形，字表是語言資料，鎖定譯名裡的字不算。OpenCC 只用在只報告的用語檢查。數字比原文有沒有都出現，少了重送，譯文多出來的只報告，`three` 譯成 `3` 不是錯。
+
 失敗時只重送失敗的單位並附上原因，預設最多 3 次。到達上限標成 `FAILED_QA`，列入交付報告，輸出時保留原文，MUST NOT 靜默略過。查到的 BabelDOC、PDFMathTranslate v1 都沒有這個保證（[佐證 §1.9](research/2026-10-31-landscape.md#19-標籤協定與佔位符的前例)）。
 
-**譯後自動排版**：不花 token 修標點與空白，包含全形標點、引號改「」、數字與英文的間距。它在還原之前執行，佔位符不受影響，所以 `1D100` 不會被改成 `1 D100`。規則放在目標語言設定檔，這類問題不用重送 LLM。
+**譯後自動排版**：不花 token 修標點與空白，包含全形標點、引號改「」、數字與英文的間距。它在還原之前執行，佔位符不受影響，所以 `1D100` 不會被改成 `1 D100`。規則放在目標語言設定檔，這類問題不用重送 LLM。網址整段不動，緊接在數字後面的 `"` 是英寸記號，不算引號（ADR-0102）。
 
 **實體卡與 Pass 0**（S-5）
 
@@ -831,10 +835,14 @@ stateDiagram-v2
     RECEIVED --> REFUSED: 拒答
     REFUSED --> QUEUED: 回退或人工要求重試
     FAILED_QA --> QUEUED: 人工要求重試
-    DONE --> STALE: 譯名或規則變動
+    FAILED_QA --> STALE: 重跑驗證
+    DONE --> STALE: 譯名或規則變動，或重跑驗證
     STALE --> DONE: 改譯名替換或重跑驗證後通過
     STALE --> QUEUED
+    STALE --> FAILED_QA: 重跑驗證失敗且已到上限
 ```
+
+**已實作**：`src/core/state.ts`（`tests/core/state.test.ts`），用 fast-check 做 model-based 測試，重試上限是常數 3。`tome verify` 重跑驗證時一律先進 `STALE`，不動 `attempts`（ADR-0102）。
 
 不需要 LLM 的單位包括遮蔽後不含字母的單位，以及整塊對上的數值塊。
 
@@ -844,7 +852,7 @@ stateDiagram-v2
 
 ### 6.3 工作區
 
-**已實作**：`tome init` 與路徑檢查（`src/core/workspace.ts`、`src/core/path-guard.ts`；`tests/core/workspace.test.ts`、`tests/core/path-guard.test.ts`），資料存取層與遷移（`src/core/store.ts`；`tests/core/store.test.ts`）。檢查會解開 junction 與 symlink。`tome.yaml` 第一行是 `schema: tome-workspace/1`（ADR-0082），選填的 `target_lang` 是目標語言，預設 `zh-TW`（ADR-0100）。`book.yaml` 的格式是 `tome-book/1`（`schemas/tome-book-1.schema.json`），欄位是提案。`book.db` 目前有 `tome_meta` 與 `stage`，`series.db` 只有 `tome_meta`，下面其他的表到各階段才加。`engines/` 底下每個引擎一個資料夾，放轉接器、環境與權重；`ir/source/` 依 PDF 雜湊、引擎、版本、設定雜湊分資料夾，雜湊取前 16 個字元，路徑才不會超過 Windows 的 260 字元（ADR-0085）。
+**已實作**：`tome init` 與路徑檢查（`src/core/workspace.ts`、`src/core/path-guard.ts`；`tests/core/workspace.test.ts`、`tests/core/path-guard.test.ts`），資料存取層與遷移（`src/core/store.ts`；`tests/core/store.test.ts`）。檢查會解開 junction 與 symlink。`tome.yaml` 第一行是 `schema: tome-workspace/1`（ADR-0082），選填的 `target_lang` 是目標語言，預設 `zh-TW`（ADR-0100）。`book.yaml` 的格式是 `tome-book/1`（`schemas/tome-book-1.schema.json`），欄位是提案。`book.db` 目前有 `tome_meta`、`stage`、`unit`、`response`、`issue`，`series.db` 有 `tome_meta` 與翻譯記憶的 `memory`，下面其他的表到各階段才加（ADR-0102）。`engines/` 底下每個引擎一個資料夾，放轉接器、環境與權重；`ir/source/` 依 PDF 雜湊、引擎、版本、設定雜湊分資料夾，雜湊取前 16 個字元，路徑才不會超過 Windows 的 260 字元（ADR-0085）。
 
 正式支援 Windows 與 Linux，macOS 盡力而為，不測試（ADR-0081）。預設位置是機器本地目錄：Windows 是 `%LOCALAPPDATA%\tome`，Linux 是 `~/.local/share/tome`，macOS 是 `~/Library/Application Support/tome`，可以用 `TOME_HOME` 改。`tome init` MUST 拒絕 git repo 內的路徑，偵測到 OneDrive、Dropbox 這類同步資料夾時要警告，否則譯文與書的片段會被傳上雲端（G-5）。這讓 G-5 成為結構，而不只靠 `.gitignore`。Obsidian vault 用 `tome.yaml` 的 `vault_path` 指定，同樣要過這項檢查。
 
@@ -913,7 +921,7 @@ tome backup|purge <book>               備份與刪除
 
 `tome assemble` 偵測到未回收的 vault 修改就拒絕輸出，列出檔案，要求先跑 `tome sync`，人工譯文不會被覆蓋。
 
-**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。其他指令還沒有。
+**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。`tome verify <書>` 也已實作（`tests/cli/verify.test.ts`），全部通過回 0，有失敗回 1（ADR-0102）。其他指令還沒有。
 
 ---
 
@@ -1204,6 +1212,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0099](adr/0099-m2-translation-core-decisions.md) | M2 翻譯核心的選型與範圍 | M2 |
 | [ADR-0100](adr/0100-units-and-masking-decisions.md) | 單位與遮蔽的細節 | M2 |
 | [ADR-0101](adr/0101-engine-exit-status.md) | 回報引擎的結束狀態 | M2 |
+| [ADR-0102](adr/0102-verify-and-memory-decisions.md) | 驗證與翻譯記憶的細節 | M2 |
 
 ---
 
@@ -1357,6 +1366,11 @@ M2 已實作的項目：
 | 遮蔽與還原 | `src/core/mask.ts` | `tests/core/mask.test.ts` |
 | 標籤協定 | `src/core/tags.ts` | `tests/core/tags.test.ts` |
 | `tome probe` 建議規則包 | `src/core/pack.ts`、`src/core/book.ts` | `tests/core/pack.test.ts`、`tests/core/book.test.ts`、`tests/perf/probe-budget.test.ts` |
+| 零 token 驗證、`tome verify` | `src/core/verify.ts` | `tests/core/verify.test.ts`、`tests/cli/verify.test.ts` |
+| 譯後自動排版 | `src/core/format.ts` | `tests/core/format.test.ts` |
+| 簡體與用語檢查 | `src/core/language.ts`、`src/core/opencc.ts` | `tests/core/verify.test.ts`、`tests/tools/traditional-chinese.test.ts` |
+| 翻譯記憶 | `src/core/memory.ts` | `tests/core/memory.test.ts` |
+| 單位狀態機 | `src/core/state.ts`、`src/core/units.ts` | `tests/core/state.test.ts`、`tests/core/units.test.ts` |
 
 M1 已實作的項目：
 

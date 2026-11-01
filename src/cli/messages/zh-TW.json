@@ -1,5 +1,5 @@
 {
-  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   將 API 金鑰存入作業系統憑證庫\n  add <pdf>                    加入書籍並執行探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <名稱>                 探測文件結構與頁面類型\n  extract <名稱>               以解析引擎解析書籍頁面\n  engine add <名稱或路徑>      安裝解析引擎，加上 --gpu 則安裝 CUDA 版\n  engine list                  列出已安裝的解析引擎\n  engine remove <名稱>         移除解析引擎\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加上 --public 則一併檢查公開規則包的要求\n  system test <ID 或路徑>      執行規則包的測試案例，不消耗 token\n\n選項：\n  --json     以 JSON 格式輸出\n  --help     顯示本說明\n  --version  顯示版本\n",
+  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   將 API 金鑰存入作業系統憑證庫\n  add <pdf>                    加入書籍並執行探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <名稱>                 探測文件結構與頁面類型\n  extract <名稱>               以解析引擎解析書籍頁面\n  verify <名稱>                以已儲存的回應重新驗證譯文，不消耗 token\n  engine add <名稱或路徑>      安裝解析引擎，加上 --gpu 則安裝 CUDA 版\n  engine list                  列出已安裝的解析引擎\n  engine remove <名稱>         移除解析引擎\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加上 --public 則一併檢查公開規則包的要求\n  system test <ID 或路徑>      執行規則包的測試案例，不消耗 token\n\n選項：\n  --json     以 JSON 格式輸出\n  --help     顯示本說明\n  --version  顯示版本\n",
   "prompt": {
     "secret": "請輸入 {provider} 的 API 金鑰（輸入內容不會顯示）："
   },
@@ -120,6 +120,9 @@
     "uv.ok": "uv 版本 {version}。",
     "vault.in_git_repo": "vault 路徑 {path} 位於 git 儲存庫 {repo} 內。譯文不得進入儲存庫，請改用其他位置。",
     "vault.sync_folder": "vault 路徑 {path} 位於 {provider} 同步資料夾內，譯文會上傳至雲端。建議將 tome.yaml 的 vault_path 改為本機資料夾。",
+    "verify.done": "已重新驗證 {checked} 個翻譯單位，全部通過。",
+    "verify.failed": "已重新驗證 {checked} 個翻譯單位：{passed} 個通過，{failed} 個未通過，其中 {gave_up} 個已達重試上限。",
+    "verify.nothing": "沒有可重新驗證的回應。",
     "workspace.already_exists": "工作區已存在：{path}。未變更任何檔案。",
     "workspace.created": "工作區已建立：{path}。",
     "workspace.in_git_repo": "工作區路徑 {path} 位於 git 儲存庫 {repo} 內。書籍片段與譯文不得進入儲存庫，請以環境變數 TOME_HOME 指定其他位置。",

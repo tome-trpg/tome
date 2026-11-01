@@ -11,6 +11,8 @@ export type Segment =
 export interface ParsedUnit {
   readonly id: string;
   readonly segments: readonly Segment[];
+  /** 回應裡這個 `<s>...</s>` 的原文。存進資料庫，驗證規則改了可以重新解析。 */
+  readonly raw: string;
 }
 
 export type TagIssueCode =
@@ -38,6 +40,8 @@ interface Frame {
   /** `s`、`pc` 的 `id`，`new-term` 的 `source`，`flag` 的 `reason`。缺了就是 undefined。 */
   readonly value: string | undefined;
   readonly segments: Segment[];
+  /** 開始標籤在回應裡的位置。 */
+  readonly start: number;
 }
 
 const REQUIRED_ATTRIBUTE: Readonly<Record<ContainerName | 'ph', string>> = {
@@ -122,9 +126,9 @@ class ReplyParser {
       index = TAG.lastIndex;
       const [, slash, name = '', attributes = '', selfClosing] = match;
       if (name !== 'ph' && !isContainer(name)) this.#report('unknown_tag');
-      else if (slash === '/') this.#close(name);
+      else if (slash === '/') this.#close(name, index);
       else if (name === 'ph') this.#placeholder(attributes, selfClosing === '/');
-      else this.#open(name, attributes, selfClosing === '/');
+      else this.#open(name, attributes, selfClosing === '/', next);
     }
     // 沒收尾的單位不算數，驗證會當成缺單位。
     while (this.#stack.length > 0) {
@@ -155,7 +159,7 @@ class ReplyParser {
     else top.segments.push({ type: 'ph', id });
   }
 
-  #open(name: ContainerName, attributes: string, selfClosing: boolean): void {
+  #open(name: ContainerName, attributes: string, selfClosing: boolean, start: number): void {
     // `<s>` 只能在最外層，其他標籤只能在 `<s>` 裡。
     const inUnit = this.#stack.length > 0;
     if (selfClosing || (name === 's') === inUnit) {
@@ -164,10 +168,10 @@ class ReplyParser {
     }
     const value = attributeOf(attributes, REQUIRED_ATTRIBUTE[name]);
     if (value === undefined) this.#report('missing_attribute');
-    this.#stack.push({ name, value, segments: [] });
+    this.#stack.push({ name, value, segments: [], start });
   }
 
-  #close(name: string): void {
+  #close(name: string, end: number): void {
     const frame = this.#stack.at(-1);
     if (frame?.name !== name) {
       this.#report('unbalanced_tag');
@@ -177,7 +181,9 @@ class ReplyParser {
     const { value = '', segments: children } = frame;
     const parent = this.#stack.at(-1);
     if (parent === undefined) {
-      if (frame.value !== undefined) this.#units.push({ id: value, segments: children });
+      if (frame.value !== undefined) {
+        this.#units.push({ id: value, segments: children, raw: this.#reply.slice(frame.start, end) });
+      }
     } else if (frame.name === 'pc') {
       parent.segments.push({ type: 'pc', id: value, children });
     } else if (frame.name === 'new-term') {

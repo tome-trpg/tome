@@ -1,28 +1,20 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { loadTargetLanguage, scriptViolations } from '../../src/core/language.ts';
 
-// 受版控的文字檔不得有簡體字（ADR-0086）。標準 Big5 收的是繁體用字，大多數簡體字形不在裡面，
-// 所以不用自己維護完整字表。少數簡體字形 Big5 也有，另外列在 SIMPLIFIED_IN_BIG5。
+// 受版控的文字檔不得有簡體字（ADR-0086）。字表是語言資料，跟翻譯的驗證共用同一份（ADR-0102）。
 
 const SKIPPED = /(^|\/)(package-lock\.json|uv\.lock|LICENSE)$/;
 /** 刻意收錄簡體字的路徑與理由。 */
 const EXCEPTIONS: ReadonlyMap<string, string> = new Map([
-  ['tests/tools/traditional-chinese.test.ts', '字表與測試樣本本身就是簡體字'],
+  ['tests/tools/traditional-chinese.test.ts', '測試樣本本身就是簡體字'],
+  ['languages/target/zh-TW.yaml', '翻譯驗證的字表本身就是簡體字，其他欄位由下面的測試檢查'],
 ]);
-/** U+9FFF 是正規表示式範圍的端點，不是文字。 */
+/** U+9FFF 是這個 repo 裡正規表示式範圍的端點，不是文字。 */
 const ALLOWED_HAN = new Set(['鿿']);
 
-/**
- * Big5 也收錄的簡體字形。台、准、划、岩、症 這類在繁體也常用的字不列。
- * 字表取自 Windows 的繁簡對照，再加上對照表不轉換的 后、于、并、云、叶。
- */
-const SIMPLIFIED_IN_BIG5 =
-  /[儿几扑虫听坏厂万与气宁优价异忏机网体吨怀扰岭怜构极泞肮虮复洁种胜苹党茧蚕赶适惊据痒离确腊触蜡篱后于并云叶]/gu;
-/** 這些詞在繁體也這樣寫。 */
-const TRADITIONAL_WORDS = /皇后|王后|太后|茶几|云云/gu;
-/** 准 本身是繁體用字，這些詞才是誤用。 */
-const MISUSED_WORDS = /標准|水准|基准|准備|准確/gu;
+const { profile } = loadTargetLanguage('zh-TW');
 
 const MAINLAND_TERMS =
   /默認|軟件|硬件|信息|文檔|網絡|服務器|視頻|鏈接|內存|用戶|字符串|屏幕|菜單|博客|正則/gu;
@@ -36,32 +28,8 @@ const USER_DOCUMENTS = [
   'src/cli/messages/zh-TW.json',
 ];
 
-function standardBig5(): Set<string> {
-  const decoder = new TextDecoder('big5');
-  const trails = [...Array(0xff).keys()].filter(
-    (byte) => (byte >= 0x40 && byte <= 0x7e) || (byte >= 0xa1 && byte <= 0xfe),
-  );
-  const characters = new Set<string>();
-  for (let lead = 0xa4; lead <= 0xf9; lead += 1) {
-    // 0xC7、0xC8 是保留區，不是標準 Big5。
-    if (lead === 0xc7 || lead === 0xc8) continue;
-    for (const trail of trails) {
-      const character = decoder.decode(new Uint8Array([lead, trail]));
-      if (/^\p{Script=Han}$/u.test(character)) characters.add(character);
-    }
-  }
-  return characters;
-}
-
-const BIG5 = standardBig5();
-
 function simplifiedIn(text: string): string[] {
-  const outside = [...text.matchAll(/\p{Script=Han}/gu)]
-    .map(([character]) => character)
-    .filter((character) => !BIG5.has(character) && !ALLOWED_HAN.has(character));
-  const shared = text.replace(TRADITIONAL_WORDS, '').match(SIMPLIFIED_IN_BIG5) ?? [];
-  const misused = text.match(MISUSED_WORDS) ?? [];
-  return [...new Set([...outside, ...shared, ...misused])];
+  return scriptViolations(profile.script_check, text).filter((character) => !ALLOWED_HAN.has(character));
 }
 
 function trackedTextFiles(): string[] {
@@ -79,6 +47,11 @@ describe('simplified Chinese', () => {
 
   it('leaves Traditional Chinese alone', () => {
     expect(simplifiedIn('臺灣的皇后、核准與不划算，祂都看過')).toEqual([]);
+  });
+
+  it('is absent from the rest of the language profile, which is excepted for its word list', () => {
+    const { script_check: _list, ...rest } = profile;
+    expect(simplifiedIn(JSON.stringify(rest))).toEqual([]);
   });
 
   it('is absent from every tracked text file', () => {

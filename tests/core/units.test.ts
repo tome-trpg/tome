@@ -3,10 +3,11 @@ import { dirname, join } from 'node:path';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import type { DocumentBlock, IrDocument } from '../../src/core/ir.ts';
-import { restoreSegments } from '../../src/core/mask.ts';
+import { maskText, restoreSegments } from '../../src/core/mask.ts';
 import { findPack, resolvePack, type ResolvedPack } from '../../src/core/pack.ts';
+import { openBookStore, type Store } from '../../src/core/store.ts';
 import { parseUnits, unitTag } from '../../src/core/tags.ts';
-import { buildUnits } from '../../src/core/units.ts';
+import { buildUnits, syncUnits, type TranslationUnit } from '../../src/core/units.ts';
 import { tempDir } from '../helpers.ts';
 
 // 文字都是這裡編的。
@@ -248,6 +249,93 @@ describe('keep_source terms (ADR-0100)', () => {
     const blocks = [block({ id: 'p0000-aaaaaa', text: 'The Glyph' })];
     const { units } = await buildUnits(documentOf(blocks), pack as ResolvedPack, 'en');
     expect(units[0]?.placeholders).toEqual([]);
+  });
+});
+
+describe('syncUnits (ADR-0102)', () => {
+  interface Row {
+    unit_id: string;
+    seq: number;
+    state: string;
+    attempts: number;
+    translation: string | null;
+    group_id: string | null;
+    section: string | null;
+    placeholders: string;
+  }
+
+  function store(): Store {
+    return openBookStore(join(tempDir(), 'home'), 'book');
+  }
+
+  function unit(unit_id: string, source = 'Some text.', extra: Partial<TranslationUnit> = {}): TranslationUnit {
+    return { unit_id, block_id: unit_id, role: 'paragraph', source, ...maskText(source, []), ...extra };
+  }
+
+  function rows(database: Store): Row[] {
+    return database.all<Row>('SELECT * FROM unit ORDER BY seq');
+  }
+
+  it('starts units at PENDING, in reading order', () => {
+    const database = store();
+    syncUnits(database, [unit('b'), unit('a')]);
+    expect(rows(database).map(({ unit_id, seq, state }) => [unit_id, seq, state])).toEqual([
+      ['b', 0, 'PENDING'],
+      ['a', 1, 'PENDING'],
+    ]);
+    database.close();
+  });
+
+  it('marks a unit that needs no LLM as done, and keeps its text', () => {
+    const database = store();
+    syncUnits(database, [unit('a', '12')]);
+    expect(rows(database)[0]).toMatchObject({ state: 'DONE', translation: '12' });
+    database.close();
+  });
+
+  it('stores the group, the section and the placeholders', () => {
+    const database = store();
+    const hidden = { ...maskText('Roll 1D6 now.', [{ start: 5, end: 8, kind: 'dice' }]) };
+    syncUnits(database, [unit('a', 'Roll 1D6 now.', { ...hidden, group: 'g', section: ['One'] })]);
+    const [row] = rows(database);
+    expect(row).toMatchObject({ group_id: 'g', section: '["One"]' });
+    expect(JSON.parse(row?.placeholders ?? '')).toEqual([{ id: 1, kind: 'dice', text: '1D6' }]);
+    database.close();
+  });
+
+  it('keeps the state of a unit whose masked text did not change', () => {
+    const database = store();
+    syncUnits(database, [unit('a')]);
+    database.run("UPDATE unit SET state = 'DONE', attempts = 2, translation = '譯文'");
+    syncUnits(database, [unit('new'), unit('a')]);
+    expect(rows(database).find(({ unit_id }) => unit_id === 'a')).toMatchObject({
+      seq: 1,
+      state: 'DONE',
+      attempts: 2,
+      translation: '譯文',
+    });
+    database.close();
+  });
+
+  it('starts over when the masked text changed', () => {
+    const database = store();
+    syncUnits(database, [unit('a')]);
+    database.run("UPDATE unit SET state = 'DONE', attempts = 2, translation = '譯文'");
+    syncUnits(database, [unit('a', 'Other text.')]);
+    expect(rows(database)[0]).toMatchObject({ state: 'PENDING', attempts: 0, translation: null });
+    database.close();
+  });
+
+  it('deletes units the document no longer has, and keeps their responses', () => {
+    const database = store();
+    syncUnits(database, [unit('a'), unit('b')]);
+    database.run(
+      "INSERT INTO response (unit_id, attempt, text, model, created_at) VALUES ('b', 1, 'x', 'm', 't')",
+    );
+    syncUnits(database, [unit('a')]);
+    expect(rows(database).map(({ unit_id }) => unit_id)).toEqual(['a']);
+    expect(database.all('SELECT id FROM response')).toHaveLength(1);
+    database.close();
   });
 });
 

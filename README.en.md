@@ -41,6 +41,7 @@ The following features are design goals. See [Development status](#development-s
 | Rule pack management | `tome system new`, `list`, `lint`, `test` | Implemented, with the built-in `generic` pack |
 | Parsing engine management | `tome engine add`, `list`, `remove` | Implemented |
 | Page parsing | `tome extract` | Implemented: native text pages are handed to a parsing engine, assembled into a document, and checked for lost characters |
+| Translation re-verification | `tome verify` | Implemented; there is nothing to verify until translation is available |
 | Translation and output | Not available | Planned |
 
 ## Out of scope

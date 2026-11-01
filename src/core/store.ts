@@ -40,8 +40,64 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
         ) STRICT;
       `,
     },
+    {
+      // 翻譯單位、原始回應與交付報告的項目（ADR-0102）。回應不綁單位：單位會隨 document 層刪除。
+      version: 3,
+      sql: `
+        CREATE TABLE unit (
+          unit_id TEXT PRIMARY KEY,
+          block_id TEXT NOT NULL,
+          role TEXT NOT NULL,
+          group_id TEXT,
+          section TEXT,
+          seq INTEGER NOT NULL,
+          source TEXT NOT NULL,
+          masked TEXT NOT NULL,
+          placeholders TEXT NOT NULL,
+          state TEXT NOT NULL,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          translation TEXT
+        ) STRICT;
+        CREATE TABLE response (
+          id INTEGER PRIMARY KEY,
+          unit_id TEXT NOT NULL,
+          attempt INTEGER NOT NULL,
+          text TEXT NOT NULL,
+          model TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        ) STRICT;
+        CREATE INDEX response_unit ON response (unit_id, id);
+        CREATE TABLE issue (
+          id INTEGER PRIMARY KEY,
+          unit_id TEXT NOT NULL,
+          code TEXT NOT NULL,
+          level TEXT NOT NULL,
+          detail TEXT,
+          created_at TEXT NOT NULL
+        ) STRICT;
+        CREATE INDEX issue_unit ON issue (unit_id);
+      `,
+    },
   ],
-  series: [{ version: 1, sql: metaTable('series') }],
+  series: [
+    { version: 1, sql: metaTable('series') },
+    {
+      // 翻譯記憶。模型不在鍵裡，存成中繼資料（ADR-0102）。
+      version: 2,
+      sql: `
+        CREATE TABLE memory (
+          key TEXT PRIMARY KEY,
+          fragment TEXT NOT NULL,
+          model TEXT NOT NULL,
+          prompt_hash TEXT NOT NULL,
+          pack_hash TEXT NOT NULL,
+          sdk_version TEXT NOT NULL,
+          book TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        ) STRICT;
+      `,
+    },
+  ],
 };
 
 export interface Store {

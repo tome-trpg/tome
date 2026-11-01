@@ -3,6 +3,8 @@ import type { DocumentBlock, IrDocument } from './ir.ts';
 import { findTerm, maskText, type MaskRange, type Placeholder } from './mask.ts';
 import { patternInputs, termsFor, type LocalizedTerm, type ResolvedPack } from './pack.ts';
 import { runPatterns } from './patterns.ts';
+import { nextState, type UnitState } from './state.ts';
+import type { Store } from './store.ts';
 
 // document 層轉翻譯單位（白皮書 §5.2、§5.6、ADR-0100）。單位是段落，表格是每個儲存格。
 
@@ -84,4 +86,61 @@ export async function buildUnits(
     return { ...source, ...maskText(source.source, [...patternRanges, ...termRanges(terms, source)]) };
   });
   return { units, findings: [] };
+}
+
+const INITIAL_STATE: UnitState = 'PENDING';
+
+function insertUnit(store: Store, unit: TranslationUnit, seq: number): void {
+  // 不需要 LLM 的單位原樣輸出（ADR-0100）。
+  const state = unit.needs_llm ? INITIAL_STATE : nextState(INITIAL_STATE, 'hit');
+  store.run(
+    `INSERT OR REPLACE INTO unit
+       (unit_id, block_id, role, group_id, section, seq, source, masked, placeholders, state, attempts, translation)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+    unit.unit_id,
+    unit.block_id,
+    unit.role,
+    unit.group ?? null,
+    unit.section === undefined ? null : JSON.stringify(unit.section),
+    seq,
+    unit.source,
+    unit.masked,
+    JSON.stringify(unit.placeholders),
+    state,
+    unit.needs_llm ? null : unit.source,
+  );
+}
+
+function moveUnit(store: Store, unit: TranslationUnit, seq: number): void {
+  store.run(
+    'UPDATE unit SET block_id = ?, role = ?, group_id = ?, section = ?, seq = ? WHERE unit_id = ?',
+    unit.block_id,
+    unit.role,
+    unit.group ?? null,
+    unit.section === undefined ? null : JSON.stringify(unit.section),
+    seq,
+    unit.unit_id,
+  );
+}
+
+/**
+ * 把單位寫進 `book.db`（ADR-0102）。同一個 `unit_id` 且遮蔽後文字相同就保留狀態，
+ * 文字變了回到起點，`document` 裡沒有的單位刪除，回應保留。
+ */
+export function syncUnits(store: Store, units: readonly TranslationUnit[]): void {
+  store.transaction(() => {
+    const known = new Map(
+      store
+        .all<{ unit_id: string; masked: string }>('SELECT unit_id, masked FROM unit')
+        .map(({ unit_id, masked }) => [unit_id, masked]),
+    );
+    const current = new Set(units.map(({ unit_id }) => unit_id));
+    for (const id of known.keys()) {
+      if (!current.has(id)) store.run('DELETE FROM unit WHERE unit_id = ?', id);
+    }
+    units.forEach((unit, seq) => {
+      if (known.get(unit.unit_id) === unit.masked) moveUnit(store, unit, seq);
+      else insertUnit(store, unit, seq);
+    });
+  });
 }
