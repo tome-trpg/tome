@@ -54,7 +54,7 @@ protectedFiles:
 ## Invariants
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run build`、`npm run licenses` 在本機都通過
-- [ ] `specs`、`test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
+- [x] `specs`、`test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
 - [x] `src/` 沒有寫死 Intel，提示只來自 `engine.yaml` 的宣告
 - [x] 沒有宣告的引擎裝完不提示，有測試看過
 
