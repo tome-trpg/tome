@@ -164,7 +164,7 @@ LC-1 有一個明文例外：`@napi-rs/keyring` 的 Linux 二進位檔靜態連�
 | Trail of Cthulhu | 無 | GUMSHOE SRD 不涵蓋；商標未授權 |
 | Achtung! Cthulhu | 未找到 | 社群計畫排除軟體，授權層排除生成式 AI 內容 |
 
-遊戲機制與單一術語本身不受著作權保護（美國 17 USC 102(b)、台灣 §10-1），所以問題主要不在著作權，而在商標、出版社政策與彼此的關係。這是判斷，不是法律意見。ADR-0001 已定案：公開 repo 只附開放授權的規則包。
+遊戲機制與單一術語本身不受著作權保護（美國 17 USC 102(b)、台灣 §10-1），所以問題主要不在著作權，而在商標、出版社政策與彼此的關係。這是判斷，不是法律意見。ADR-0001 已定案：公開 repo 只附開放授權的規則包。使用者為自己翻譯在十三個法域的評價，比較見[查證紀錄](research/2026-11-02-personal-translation-law.md)：沒有判決或主管機關見解直接處理這個情境，0.1.0 發佈前要請著作權律師審查（ADR-0105）。
 
 | ID | 限制 | 成熟度 |
 | :--- | :--- | :--- |
@@ -1220,6 +1220,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0101](adr/0101-engine-exit-status.md) | 回報引擎的結束狀態 | M2 |
 | [ADR-0102](adr/0102-verify-and-memory-decisions.md) | 驗證與翻譯記憶的細節 | M2 |
 | [ADR-0103](adr/0103-cost-and-requests-decisions.md) | 成本與請求的細節 | M2 |
+| [ADR-0105](adr/0105-legal-review-before-release.md) | 0.1.0 發佈前請著作權律師審查 | M2 |
 
 ---
 
@@ -1360,7 +1361,7 @@ Gemini 顯式快取也算過：Flash-Lite 上 8k 前綴省下約 0.13，但排�
 | M1 解析 | `tome add`、`probe`、`extract`、Docling 引擎、document 層、字元守恆、合成 PDF、語言設定檔、`tome system new`、`list`、`lint`、`test` | PDF 能變成乾淨的 IR |
 | M2 翻譯核心 | `generic` 規則包、遮蔽、標籤、驗證、翻譯記憶、預算、估價、Batch、即時模式、假供應商、`--dry-run`、費用帳本、`tome preview`、`tome status`、變異測試 | 接 Anthropic 翻出一章 |
 | M3 譯名與輸出 | Pass 0、審定、`tome glossary import`、數值塊欄位化、vault、`tome sync`、`tome run`、交付報告、一致性報告、`tome purge`、`tome backup` | 能帶團閱讀的成品 |
-| M4 首版 | `d100-orc`、試翻校準、盲評、發佈流程 | Q-1 到 Q-8 達標，發佈 0.1.0 |
+| M4 首版 | `d100-orc`、試翻校準、盲評、發佈流程、著作權律師審查（ADR-0105） | Q-1 到 Q-8 達標，發佈 0.1.0 |
 
 **目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。目前在 M2，回合與範圍見 ADR-0099，還不能翻譯。
 
