@@ -58,7 +58,7 @@ protectedFiles:
 - [x] 新的測試先在舊行為上失敗過
 - [x] 改到 `src/core/extract.ts` 的提交，推送前在本機真的跑過 `tests/engine`
 - [x] `specs`、`test`、`engine` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示。`Analyze` 工作成功只代表掃描跑完
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示。`Analyze` 工作成功只代表掃描跑完
 - [x] 訊息與 `--json` 只有規則包 ID 與數字，不含書本文字
 - [x] 核心沒有寫死語言或遊戲概念
 
