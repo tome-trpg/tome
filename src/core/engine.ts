@@ -39,7 +39,11 @@ export interface EngineSpec {
   readonly name: string;
   readonly pages: readonly PageKind[];
   readonly command: readonly string[];
-  readonly license: { readonly code: string; readonly weights: string };
+  readonly license: {
+    readonly code: string;
+    readonly weights: string;
+    readonly proprietary?: readonly string[];
+  };
   readonly setup: {
     readonly kind: 'uv' | 'none';
     readonly extras?: { readonly cpu: string; readonly gpu?: string };
@@ -398,9 +402,16 @@ export async function addEngine(options: AddEngineOptions): Promise<AddEngineRes
     code: spec.license.code,
     weights: spec.license.weights,
   });
-  // CUDA 版比照 LC-2：使用者自行下載，TOME 不隨附，所以裝完要說清楚（ADR-0085）。
-  const notice = install.device === 'gpu' ? [finding('engine.gpu_license', 'info')] : [];
-  return { engine: install, findings: [...findings, added, ...notice] };
+  // 環境是使用者自行下載的，TOME 不隨附，所以裝完要說清楚。核心不認得廠商，
+  // 專有元件由引擎宣告（ADR-0086）；CUDA 版比照 LC-2（ADR-0085）。
+  const { proprietary } = spec.license;
+  const notices = [
+    ...(proprietary === undefined
+      ? []
+      : [finding('engine.proprietary', 'info', { name: spec.name, components: proprietary.join(', ') })]),
+    ...(install.device === 'gpu' ? [finding('engine.gpu_license', 'info')] : []),
+  ];
+  return { engine: install, findings: [...findings, added, ...notices] };
 }
 
 export function removeEngine(home: string, name: string): Finding[] {

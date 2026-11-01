@@ -16,7 +16,7 @@
 - 語言設定檔 `languages/source/en.yaml`、`languages/target/zh-TW.yaml`，格式是 `tome-lang/1`。
 - `tome system new`、`list`、`lint`、`test`，規則包的正則在 worker thread 裡限時執行。
 - `tome probe` 用來源語言的字母分布抓出字元合法但對應錯的文字層。
-- 解析引擎協定 `tome-engine/1`，以及 `tome engine add`、`list`、`remove`。`tome engine add docling` 用 uv 建環境，預設 CPU 版，加 `--gpu` 裝 CUDA 版，裝完會提示 CUDA 元件是 NVIDIA 專有授權，TOME 不隨附。
+- 解析引擎協定 `tome-engine/1`，以及 `tome engine add`、`list`、`remove`。`tome engine add docling` 用 uv 建環境，預設 CPU 版，加 `--gpu` 裝 CUDA 版，裝完會提示 CUDA 元件是 NVIDIA 專有授權，TOME 不隨附。環境裡其他的專有元件由引擎在 `engine.yaml` 的 `license.proprietary` 宣告，裝完一樣提示，Docling 宣告 Intel oneMKL。
 - `tome extract` 把原生文字頁交給引擎，存成 `source` 層，中斷後從沒做完的頁接著做。組裝與字元守恆還沒做。
 - `tome probe` 記下每頁要交給哪個引擎，`tome doctor` 檢查引擎啟動得了。
 

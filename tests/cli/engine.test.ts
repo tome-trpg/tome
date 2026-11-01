@@ -70,7 +70,7 @@ describe('tome engine', () => {
         name: 'uvish',
         pages: ['native'],
         command: ['python', 'main.py'],
-        license: { code: 'MIT', weights: 'none' },
+        license: { code: 'MIT', weights: 'none', proprietary: ['Forged Library'] },
         setup: { kind: 'uv', extras: { cpu: 'cpu', gpu: 'gpu' } },
       }),
     );
@@ -83,6 +83,7 @@ describe('tome engine', () => {
     expect(added.stdout()).toContain('uvish 9.9.9（gpu）');
     expect(added.stdout()).toContain('NVIDIA 專有授權');
     expect(added.stdout()).toContain('TOME 不隨附');
+    expect(added.stdout()).toContain('專有授權的元件：Forged Library');
   });
 
   it('shows up in tome doctor', async () => {

@@ -19,6 +19,7 @@ export const FINDING_CODES = [
   'engine.none',
   'engine.not_installed',
   'engine.ok',
+  'engine.proprietary',
   'engine.removed',
   'engine.third_party',
   'extract.done',
