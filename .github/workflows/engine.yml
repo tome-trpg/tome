@@ -1,6 +1,7 @@
 # 真的裝 Docling 跑合成 PDF（docs/adr/0064-engine-ci.md、docs/adr/0085-engine-protocol-decisions.md、
-# docs/adr/0096-engine-workflow-covers-its-tests.md）。
-# 要下載大型相依與權重，所以只在改到 engines/、tests/engine/ 或手動時才跑，平常的 CI 用錄好的輸出。
+# docs/adr/0096-engine-workflow-covers-its-tests.md、docs/adr/0097-engine-workflow-covers-the-core.md）。
+# 要下載大型相依與權重，所以只在改到 engines/、tests/engine/、引擎核心與 schema，或手動時才跑，
+# 平常的 CI 用錄好的輸出。
 # 有路徑過濾的工作流程不能設成必要檢查，不跑的時候 PR 會一直等它。
 name: engine
 
@@ -10,11 +11,17 @@ on:
     paths:
       - 'engines/**'
       - 'tests/engine/**'
+      - 'src/core/engine.ts'
+      - 'src/core/extract.ts'
+      - 'schemas/tome-engine-1.schema.json'
       - '.github/workflows/engine.yml'
   pull_request:
     paths:
       - 'engines/**'
       - 'tests/engine/**'
+      - 'src/core/engine.ts'
+      - 'src/core/extract.ts'
+      - 'schemas/tome-engine-1.schema.json'
       - '.github/workflows/engine.yml'
   workflow_dispatch:
 
