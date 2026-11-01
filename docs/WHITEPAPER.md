@@ -411,6 +411,8 @@ Docling 轉接器的輸出經合成 PDF 驗過（`tests/engine/docling.test.ts`�
 | 30 頁雙欄文字 | CPU 版 61 秒，CUDA 版 45 秒，都含啟動 |
 | 12 頁、每頁 3 個表格 | CPU 版 170 秒，CUDA 版 69 秒，都含啟動 |
 
+同一份合成 PDF，Windows 與 Ubuntu 的文字相同，但第 2 頁的圖說在 Ubuntu 判成 `paragraph`，原因**還沒查**。角色是模型的判斷，不是轉接器的契約，組裝時不能把它當成跨平台不變的事實。
+
 ### 5.4 語言設定檔
 
 來源語言與目標語言都是資料檔，引擎核心 MUST NOT 依語言代碼分支。

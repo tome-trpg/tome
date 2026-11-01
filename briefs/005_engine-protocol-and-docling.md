@@ -54,7 +54,7 @@ protectedFiles:
 ## Invariants
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run build`、`npm run licenses` 在本機都通過
-- [ ] `specs`、`test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
+- [x] `specs`、`test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
 - [x] `tests/` 用假引擎與錄好的輸出涵蓋協定：成功、單頁失敗、引擎當掉、輸出不合 schema，都不需要 Docling
 - [x] 引擎子行程拿不到金鑰，有測試看過它真的被過濾
 - [x] 測試素材都在來源清單登記授權與雜湊，未登記的讓 CI 失敗（PC-2）
@@ -64,7 +64,7 @@ protectedFiles:
 
 - [x] `tome engine add docling` 預設裝 CPU 版，`--gpu` 才裝 CUDA 版，偵測到 NVIDIA 時提示（ADR-0084 第 11 項）
 - [x] `tome engine list`、`remove` 與 `tome doctor` 的引擎檢查可用
-- [ ] 改到 `engines/` 時 `engine.yml` 安裝 Docling 跑合成 PDF，輸出通過 `tome-ir/1` 驗證
+- [x] 改到 `engines/` 時 `engine.yml` 安裝 Docling 跑合成 PDF，輸出通過 `tome-ir/1` 驗證
 - [x] Docling 的程式授權與權重授權都留下紀錄（LC-3）
 - [x] `languages/target/zh-TW.yaml` 的第四句只說代名詞依實體卡（ADR-0023）
 - [x] `.github/dependabot.yml` 加上 uv，`@spec-family/*` 用 `exclude` 排除在 npm 的冷卻期之外（ADR-0082 第 21 項），檔案開頭的註解寫清楚
@@ -74,6 +74,7 @@ protectedFiles:
 
 2026-11-01，參考機器，Docling 2.140.0，合成 PDF。數字與判讀在 ADR-0085，白皮書 §5.3 有摘要。
 
-- 第一次實測沒有 `HF_HUB_OFFLINE` 以外的網路隔離。真正拿掉網路的是 `engine.yml` 的 Ubuntu 工作，本機 Windows 沒有隔離。
+- 本機實測沒有 `HF_HUB_OFFLINE` 以外的網路隔離。真正拿掉網路的是 `engine.yml` 的 Ubuntu 工作，本機 Windows 沒有隔離。
+- `engine.yml` 在 `bfbe939` 的 attempt 1，`docling (ubuntu-24.04)` 失敗。測試釘住了版面模型的判斷：第 2 頁的圖說在 Ubuntu 判成 `paragraph`，Windows 是 `caption`，文字相同。沒有重跑，測試改驗每段鍛造的文字都在，比原本嚴格。兩個平台為什麼判得不同還沒查。
 - Dependabot 對 `exclude-newer = "14 days"` 的實際行為沒驗證，只驗了 uv 0.13.6。
 - 商業書沒量。H-5、H-7、H-8、H-9 都還是假說。
