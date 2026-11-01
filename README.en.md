@@ -37,8 +37,8 @@ The following features are design goals. See [Development status](#development-s
 | :--- | :--- | :--- |
 | Workspace setup and environment checks | `tome init`, `tome doctor` | Implemented |
 | API key setup | `tome provider auth set` | Implemented |
-| Book registration and PDF probing | `tome add`, `tome probe` | Implemented |
-| Rule pack management | `tome system new`, `list`, `lint`, `test` | Implemented |
+| Book registration and PDF probing | `tome add`, `tome probe` | Implemented, and suggests a rule pack from the data that packs declare |
+| Rule pack management | `tome system new`, `list`, `lint`, `test` | Implemented, with the built-in `generic` pack |
 | Parsing engine management | `tome engine add`, `list`, `remove` | Implemented |
 | Page parsing | `tome extract` | Implemented: native text pages are handed to a parsing engine, assembled into a document, and checked for lost characters |
 | Translation and output | Not available | Planned |
@@ -84,7 +84,7 @@ All project documents other than this README are written in Traditional Chinese.
 
 ## License
 
-The code is licensed under [Apache-2.0](LICENSE). Built-in rule packs, once added, will carry their own licenses, listed in [NOTICE](NOTICE).
+The code is licensed under [Apache-2.0](LICENSE). Built-in rule packs carry their own licenses, listed in [NOTICE](NOTICE).
 
 TOME is an independent project. It is not affiliated with or endorsed by any tabletop RPG publisher. Trademarks mentioned in the documentation belong to their respective owners. Legal notes in this project's documentation are not legal advice.
 

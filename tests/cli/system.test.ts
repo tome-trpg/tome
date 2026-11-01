@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -47,15 +48,16 @@ describe('tome system new', () => {
 });
 
 describe('tome system list', () => {
-  it('says when there is nothing, and lists what there is', async () => {
+  it('lists the built-in pack, then what the workspace adds', async () => {
     const env = await workspace();
-    const empty = capture({ env });
-    expect(await run(['system', 'list'], empty.io)).toBe(0);
-    expect(empty.stdout()).toContain('目前沒有任何規則包');
+    const builtin = capture({ env });
+    expect(await run(['system', 'list'], builtin.io)).toBe(0);
+    expect(builtin.stdout()).toContain('generic 0.1.0（來源：builtin）');
     await run(['system', 'new', 'my-pack'], capture({ env }).io);
     const listed = capture({ env });
     expect(await run(['system', 'list', '--json'], listed.io)).toBe(0);
     expect(envelope(listed.stdout()).data['packs']).toEqual([
+      { id: 'generic', version: '0.1.0', source: 'builtin' },
       { id: 'my-pack', version: '0.1.0', source: 'workspace' },
     ]);
   });
@@ -66,6 +68,21 @@ describe('tome system lint', () => {
     const { io, stdout } = capture({ env: { TOME_HOME: tempDir() } });
     expect(await run(['system', 'lint', SAMPLE, '--public'], io)).toBe(0);
     expect(stdout()).toContain('檢查通過');
+  });
+
+  it('checks the built-in pack by its path, the way CI does', async () => {
+    const { io, stdout } = capture({ env: { TOME_HOME: tempDir() } });
+    expect(await run(['system', 'lint', 'systems/generic', '--public'], io)).toBe(0);
+    expect(stdout()).toContain('規則包 generic 檢查通過');
+  });
+
+  it('reads the target language of the workspace (ADR-0100)', async () => {
+    const env = await workspace();
+    writeFileSync(join(env['TOME_HOME'] ?? '', 'tome.yaml'), 'schema: tome-workspace/1\ntarget_lang: xx\n');
+    const { io, stderr } = capture({ env });
+    expect(await run(['system', 'lint', SAMPLE], io)).toBe(2);
+    expect(stderr()).toContain('不支援目標語言 xx');
+    expect(stderr()).toContain('target_lang');
   });
 
   it('exits 1 on a finding, and 2 on a pack it cannot find', async () => {

@@ -1,4 +1,5 @@
 import type { TextQuality } from './language.ts';
+import type { SuggestedPack } from './pack.ts';
 import type { OutlineNode, PageFacts, PdfHandle, PdfLink } from './pdf.ts';
 import type { ToolRunner } from './process.ts';
 
@@ -7,7 +8,7 @@ import type { ToolRunner } from './process.ts';
 export const PROBE_SCHEMA = 'tome-probe/1';
 
 /** 探測的規則一改，這個數字就要加一，舊的結果才會重算（ADR-0056）。 */
-export const PROBE_VERSION = 3;
+export const PROBE_VERSION = 4;
 
 // 下面的數字都是提案，要等本機語料量過才算定案（H-7、H-8、H-10）。
 const SCAN_COVERAGE = 0.6;
@@ -51,6 +52,8 @@ export interface Probe {
   readonly page_labels: readonly PageLabel[];
   readonly links: readonly PdfLink[];
   readonly pages: readonly PageProbe[];
+  /** 只有規則包 ID 與頁數，不帶書本文字（ADR-0100）。 */
+  readonly suggested_pack?: SuggestedPack;
 }
 
 /** 訊息與 `--json` 用的摘要。只有數字，書籤標題這類書本文字不出工作區。 */
@@ -157,6 +160,11 @@ export function classifyPage(facts: PageFacts, quality?: TextQuality): PageProbe
   };
 }
 
+/** 一頁的文字，給建議規則包用。留在記憶體，不存檔。 */
+export function pageText(facts: PageFacts): string {
+  return facts.runs.map(({ text }) => text).join(' ');
+}
+
 function isSpread(pages: readonly PageProbe[]): boolean {
   if (pages.length === 0) return false;
   const wide = pages.filter((page) => page.width / page.height >= SPREAD_ASPECT).length;
@@ -168,11 +176,13 @@ export async function probePdf(
   pdfSha256: string,
   quality?: TextQuality,
   route: (kind: PageKind) => string | undefined = () => undefined,
+  onPage?: (facts: PageFacts) => void,
 ): Promise<Probe> {
   const pages: PageProbe[] = [];
   const links: PdfLink[] = [];
   for (let index = 0; index < pdf.pageCount; index += 1) {
     const facts = await pdf.page(index);
+    onPage?.(facts);
     const page = classifyPage(facts, quality);
     const engine = route(page.kind);
     pages.push(engine === undefined ? page : { ...page, engine });

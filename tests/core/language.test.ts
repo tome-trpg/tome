@@ -35,15 +35,15 @@ describe('the language profiles', () => {
   });
 
   it.each([
-    ['source', () => loadSourceLanguage('xx')],
-    ['target', () => loadTargetLanguage('xx')],
-    ['a target used as a source', () => loadSourceLanguage('zh-TW')],
-  ])('reports an unknown language: %s', (_name, load) => {
+    ['source', 'language.unknown', () => loadSourceLanguage('xx')],
+    ['target', 'language.unknown_target', () => loadTargetLanguage('xx')],
+    ['a target used as a source', 'language.unknown', () => loadSourceLanguage('zh-TW')],
+  ])('reports an unknown language: %s', (_name, code, load) => {
     expect(load).toThrow(TomeError);
     try {
       load();
     } catch (error) {
-      expect((error as TomeError).code).toBe('language.unknown');
+      expect((error as TomeError).code).toBe(code);
     }
   });
 });

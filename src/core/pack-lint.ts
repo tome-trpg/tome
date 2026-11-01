@@ -15,7 +15,6 @@ import { runPatterns, type PatternInput } from './patterns.ts';
 
 // tome system lint（ADR-0050、ADR-0084）。問題一次列完，訊息只帶檔名與 ID，不帶規則包的內容。
 
-const TARGET_LANGUAGE = 'zh-TW';
 const DATA_EXTENSIONS = new Set(['.yaml', '.yml', '.md']);
 const NOTICE_FILES = new Set(['LICENSE', 'NOTICE']);
 // 一樣算 CPU 時間，但比實際執行嚴一倍：規則包作者的機器可能比使用者快，
@@ -169,7 +168,7 @@ async function lintPatterns(content: PackContent): Promise<Finding[]> {
   return findings;
 }
 
-function lintReferences(content: PackContent, resolved: ResolvedPack): Finding[] {
+function lintReferences(content: PackContent, resolved: ResolvedPack, targetLang: string): Finding[] {
   const findings: Finding[] = [];
   const detectors = new Set(
     resolved.patterns.filter((item) => item.use === 'detect').map((item) => item.id),
@@ -181,12 +180,15 @@ function lintReferences(content: PackContent, resolved: ResolvedPack): Finding[]
       }
     }
   }
+  for (const pattern of content.manifest.suggest?.patterns ?? []) {
+    if (!detectors.has(pattern)) findings.push(finding('pack.unknown_suggest_pattern', 'fail', { pattern }));
+  }
   content.terms.forEach((term, index) => {
     if (term.class !== undefined && !resolved.classes.has(term.class)) {
       findings.push(finding('pack.unknown_class', 'fail', { index: String(index + 1), class: term.class }));
     }
   });
-  const { pronouns } = loadTargetLanguage(TARGET_LANGUAGE).profile;
+  const { pronouns } = loadTargetLanguage(targetLang).profile;
   for (const [name, entity] of Object.entries(content.classes)) {
     const pronoun = entity.default_pronoun;
     if (pronoun !== undefined && !pronouns.includes(pronoun)) {
@@ -241,6 +243,8 @@ function lintPublic(dir: string, content: PackContent): Finding[] {
 
 export interface LintOptions {
   readonly public: boolean;
+  /** 預設代名詞要在這個語言的代名詞集合裡。 */
+  readonly targetLang: string;
 }
 
 export async function lintPack(
@@ -259,7 +263,7 @@ export async function lintPack(
   const { pack, findings: inherited } = resolvePack(home, location);
   findings.push(...inherited);
   findings.push(...(await lintPatterns(content)));
-  if (pack !== null) findings.push(...lintReferences(content, pack));
+  if (pack !== null) findings.push(...lintReferences(content, pack, options.targetLang));
   findings.push(...readPackTests(dir).findings);
   if (options.public) findings.push(...lintPublic(dir, content));
   if (!findings.some((item) => item.level === 'fail')) {

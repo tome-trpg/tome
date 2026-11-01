@@ -1,0 +1,7 @@
+# 最常見的幾種角色（ADR-0023）。不寫 detect：各系統的數值塊長相不同，偵測留給子包（ADR-0100）。
+# style 會進提示，要跟提示一起審，還沒有。
+roles:
+  stat_block: {}
+  handout: {}
+  read_aloud: {}
+  gm_note: {}

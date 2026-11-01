@@ -1,0 +1,25 @@
+# tome system test 的測試案例。文字都是自行撰寫的。
+cases:
+  - id: dice_in_a_sentence
+    text: Roll 1D100 under the score, or 2d6+1 for the tide.
+    matches:
+      dice: [1D100, 2d6+1]
+      page_ref: []
+    role: null
+  - id: dice_with_a_loss
+    text: Lose 1/1D6 points, then roll D100 and d% and 1d4+1d6.
+    matches:
+      dice: [1/1D6, D100, d%, 1d4+1d6]
+  - id: not_dice
+    text: The d20s and the D&D shelf stand in row A4.
+    matches:
+      dice: []
+  - id: page_references
+    text: See p.42 for the ferry and pp. 42-45 for the tide.
+    matches:
+      page_ref: [p.42, pp. 42-45]
+      dice: []
+  - id: not_a_page_reference
+    text: Step. 42 of the map.3 notes.
+    matches:
+      page_ref: []

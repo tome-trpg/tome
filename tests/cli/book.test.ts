@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { run } from '../../src/cli/run.ts';
@@ -128,6 +128,38 @@ describe('tome probe', () => {
     ]);
     expect(result.findings.at(-1)?.params).toEqual({ name: 'Forged GPU', vram: '4096' });
     expect(result.data['probe']).toMatchObject({ pages: 3, tagged: false });
+  });
+
+  async function hintedPack(env: NodeJS.ProcessEnv): Promise<void> {
+    await run(['system', 'new', 'hinted'], capture({ env }).io);
+    const path = join(env['TOME_HOME'] ?? '', 'systems', 'hinted', 'pack.yaml');
+    writeFileSync(path, `${readFileSync(path, 'utf8')}suggest:\n  keywords: [the, of, and, warden, salt]\n`);
+  }
+
+  it('suggests a pack, says it is only a suggestion, and names no book text', async () => {
+    const env = await workspace();
+    await hintedPack(env);
+    await run(['add', await forgeFile('plain', tempDir())], capture({ env }).io);
+    const { io, stdout } = capture({ env });
+    expect(await run(['probe', 'plain', '--json'], io)).toBe(0);
+    const suggested = envelope(stdout()).findings.find((item) => item.code === 'probe.pack_suggested');
+    expect(suggested?.params).toEqual({ id: 'hinted', keyword_pages: '3', pattern_pages: '0' });
+    expect(suggested?.level).toBe('info');
+    expect(stdout()).not.toContain('warden');
+    const plain = capture({ env });
+    await run(['probe', 'plain'], plain.io);
+    expect(plain.stdout()).toContain('hinted');
+    expect(plain.stdout()).toContain('--system');
+    expect(plain.stdout()).not.toContain('warden');
+  });
+
+  it('does not suggest a pack to a book that has one', async () => {
+    const env = await workspace();
+    await hintedPack(env);
+    await run(['add', await forgeFile('plain', tempDir()), '--system', 'hinted'], capture({ env }).io);
+    const { io, stdout } = capture({ env });
+    await run(['probe', 'plain', '--json'], io);
+    expect(envelope(stdout()).findings.map((item) => item.code)).not.toContain('probe.pack_suggested');
   });
 
   it('reports a corrupt stored result as a damaged file, not a bug in TOME', async () => {

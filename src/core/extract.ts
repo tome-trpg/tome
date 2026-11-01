@@ -14,6 +14,7 @@ import {
   readBook,
   recordStage,
   stageFingerprint,
+  systemOf,
   withBookLock,
   type Book,
 } from './book.ts';
@@ -273,8 +274,7 @@ interface BookPack {
 }
 
 function bookPack(home: string, book: Book): BookPack {
-  const id = book.config.system;
-  if (id === undefined) return { pack: null, hash: '', findings: [] };
+  const id = systemOf(book);
   const location = findPack(home, id);
   if (location === null) throw new TomeError('pack.not_found', { id });
   const { pack, findings } = resolvePack(home, location);
@@ -290,7 +290,7 @@ async function assignPackRoles(
   const candidates = blocks.filter(
     ({ role, table, text }) => role !== 'furniture' && table === undefined && text !== '',
   );
-  const outcome = await runPatterns(patternInputs(pack), candidates.map(({ text }) => text));
+  const outcome = await runPatterns(patternInputs(pack, 'detect'), candidates.map(({ text }) => text));
   if (outcome.status !== 'ok') {
     return { blocks, findings: [finding('pack.slow_regex', 'fail', { pattern: outcome.pattern })] };
   }

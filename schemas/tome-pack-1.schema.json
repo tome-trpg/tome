@@ -37,6 +37,23 @@
           "minItems": 1,
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/lang" }
+        },
+        "suggest": {
+          "description": "What tome probe looks for to suggest this pack. It only suggests; the user still chooses with --system.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "keywords": {
+              "description": "Whole words, in any case.",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "patterns": {
+              "description": "Ids of detect patterns in syntax_patterns.yaml.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/name" }
+            }
+          }
         }
       }
     },

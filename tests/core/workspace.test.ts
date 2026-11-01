@@ -5,9 +5,11 @@ import { TomeError } from '../../src/core/errors.ts';
 import { exitCodeOf } from '../../src/core/findings.ts';
 import {
   checkWorkspace,
+  DEFAULT_TARGET_LANG,
   initWorkspace,
   readWorkspaceConfig,
   resolveHome,
+  workspaceTargetLang,
 } from '../../src/core/workspace.ts';
 import { workspaceTemplate } from '../../src/cli/messages.ts';
 import { tempDir } from '../helpers.ts';
@@ -45,6 +47,28 @@ describe('initWorkspace', () => {
       expect(existsSync(join(home, name))).toBe(true);
     }
     expect(readWorkspaceConfig(home)?.schema).toBe('tome-workspace/1');
+  });
+
+  it('writes the target language into the template (ADR-0100)', () => {
+    const home = join(tempDir(), 'home');
+    initWorkspace({ home, env: {}, template });
+    expect(readWorkspaceConfig(home)?.['target_lang']).toBe('zh-TW');
+    expect(workspaceTargetLang(home)).toBe('zh-TW');
+  });
+
+  it('reads the target language, and falls back without one or without a workspace', () => {
+    const home = tempDir();
+    expect(workspaceTargetLang(home)).toBe(DEFAULT_TARGET_LANG);
+    writeFileSync(join(home, 'tome.yaml'), 'schema: tome-workspace/1\n');
+    expect(workspaceTargetLang(home)).toBe(DEFAULT_TARGET_LANG);
+    writeFileSync(join(home, 'tome.yaml'), 'schema: tome-workspace/1\ntarget_lang: fr\n');
+    expect(workspaceTargetLang(home)).toBe('fr');
+  });
+
+  it('refuses a target language that is not a string', () => {
+    const home = tempDir();
+    writeFileSync(join(home, 'tome.yaml'), 'schema: tome-workspace/1\ntarget_lang: [zh-TW]\n');
+    expect(() => workspaceTargetLang(home)).toThrow(expect.objectContaining({ code: 'config.bad_schema' }));
   });
 
   it('refuses a path inside a git repo and writes nothing', () => {

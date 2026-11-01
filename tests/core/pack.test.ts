@@ -12,7 +12,11 @@ import {
   findPack,
   listPacks,
   locatePack,
+  packCandidates,
   resolvePack,
+  suggestPack,
+  termsFor,
+  type PackCandidate,
   type PackLocation,
 } from '../../src/core/pack.ts';
 import { tempDir } from '../helpers.ts';
@@ -87,7 +91,7 @@ describe('createPack', () => {
     const home = tempDir();
     expect(codes(createPack(home, 'fresh', packTemplate('fresh')))).toEqual(['pack.created']);
     const location = locatePack(home, 'fresh');
-    expect(failures(await lintPack(home, location, { public: false }))).toEqual([]);
+    expect(failures(await lintPack(home, location, { public: false, targetLang: 'zh-TW' }))).toEqual([]);
     expect(codes(await testPack(home, location))).toEqual(['pack.no_tests']);
   });
 
@@ -123,12 +127,13 @@ describe('resolvePack', () => {
     });
     const { pack, findings } = resolvePack(home, child);
     expect(findings).toEqual([]);
-    expect(pack?.chain.map((item) => item.content.manifest.id)).toEqual(['child', 'base']);
-    expect(pack?.roles.map(({ pack: owner, name, style }) => [owner, name, style])).toEqual([
+    expect(pack?.chain.map((item) => item.content.manifest.id)).toEqual(['child', 'base', 'generic']);
+    const own = pack?.roles.filter(({ pack: owner }) => owner !== 'generic');
+    expect(own?.map(({ pack: owner, name, style }) => [owner, name, style])).toEqual([
       ['child', 'shared', 'from the child'],
       ['base', 'parent_only', undefined],
     ]);
-    expect(pack?.patterns.map((item) => item.regex)).toEqual(['child']);
+    expect(pack?.patterns.find((item) => item.id === 'one')?.regex).toBe('child');
   });
 
   it('reports a missing parent and a cycle', () => {
@@ -140,10 +145,129 @@ describe('resolvePack', () => {
     expect(codes(resolvePack(home, second).findings)).toEqual(['pack.parent_cycle']);
   });
 
-  it('accepts a pack with no extends while the implicit root is not there yet', () => {
+  it('inherits generic when a pack names no parent', () => {
     const home = tempDir();
-    const pack = writePack(home, 'alone', { 'pack.yaml': manifest('alone') });
-    expect(resolvePack(home, pack).findings).toEqual([]);
+    const location = writePack(home, 'alone', { 'pack.yaml': manifest('alone') });
+    const { pack, findings } = resolvePack(home, location);
+    expect(findings).toEqual([]);
+    expect(pack?.chain.map((item) => item.content.manifest.id)).toEqual(['alone', 'generic']);
+    expect(pack?.patterns.map(({ id }) => id)).toEqual(['dice', 'page_ref']);
+  });
+
+  it('reports the implicit root when it is missing (ADR-0100)', () => {
+    const home = tempDir();
+    const location = writePack(home, 'alone', { 'pack.yaml': manifest('alone') });
+    const builtin = join(tempDir(), 'systems');
+    expect(resolvePack(home, location, builtin).findings).toEqual([
+      { code: 'pack.parent_missing', level: 'fail', params: { id: 'alone', parent: 'generic' } },
+    ]);
+  });
+
+  it('takes a local generic over the built-in one (ADR-0046)', () => {
+    const home = tempDir();
+    writePack(home, 'generic', {
+      'pack.yaml': manifest('generic'),
+      'roles.yaml': 'roles:\n  local_only: {}\n',
+    });
+    const location = writePack(home, 'alone', { 'pack.yaml': manifest('alone') });
+    expect(resolvePack(home, location).pack?.roles.map(({ name }) => name)).toEqual(['local_only']);
+  });
+
+  it('lists the terms of the chain, child first', () => {
+    const home = tempDir();
+    writePack(home, 'base', {
+      'pack.yaml': manifest('base'),
+      'glossary.yaml': 'terms:\n  - { source: { en: Glyph }, target: 字 }\n  - { source: { en: Salt }, target: 鹽 }\n',
+    });
+    const child = writePack(home, 'child', {
+      'pack.yaml': manifest('child', 'extends: base\n'),
+      'glossary.yaml': 'terms:\n  - { source: { en: Glyph }, target: 符文 }\n',
+    });
+    const { pack } = resolvePack(home, child);
+    if (pack === null) throw new Error('the pack did not load');
+    expect(termsFor(pack, 'en').map(({ text, term }) => [text, term.target])).toEqual([
+      ['Glyph', '符文'],
+      ['Salt', '鹽'],
+    ]);
+  });
+});
+
+describe('suggesting a pack (ADR-0100)', () => {
+  const page = (text: string): string => `${text} ${'filler '.repeat(5)}`;
+
+  function candidate(id: string, keywords: readonly string[], regex?: string): PackCandidate {
+    return {
+      id,
+      keywords,
+      patterns: regex === undefined ? [] : [{ id: 'hit', regex }],
+    };
+  }
+
+  it('finds the packs that have something to go on, and never generic', () => {
+    const home = tempDir();
+    writePack(home, 'generic', {
+      'pack.yaml': manifest('generic', 'suggest: { keywords: [anything] }\n'),
+    });
+    writePack(home, 'quiet', { 'pack.yaml': manifest('quiet') });
+    writePack(home, 'keyed', {
+      'pack.yaml': manifest('keyed', 'suggest: { keywords: [Warden], patterns: [marker] }\n'),
+      'syntax_patterns.yaml': "patterns:\n  - { id: marker, use: detect, regex: 'x' }\n",
+    });
+    expect(packCandidates(home)).toEqual([
+      { id: 'keyed', keywords: ['Warden'], patterns: [{ id: 'marker', regex: 'x' }] },
+    ]);
+  });
+
+  it('adds the pages with a keyword to the pages with a pattern', async () => {
+    const { suggested } = await suggestPack(
+      [candidate('one', ['warden'], '1D100')],
+      [page('the warden'), page('roll 1D100'), page('the warden rolls 1D100'), page('nothing')],
+    );
+    expect(suggested).toEqual({ id: 'one', keyword_pages: 2, pattern_pages: 2 });
+  });
+
+  it('counts a page once, however many times it hits', async () => {
+    const { suggested } = await suggestPack(
+      [candidate('one', ['warden', 'lantern'])],
+      [page('warden warden lantern'), page('warden'), page('lantern')],
+    );
+    expect(suggested).toEqual({ id: 'one', keyword_pages: 3, pattern_pages: 0 });
+  });
+
+  it('ignores case and matches whole words', async () => {
+    const { suggested } = await suggestPack(
+      [candidate('one', ['warden'])],
+      [page('WARDEN'), page('Warden'), page('wardens'), page('warden.')],
+    );
+    expect(suggested?.keyword_pages).toBe(3);
+  });
+
+  it('wants at least 3 pages', async () => {
+    const two = await suggestPack([candidate('one', ['warden'])], [page('warden'), page('warden'), page('no')]);
+    expect(two.suggested).toBeNull();
+    const three = await suggestPack([candidate('one', ['warden'])], [page('warden'), page('warden'), page('warden')]);
+    expect(three.suggested?.id).toBe('one');
+  });
+
+  it('takes the highest score, and the first id on a tie', async () => {
+    const pages = [page('alpha beta'), page('alpha beta'), page('alpha beta'), page('alpha')];
+    const best = await suggestPack([candidate('less', ['beta']), candidate('more', ['alpha'])], pages);
+    expect(best.suggested?.id).toBe('more');
+    const tied = await suggestPack([candidate('zed', ['alpha']), candidate('abe', ['alpha'])], pages);
+    expect(tied.suggested?.id).toBe('abe');
+  });
+
+  it('says nothing when there is nothing to compare', async () => {
+    expect(await suggestPack([], [page('warden')])).toEqual({ suggested: null, findings: [] });
+  });
+
+  it('warns about a runaway pattern and carries on with the others', { timeout: 30_000 }, async () => {
+    const { suggested, findings } = await suggestPack(
+      [candidate('runaway', [], '(a+)+$'), candidate('fine', ['aaa'])],
+      [`${'a'.repeat(4096)}!`, 'aaa', 'aaa', 'aaa'],
+    );
+    expect(suggested?.id).toBe('fine');
+    expect(findings).toEqual([{ code: 'pack.slow_regex', level: 'warn', params: { pattern: 'hit' } }]);
   });
 });
 
@@ -188,7 +312,7 @@ describe('regexRisks', () => {
 describe('lintPack', () => {
   it('passes the sample pack, public checks included', async () => {
     const home = tempDir();
-    const findings = await lintPack(home, locatePack(home, SAMPLE), { public: true });
+    const findings = await lintPack(home, locatePack(home, SAMPLE), { public: true, targetLang: 'zh-TW' });
     expect(failures(findings)).toEqual([]);
     expect(codes(findings)).toContain('pack.lint_ok');
   });
@@ -205,7 +329,7 @@ describe('lintPack', () => {
       'script.js': 'console.log("a pack is data");\n',
       'tests/bad.yaml': 'cases: nope\n',
     });
-    expect(failures(await lintPack(home, location, { public: false })).sort()).toEqual(
+    expect(failures(await lintPack(home, location, { public: false, targetLang: 'zh-TW' })).sort()).toEqual(
       [
         'pack.bad_file',
         'pack.bad_regex',
@@ -227,7 +351,7 @@ describe('lintPack', () => {
       'roles.yaml': 'roles: [',
       'glossary.yaml': 'terms: nope\napi_key: x\n',
     });
-    const findings = await lintPack(home, location, { public: false });
+    const findings = await lintPack(home, location, { public: false, targetLang: 'zh-TW' });
     expect(findings.find((item) => item.code === 'pack.invalid_yaml')?.params).toEqual({ file: 'roles.yaml' });
     expect(findings.filter((item) => item.code === 'pack.bad_file').map((item) => item.params['file'])).toEqual(
       expect.arrayContaining(['glossary.yaml']),
@@ -240,7 +364,7 @@ describe('lintPack', () => {
       'pack.yaml': manifest('counted'),
       'glossary.yaml': 'terms:\n  - { source: { en: Word }, target: 字, class: nothing }\n',
     });
-    const findings = await lintPack(home, location, { public: false });
+    const findings = await lintPack(home, location, { public: false, targetLang: 'zh-TW' });
     expect(findings.find((item) => item.code === 'pack.unknown_class')?.params['index']).toBe('1');
   });
 
@@ -248,7 +372,7 @@ describe('lintPack', () => {
     const home = tempDir();
     const dir = join(home, 'systems', 'empty');
     mkdirSync(dir, { recursive: true });
-    const findings = await lintPack(home, { dir, source: 'workspace' }, { public: false });
+    const findings = await lintPack(home, { dir, source: 'workspace' }, { public: false, targetLang: 'zh-TW' });
     expect(codes(findings)).toEqual(['pack.missing_file']);
   });
 
@@ -258,7 +382,7 @@ describe('lintPack', () => {
       join(location.dir, 'syntax_patterns.yaml'),
       "patterns:\n  - { id: risky, use: mask, regex: '(ab|ac)*d' }\n  - { id: hp_line, use: detect, regex: 'HP' }\n  - { id: ac_line, use: detect, regex: 'AC' }\n",
     );
-    const findings = await lintPack(home, location, { public: false });
+    const findings = await lintPack(home, location, { public: false, targetLang: 'zh-TW' });
     expect(findings).toContainEqual({
       code: 'pack.risky_regex',
       level: 'warn',
@@ -276,7 +400,7 @@ describe('lintPack', () => {
       'pack.yaml': manifest('slow'),
       'syntax_patterns.yaml': `patterns:\n  - { id: runaway, use: mask, regex: '${regex}' }\n`,
     });
-    const findings = await lintPack(home, location, { public: false });
+    const findings = await lintPack(home, location, { public: false, targetLang: 'zh-TW' });
     expect(findings).toContainEqual({
       code: 'pack.slow_regex',
       level: 'fail',
@@ -288,7 +412,7 @@ describe('lintPack', () => {
     const home = tempDir();
     const location = writePack(home, 'linked', { 'pack.yaml': manifest('linked') });
     symlinkSync('/etc/hostname', join(location.dir, 'notes.md'));
-    expect(failures(await lintPack(home, location, { public: false }))).toEqual(['pack.not_data']);
+    expect(failures(await lintPack(home, location, { public: false, targetLang: 'zh-TW' }))).toEqual(['pack.not_data']);
   });
 
   describe('--public', () => {
@@ -297,8 +421,8 @@ describe('lintPack', () => {
       const location = writePack(home, 'bare', {
         'pack.yaml': manifest('bare').replace('UNLICENSED', 'Apache-2.0'),
       });
-      expect(failures(await lintPack(home, location, { public: false }))).toEqual([]);
-      expect(failures(await lintPack(home, location, { public: true }))).toEqual([
+      expect(failures(await lintPack(home, location, { public: false, targetLang: 'zh-TW' }))).toEqual([]);
+      expect(failures(await lintPack(home, location, { public: true, targetLang: 'zh-TW' }))).toEqual([
         'pack.missing_file',
         'pack.missing_file',
         'pack.no_tests',
@@ -308,7 +432,7 @@ describe('lintPack', () => {
     it('refuses a license outside the list', async () => {
       const { home, location } = sampleCopy();
       writeFileSync(join(location.dir, 'pack.yaml'), manifest('sample-pack'));
-      expect(failures(await lintPack(home, location, { public: true }))).toEqual([
+      expect(failures(await lintPack(home, location, { public: true, targetLang: 'zh-TW' }))).toEqual([
         'pack.unknown_license',
       ]);
     });
@@ -321,7 +445,7 @@ describe('lintPack', () => {
         join(location.dir, 'NOTICE'),
         'This product is licensed under the ORC License held in the Library of Congress at TX 9-307-067.\n',
       );
-      const findings = await lintPack(home, location, { public: true });
+      const findings = await lintPack(home, location, { public: true, targetLang: 'zh-TW' });
       expect(findings.filter((item) => item.code === 'pack.missing_notice').map((item) => item.params['phrase'])).toEqual([
         'Licensed Material',
         'Reserved Material',
@@ -331,7 +455,41 @@ describe('lintPack', () => {
     it('treats an empty notice as missing', async () => {
       const { home, location } = sampleCopy();
       writeFileSync(join(location.dir, 'NOTICE'), '  \n');
-      expect(failures(await lintPack(home, location, { public: true }))).toEqual(['pack.missing_file']);
+      expect(failures(await lintPack(home, location, { public: true, targetLang: 'zh-TW' }))).toEqual(['pack.missing_file']);
+    });
+  });
+
+  it('checks the patterns that suggest a pack (ADR-0100)', async () => {
+    const home = tempDir();
+    const location = writePack(home, 'hinted', {
+      'pack.yaml': manifest('hinted', 'suggest: { keywords: [Warden], patterns: [gone, masker, finder] }\n'),
+      'syntax_patterns.yaml':
+        "patterns:\n  - { id: masker, use: mask, regex: 'a' }\n  - { id: finder, use: detect, regex: 'b' }\n",
+    });
+    const findings = await lintPack(home, location, { public: false, targetLang: 'zh-TW' });
+    expect(findings.filter((item) => item.level === 'fail')).toEqual([
+      { code: 'pack.unknown_suggest_pattern', level: 'fail', params: { pattern: 'gone' } },
+      { code: 'pack.unknown_suggest_pattern', level: 'fail', params: { pattern: 'masker' } },
+    ]);
+  });
+
+  it('refuses anything else under suggest', async () => {
+    const home = tempDir();
+    const location = writePack(home, 'hinted', {
+      'pack.yaml': manifest('hinted', 'suggest: { endpoint: example.com }\n'),
+    });
+    const findings = await lintPack(home, location, { public: false, targetLang: 'zh-TW' });
+    expect(codes(findings)).toContain('pack.bad_file');
+  });
+
+  it('checks pronouns against the target language it is given', async () => {
+    const home = tempDir();
+    const location = writePack(home, 'other', {
+      'pack.yaml': manifest('other'),
+      'entities.yaml': 'classes:\n  deity:\n    default_pronoun: 祂\n',
+    });
+    await expect(lintPack(home, location, { public: false, targetLang: 'xx' })).rejects.toMatchObject({
+      code: 'language.unknown_target',
     });
   });
 
@@ -341,7 +499,7 @@ describe('lintPack', () => {
       'pack.yaml': manifest('quiet'),
       'glossary.yaml': 'terms:\n  - { source: { en: Secret Name }, target: 祕名, class: nothing }\n',
     });
-    const text = JSON.stringify(await lintPack(home, location, { public: false }));
+    const text = JSON.stringify(await lintPack(home, location, { public: false, targetLang: 'zh-TW' }));
     expect(text).not.toContain('Secret Name');
     expect(text).not.toContain('祕名');
   });
