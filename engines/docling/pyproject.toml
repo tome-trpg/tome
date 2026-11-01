@@ -21,6 +21,10 @@ gpu = ["torch==2.14.1", "torchvision==0.29.1"]
 package = false
 # 冷卻期：重鎖時只看上架滿 14 天的版本。安全更新用 exclude-newer-package 開例外（ADR-0085）。
 exclude-newer = "14 days"
+# 安全更新：修正版還沒滿 14 天。用相對期間，固定日期之後會把版本卡住（ADR-0088）。
+exclude-newer-package = { certifi = "7 days", setuptools = "7 days" }
+# 安全更新：Docling 2.140.0 這條相依限制 pillow<13，修正版是 13.0.0。升到允許 13 的 Docling 就拿掉（ADR-0088）。
+override-dependencies = ["pillow>=13"]
 conflicts = [[{ extra = "cpu" }, { extra = "gpu" }]]
 
 [tool.uv.sources]

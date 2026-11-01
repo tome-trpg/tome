@@ -415,6 +415,8 @@ Docling 轉接器的輸出經合成 PDF 驗過（`tests/engine/docling.test.ts`�
 
 同一份合成 PDF，Windows 與 Ubuntu 的文字相同，但第 2 頁的圖說在 Ubuntu 判成 `paragraph`，原因**還沒查**。角色是模型的判斷，不是轉接器的契約，組裝時不能把它當成跨平台不變的事實。
 
+Docling 環境的 `pillow` 用 `override-dependencies` 蓋過 Docling 2.140.0 這條相依的 `<13` 限制，因為 13.0.0 才修掉 39 份安全通報。這個組合不是上游測過的，**已驗證**的範圍只到合成 PDF，升到允許 Pillow 13 的 Docling 時要拿掉（ADR-0088）。
+
 ### 5.4 語言設定檔
 
 來源語言與目標語言都是資料檔，引擎核心 MUST NOT 依語言代碼分支。
