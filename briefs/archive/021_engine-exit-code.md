@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-02
 type: defect
 wave: 14
@@ -24,7 +24,16 @@ protectedFiles:
   - package.json
   - schemas/**
   - systems/**
+integrity: sha256-0cb03ad38825fed0426f4eaba6296c3e6ab80aa14c41abd34c568afff447c855
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-02.**
+> 引擎非正常結束時，extract.pages_failed 帶出結束狀態，Windows 的原生崩潰同時列十六進位，stderr 依然不保留。間歇失敗本身沒有修，要等下一次失敗才看得到結束碼。
+> Merged in pull request [#42](https://github.com/tome-trpg/tome/pull/42).
+> Recorded at commit `e1e65ed`: 13 files changed, +288 −27.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 021 — 引擎的結束碼
 
