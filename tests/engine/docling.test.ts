@@ -65,7 +65,9 @@ describe.skipIf(home === undefined)('Docling on a forged PDF', () => {
     const checked = validateEngineRun(json(record));
     expect(checked.ok).toBe(true);
     if (checked.ok) {
-      expect(checked.value.license).toEqual(readEngineSpec(locateEngine('docling').dir).license);
+      // 執行紀錄只記程式與權重的授權（LC-3）。專有元件是安裝時的提示，不是這次執行的事。
+      const { code, weights } = readEngineSpec(locateEngine('docling').dir).license;
+      expect(checked.value.license).toEqual({ code, weights });
     }
   });
 });
