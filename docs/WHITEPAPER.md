@@ -326,7 +326,7 @@ flowchart LR
 
 格式名稱是 `tome-ir/1`，有版本號與公開的 JSON Schema，並可遷移。IR 只存在工作區，不進 repo，因為它含有書籍內容（PC-1）。
 
-**已實作**：schema 在 `schemas/tome-ir-1.schema.json`，驗證在 `src/core/schema.ts`，型別在 `src/core/ir.ts`（`tests/core/schema.test.ts`）。一個 JSON 檔是引擎寫的一頁（`layer: source`）或組裝好的全書（`layer: document`）。下表以外另有 `pdf_sha256`、`layer`；`source` 另有 `page`；`document` 另有 `page_map` 與 `sections`，`blocks` 陣列的順序就是閱讀順序。引擎只能填核心角色，`flow` 在 `document` 層才必填。欄位細節是提案，`overrides` 的格式 M1 才定。
+**已實作**：schema 在 `schemas/tome-ir-1.schema.json`，驗證在 `src/core/schema.ts`，型別在 `src/core/ir.ts`（`tests/core/schema.test.ts`）。一個 JSON 檔是引擎寫的一頁（`layer: source`）或組裝好的全書（`layer: document`）。下表以外另有 `pdf_sha256`、`layer`；`source` 另有 `page`；`document` 另有 `pages`、`page_map` 與 `sections`，`blocks` 陣列的順序就是閱讀順序。引擎只能填核心角色，`flow` 在 `document` 層才必填。其他欄位細節是提案，`pages` 與 `overrides` 的格式見本節最後（ADR-0092）。
 
 **三層**
 
@@ -376,6 +376,45 @@ flowchart LR
 
 **字元守恆檢查**（S-14）在 `document` 層產生前執行：用 pdf.js 取得原生文字層比對 `raw`，容許空白、連字與斷字差異。缺字超過門檻，該頁標成解析失敗，不進翻譯。門檻與假陽性見 H-8。頁面是掃描件時沒有文字層，這項檢查不適用。
 
+**已實作**：組裝在 `src/core/assemble.ts`，字元守恆在 `src/core/conservation.ts`，人工修正在 `src/core/overrides.ts`，由 `src/core/extract.ts` 串起來（`tests/core/assemble.test.ts`、`tests/core/conservation.test.ts`、`tests/core/overrides.test.ts`、`tests/core/extract.test.ts`；真的跑 Docling 的是 `tests/engine/docling.test.ts`）。結果存在 `ir/document.json`，`source` 的鍵、`overrides.yaml`、語言設定檔、規則包與組裝版本都沒變就不重算（ADR-0092）。
+
+`tome extract` 跑完引擎後依序做這些事。比例與倍數都是提案，等 H-5、H-8 量過才定案：
+
+1. 字元守恆：比每頁的字元計數，不管順序，忽略空白與連字號，兩邊都套語言設定檔的正規化，看不見的字從缺字扣掉。缺字超過該頁字元數的 1%，而且超過 5 字，該頁失敗。Docling 的 `raw` 已經去掉斷字，不是真正的原文。
+2. 頁首頁尾：引擎標的 `furniture` 之外，數字拿掉後相同、貼上下 8% 頁邊、出現 3 頁以上也算。
+3. 邊欄：`src/core/pdf.ts` 回傳向量方框，區塊有 80% 面積在方框內算邊欄，走 `aside`，同一個方框共用 `group`。方框裡要有內文，標題的底色帶不算；蓋住頁面 60% 以上的方框是版面裝飾，也不算。
+4. 閱讀順序：邊欄拿掉之後，寬度超過文字區 60% 的區塊把頁面切成幾段，每段裡整欄讀完再換欄。
+5. 首字放大：引擎讀成 `T he` 時，第一個文字段是單一字母、字高達其他文字的 2 倍就接回。
+6. 接段：跳過 `furniture`、邊欄、圖與圖說，照語言設定檔的 `join` 與 `dehyphenate` 接起跨欄、跨邊欄、跨頁的段落，`spans` 會有多筆。跨過失敗或略過的頁不接。
+7. 跨頁表格：相鄰兩張欄數相同就併，下一頁重印的表頭拿掉。
+8. 規則包角色：`furniture` 與表格以外的區塊跑規則包的 `detect`，判到就蓋過核心角色。
+9. `overrides`，最後建章節。書籤優先，沒有書籤就用 `title`、`heading` 區塊建一層。`page_map` 只來自頁碼標籤，沒有就是空的。
+
+`pages` 每頁一筆，`status` 是 `ok`、`skipped` 或 `failed`，帶 `reason`、`missing`、`total`，不帶書本文字。`failed` 與 `skipped` 的頁，區塊不進 `blocks`。`overrides.yaml` 的格式是 `tome-overrides/1`（`schemas/tome-overrides-1.schema.json`），依序套用，`merge` 留第一塊的 ID，`redact` 換成 `[REDACTED]`：
+
+```yaml
+schema: tome-overrides/1
+operations:
+  - op: role
+    block: p0123-3f9a1c
+    role: sidebar
+  - op: move
+    block: p0123-3f9a1c
+    after: p0122-aa01bc   # null 表示移到最前面
+  - op: merge
+    blocks: [p0123-3f9a1c, p0124-77d2e0]
+  - op: split
+    block: p0123-3f9a1c
+    before: "The warden"
+  - op: skip
+    block: p0125-0c11ab
+  - op: redact
+    block: p0126-9be210
+    text: "Licensed to"
+```
+
+**已知限制**：底色用圖片畫的邊欄、四條線畫的方框抓不到。全寬的表格與圖會把欄位切開，文字繞著它們排的版面，順序可能不對。標題轉成外框後文字層沒有東西，那個標題會不見，字元守恆也看不出來。行內 `runs` 排到 M3，`index`、`credits` 不自動判定，`overrides.yaml` 目前手寫（ADR-0092）。
+
 ### 5.3 解析引擎協定
 
 引擎是外部指令，協定名稱 `tome-engine/1`。
@@ -398,7 +437,7 @@ Docling 是預設引擎，走同一套協定，沒有特權。它的轉接器是
 
 **已知限制**：第一版沒有網路沙箱，「執行時離線」靠的是協定、環境變數與引擎審查，TOME 無法在技術上擋住惡意引擎。第一方引擎之外的引擎，使用者要自己判斷能不能信任。Docling 在 Ubuntu 上拿掉網路後解析成功，**已驗證**的只有解析不需要網路：程式吞掉的連線失敗不會讓測試失敗，所以不能證明它沒有嘗試連線。鎖定檔裡沒有常見的遙測套件，這是看套件名稱，不是看行為（ADR-0085）。
 
-**已實作**：`src/core/engine.ts`、`src/core/extract.ts`、`schemas/tome-engine-1.schema.json`、`engines/docling/`（`tests/core/engine.test.ts`、`tests/core/extract.test.ts`、`tests/core/process.test.ts`、`tests/cli/engine.test.ts`；真的跑 Docling 的是 `tests/engine/docling.test.ts`）。平常的 CI 用 `tests/fixtures/engines/fake/` 的假引擎與錄好的 Docling 輸出，協定的每條失敗路徑都不需要 Docling（ADR-0064）。`tome extract` 目前只跑引擎、存 `source` 層，組裝與字元守恆在下一個回合接上（ADR-0085）。
+**已實作**：`src/core/engine.ts`、`src/core/extract.ts`、`schemas/tome-engine-1.schema.json`、`engines/docling/`（`tests/core/engine.test.ts`、`tests/core/extract.test.ts`、`tests/core/process.test.ts`、`tests/cli/engine.test.ts`；真的跑 Docling 的是 `tests/engine/docling.test.ts`）。平常的 CI 用 `tests/fixtures/engines/fake/` 的假引擎與錄好的 Docling 輸出，協定的每條失敗路徑都不需要 Docling（ADR-0064）。`source` 層的一塊是版面上的一框：Docling 把跨欄的段落接成一個項目時，轉接器依 `charspan` 拆開，段落由組裝接起來（ADR-0092）。
 
 上表以外的細節，下列已定案（ADR-0085）：環境建法只有 `uv` 與 `none`，`engine.yaml` 不能寫自己的安裝指令；要下載權重的引擎宣告 `prepare`，由 TOME 在安裝時呼叫 `<引擎指令> --prepare --data <目錄>`；版本一律問引擎，`<引擎指令> --version`；引擎的 stderr 不存也不印，失敗只有頁碼與原因代碼；`source` 路徑的雜湊取前 16 字元；一本書同時只跑一個流程，用書資料夾裡的 `book.lock`，持有者已經不在時接手。
 
@@ -646,7 +685,7 @@ interface RequestResult {
 
 **已實作**：`tome-pack/1` 的 schema 在 `schemas/tome-pack-1.schema.json`，涵蓋 `pack.yaml`、`roles.yaml`、`entities.yaml`、`glossary.yaml`、`syntax_patterns.yaml` 與 `tests/*.yaml`，驗證在 `src/core/schema.ts`（`tests/core/schema.test.ts`）。每個物件都拒絕未知欄位，所以規則包指定不了連線端點或金鑰。`tome system new`、`list`、`lint`、`test` 在 `src/core/pack.ts`、`src/core/pack-lint.ts`、`src/core/pack-test.ts`（`tests/core/pack.test.ts`、`tests/cli/system.test.ts`），正則在 `src/core/patterns.ts` 與 `src/core/pattern-worker.ts` 的 worker thread 裡執行（`tests/core/patterns.test.ts`）。內建規則包要到 M2 才有，目前用測試專用的合成包 `tests/fixtures/packs/sample-pack` 驗證，CI 也用建置結果跑它。
 
-下面的細節是提案。`detect` 列的模式全部命中才算該角色，要「其一」就在正則裡寫分支。正則一律開 `g` 與 `u`，`flags` 只能再加 `i`、`m`、`s`。測試案例是 `id`、`text`，加上預期抓到的 `matches` 或預期的 `role`，`role: null` 表示不該判定出角色。`lint` 依序查非資料檔與連結、schema、`id` 與資料夾、繼承、模式、參照、代名詞；手寫的危險寫法檢查只是警告，用對抗輸入實跑超時才算失敗。`--public` 另查 `LICENSE`、`NOTICE`、必要聲明與至少一個測試案例，必要聲明的清單在 `src/core/pack-notices.json`，授權要是清單裡的 `Apache-2.0`、`ORC`、`CC-BY-3.0`（ADR-0048、ADR-0084）。規則包寫到組裝步驟的角色判定還沒接上。
+下面的細節是提案。`detect` 列的模式全部命中才算該角色，要「其一」就在正則裡寫分支。正則一律開 `g` 與 `u`，`flags` 只能再加 `i`、`m`、`s`。測試案例是 `id`、`text`，加上預期抓到的 `matches` 或預期的 `role`，`role: null` 表示不該判定出角色。`lint` 依序查非資料檔與連結、schema、`id` 與資料夾、繼承、模式、參照、代名詞；手寫的危險寫法檢查只是警告，用對抗輸入實跑超時才算失敗。`--public` 另查 `LICENSE`、`NOTICE`、必要聲明與至少一個測試案例，必要聲明的清單在 `src/core/pack-notices.json`，授權要是清單裡的 `Apache-2.0`、`ORC`、`CC-BY-3.0`（ADR-0048、ADR-0084）。組裝時會判定規則包宣告的角色，用的是同一個 worker，逾時就回報是哪個模式（`tests/core/extract.test.ts`）。
 
 **三層知識**
 
@@ -868,7 +907,7 @@ tome backup|purge <book>               備份與刪除
 
 `tome assemble` 偵測到未回收的 vault 修改就拒絕輸出，列出檔案，要求先跑 `tome sync`，人工譯文不會被覆蓋。
 
-**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗回 1，失敗的頁下次重跑。其他指令還沒有。
+**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。其他指令還沒有。
 
 ---
 
@@ -1030,7 +1069,7 @@ repo 裡 MUST NOT 有任何 PDF。每個測試素材 MUST 在來源清單登記�
 
 **合成 PDF 鍛造**（S-11）只用 `pdfkit`，它是開發相依，底層物件用它的低階介面補。`pdf-lib` 五年沒有更新，又帶進白名單外的授權，所以不用（ADR-0084）。案例有雙欄、跨欄邊欄、跨頁表格、首字放大、標題轉外框、背景紋理、頁尾購買者浮水印、連字、斷字、壞掉的 ToUnicode、隱藏文字、書籤、頁碼標籤、連結。直書與假名標音在日文階段才加。驗證基準一律用生成時的標準答案。
 
-**已實作**：鍛造器在 `tests/forge/`（`tests/forge/forge.test.ts`），同一個案例每次產生同樣的位元組，加密案例除外。目前的案例是頁面分類與文件結構用的：純文字、書籤與頁碼標籤與連結、掃描頁、純圖片、壞 ToUnicode、隱藏文字、跨頁攤開、兩種加密、大本效能書，以及給引擎測試的 `blocks`，一頁有標題、段落、表格、圖、圖說與頁尾。其他版面案例跟 document 層一起做。頁碼標籤與壞 ToUnicode 都做得出來（ADR-0061 的待驗證項）。
+**已實作**：鍛造器在 `tests/forge/`（`tests/forge/forge.test.ts`），同一個案例每次產生同樣的位元組，加密案例除外。目前的案例是頁面分類與文件結構用的：純文字、書籤與頁碼標籤與連結、掃描頁、純圖片、壞 ToUnicode、隱藏文字、跨頁攤開、兩種加密、大本效能書，以及給引擎測試的 `blocks`，一頁有標題、段落、表格、圖、圖說與頁尾。版面案例都放在 `layout` 這一份：雙欄、跨欄邊欄、跨頁表格、首字放大、標題轉外框、背景紋理、頁尾購買者浮水印、連字、斷字，答案在 `LAYOUT_TRUTH`，平常的 CI 用錄好的 Docling 輸出（`tests/fixtures/engine-outputs/docling/layout/`）。頁碼標籤與壞 ToUnicode 都做得出來（ADR-0061 的待驗證項）。
 
 ### 8.6 評測
 
@@ -1149,6 +1188,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0089](adr/0089-cli-message-style.md) | CLI 訊息的文字規範 | M1 |
 | [ADR-0090](adr/0090-engine-detail-decisions.md) | 引擎協定的實作細節定案 | M1 |
 | [ADR-0091](adr/0091-message-params-for-people.md) | 訊息參數給人看 | M1 |
+| [ADR-0092](adr/0092-document-layer-decisions.md) | document 層與字元守恆的選型 | M1 |
 
 ---
 
@@ -1183,12 +1223,12 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | H-1 | Anthropic Batch 搭 1 小時快取與同步預熱，命中率能穩定超過 51% | 低於這條線，開快取比不開貴 | 用公開素材各跑一批，讀 `usage` |
 | H-2 | 便宜模型（Haiku 5.5、gpt-6-luna、Flash-Lite）的 zh-TW 品質足以上桌 | 模型選擇是最大的成本槓桿，差距達百倍 | 同一段素材跨模型盲評 |
 | H-4 | 恐怖題材的拒答率低到可以用回退處理 | 決定是否需要多供應商才能跑完一本書 | 用公有領域的 Lovecraft 文本測各家拒答率 |
-| H-5 | Docling 加自製規則處得好雙欄、邊欄、數值塊 | 解析錯了，翻譯再好也沒用 | 合成 PDF 鍛造 + 本機私有語料 |
+| H-5 | Docling 加自製規則處得好雙欄、邊欄、數值塊 | 解析錯了，翻譯再好也沒用 | 合成 PDF 鍛造 + 本機私有語料。**合成 PDF 的部分已驗證**：2026-11-01 Docling 2.140.0 跑 `layout`，跨欄邊欄的閱讀順序、跨邊欄與跨頁接段、斷字、跨頁表格、首字放大、購買者頁尾、連字都對（`tests/engine/docling.test.ts`）。只靠 Docling 時跨欄邊欄的順序是錯的，所以這些規則是必要的。數值塊要等 M2 的規則包，商業書**還沒量** |
 | H-6 | 字級與位移規則足以處理原生日文 PDF 的假名標音 | 沒有現成函式庫 | 合成 PDF 鍛造 |
 | H-7 | 目標書籍多半帶書籤與頁碼標籤 | 沒有的話，章節層級與印刷頁碼要改從版面推斷，「見 p.123」的連結會變差 | 本機私有語料統計；`tome probe` 回報覆蓋率。回報已實作（`tests/core/probe.test.ts`），這台機器沒有商業書，統計**還沒做** |
-| H-8 | 字元守恆檢查的假陽性夠低，不會把好頁面擋下來 | 隱藏文字、可選內容圖層、疊印的重複文字都可能造成差異 | 合成 PDF 鍛造 + 本機私有語料，再決定門檻 |
+| H-8 | 字元守恆檢查的假陽性夠低，不會把好頁面擋下來 | 隱藏文字、可選內容圖層、疊印的重複文字都可能造成差異 | 合成 PDF 鍛造 + 本機私有語料，再決定門檻。合成 PDF：2026-11-01 Docling 2.140.0 跑 9 個案例 50 頁、104,365 個字元，缺字 0，沒有誤擋，含隱藏文字的頁也一樣；丟字的頁確實會失敗（`tests/core/extract.test.ts`）。合成 PDF 沒有疊印與可選內容圖層，門檻 1% 且 5 字仍是提案，商業書**還沒量** |
 | H-9 | 內容雜湊夠穩定，換引擎後翻譯記憶仍命中 | 引擎對空白、連字、斷字的處理不同，正規化不夠就白付一次 | 同一份公開素材用兩個引擎解析，比對遮蔽後雜湊的重合率 |
-| H-10 | pdf.js 足以判定文字層品質並做字元守恆 | 查到 PDFium 有 `FPDFText_HasUnicodeMapError`，pdf.js 這邊還沒找到對應訊號 | 合成 PDF 鍛造，故意做壞 ToUnicode；不夠時把深度檢查放進引擎。**文字層品質的部分已驗證**：2026-11-01 pdf.js 忠實回傳壞掉的 ToUnicode，映到私有區、U+FFFD 或半數字元壞掉的頁面都判得出 `broken_text`；字元合法但對應錯的情況，字母分布的相似度正常英文 0.9 以上、位移過的文字低於門檻 0.8（`tests/core/probe.test.ts`）。只用合成案例與 repo 裡的英文驗過，商業書的誤判率**還沒量**。字元守恆的部分**還沒驗證** |
+| H-10 | pdf.js 足以判定文字層品質並做字元守恆 | 查到 PDFium 有 `FPDFText_HasUnicodeMapError`，pdf.js 這邊還沒找到對應訊號 | 合成 PDF 鍛造，故意做壞 ToUnicode；不夠時把深度檢查放進引擎。**文字層品質的部分已驗證**：2026-11-01 pdf.js 忠實回傳壞掉的 ToUnicode，映到私有區、U+FFFD 或半數字元壞掉的頁面都判得出 `broken_text`；字元合法但對應錯的情況，字母分布的相似度正常英文 0.9 以上、位移過的文字低於門檻 0.8（`tests/core/probe.test.ts`）。只用合成案例與 repo 裡的英文驗過，商業書的誤判率**還沒量**。字元守恆的部分見 H-8，合成 PDF 上 pdf.js 夠用，商業書**還沒量** |
 | H-11 | 候選詞加少量上下文的 Pass 0，召回率夠高 | 漏掉的名字會在分塊翻譯時分裂 | 用已知詞表的公開素材量召回率，並與全書掃描比較 |
 | H-12 | `tome sync` 能把 vault 的修改可靠對回區塊 | 對錯段落等於把人工譯文寫到別的地方 | 合成修改集：改字、併段、搬動段落，量對應正確率 |
 | H-13 | 關閉思考後，翻譯品質仍足以上桌 | 思考計入輸出費，開著可能明顯超出附錄 A | 同一段素材開關思考各翻一次，盲評並比較 `usage` |
@@ -1291,7 +1331,7 @@ Gemini 顯式快取也算過：Flash-Lite 上 8k 前綴省下約 0.13，但排�
 | M3 譯名與輸出 | Pass 0、審定、`tome glossary import`、數值塊欄位化、vault、`tome sync`、交付報告、一致性報告、`tome purge`、`tome backup` | 能帶團閱讀的成品 |
 | M4 首版 | `d100-orc`、試翻校準、盲評、發佈流程 | Q-1 到 Q-8 達標，發佈 0.1.0 |
 
-**目前階段**：M0 已完成，M1 解析進行中，分四個回合（ADR-0084）。
+**目前階段**：M0 已完成。M1 解析的四個回合都已實作（ADR-0084），H-5、H-7、H-8 還要用維護者提供的商業書實測，門檻與版面規則的比例才能定案（ADR-0092）。
 
 M1 已實作的項目：
 
@@ -1306,6 +1346,9 @@ M1 已實作的項目：
 | `tome-engine/1`、`tome engine add`、`list`、`remove` | `src/core/engine.ts`、`src/core/process.ts`、`schemas/tome-engine-1.schema.json` | `tests/core/engine.test.ts`、`tests/core/process.test.ts`、`tests/cli/engine.test.ts` |
 | Docling 引擎 | `engines/docling/`、`.github/workflows/engine.yml` | `tests/engine/docling.test.ts`、`tests/core/recorded-engine.test.ts` |
 | `tome extract` 的 `source` 層 | `src/core/extract.ts` | `tests/core/extract.test.ts` |
+| `document` 層與組裝 | `src/core/assemble.ts`、`src/core/extract.ts` | `tests/core/assemble.test.ts`、`tests/core/extract.test.ts`、`tests/engine/docling.test.ts` |
+| 字元守恆 | `src/core/conservation.ts` | `tests/core/conservation.test.ts`、`tests/core/extract.test.ts` |
+| `tome-overrides/1` | `src/core/overrides.ts`、`schemas/tome-overrides-1.schema.json` | `tests/core/overrides.test.ts`、`tests/core/extract.test.ts` |
 | 測試素材清單 | `tests/fixtures/SOURCES.yaml` | `tests/tools/fixtures.test.ts` |
 
 M0 的項目都已實作：

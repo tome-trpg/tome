@@ -40,7 +40,7 @@ TOME 的設計目標是解決這些問題，並讓譯文可以直接用於實際
 | 登記書籍、探測 PDF | `tome add`、`tome probe` | 已實作 |
 | 管理規則包 | `tome system new`、`list`、`lint`、`test` | 已實作 |
 | 管理解析引擎 | `tome engine add`、`list`、`remove` | 已實作 |
-| 解析頁面 | `tome extract` | 開發中：目前只將原生文字頁交給解析引擎，尚未組裝成文件 |
+| 解析頁面 | `tome extract` | 可使用：將原生文字頁交給解析引擎，組裝成文件，並檢查字元是否遺失 |
 | 翻譯與輸出 | 尚未提供 | 規劃中 |
 
 ## 不涵蓋的範圍
