@@ -36,7 +36,7 @@ assets:
   - path: tests/fixtures/engines/fake/main.mjs
     source: written for this repository
     license: Apache-2.0
-    sha256: 7630f9675ecbdfc699f9838dea1c1f55e842210caea4fd2404d00a03c99dbe39
+    sha256: 7ec4ab178379f66cd5ac21652318be33da90fa5983d7648497a1daa95c06f520
   - path: tests/fixtures/packs/sample-pack/LICENSE
     source: written for this repository
     license: Apache-2.0

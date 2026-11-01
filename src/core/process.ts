@@ -4,6 +4,7 @@ import { StringDecoder } from 'node:string_decoder';
 // 子行程一律從這裡啟動，環境變數先過濾，金鑰才不會被繼承（ADR-0034）。
 const SECRET_NAME = /api[_-]?key|secret|token|password|credential/i;
 const STDERR_TAIL_BYTES = 4096;
+const PLAIN_EXIT_CODE = 0xffff;
 
 export function scrubEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([name]) => !SECRET_NAME.test(name)));
@@ -43,7 +44,13 @@ export interface StreamOptions {
 }
 
 export type StreamOutcome =
-  | { readonly status: 'exited'; readonly code: number | null; readonly stderr: string }
+  | {
+      readonly status: 'exited';
+      readonly code: number | null;
+      /** 被訊號終止時才有，這時 `code` 是 null。 */
+      readonly signal: NodeJS.Signals | null;
+      readonly stderr: string;
+    }
   | { readonly status: 'timeout' }
   | { readonly status: 'not_found' };
 
@@ -53,6 +60,19 @@ export type StreamRunner = (
   env: NodeJS.ProcessEnv,
   options?: StreamOptions,
 ) => Promise<StreamOutcome>;
+
+/**
+ * 行程怎麼結束，給回報用（ADR-0101）。不帶 stderr，它可能有書本文字（ADR-0059）。
+ * Windows 的原生崩潰是很大的數字，要查十六進位的 NTSTATUS，所以兩種都列。
+ */
+export function describeExit(outcome: StreamOutcome): string {
+  if (outcome.status !== 'exited') return outcome.status;
+  const { code, signal } = outcome;
+  if (code === null) return signal === null ? 'unknown' : `signal ${signal}`;
+  if (code >= 0 && code <= PLAIN_EXIT_CODE) return String(code);
+  const hex = (code >>> 0).toString(16).toUpperCase().padStart(8, '0');
+  return `${code} (0x${hex})`;
+}
 
 /** 跑很久的子行程：stdout 一行一行交給呼叫端，不用等它結束。 */
 export const runStream: StreamRunner = (command, args, env, options = {}) =>
@@ -96,13 +116,15 @@ export const runStream: StreamRunner = (command, args, env, options = {}) =>
     child.on('error', (error: NodeJS.ErrnoException) => {
       clearTimeout(timer);
       resolve(
-        error.code === 'ENOENT' ? { status: 'not_found' } : { status: 'exited', code: null, stderr },
+        error.code === 'ENOENT'
+          ? { status: 'not_found' }
+          : { status: 'exited', code: null, signal: null, stderr },
       );
     });
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       clearTimeout(timer);
       consume(decoder.end());
       if (pending !== '') onLine?.(pending);
-      resolve(timedOut ? { status: 'timeout' } : { status: 'exited', code, stderr });
+      resolve(timedOut ? { status: 'timeout' } : { status: 'exited', code, signal, stderr });
     });
   });

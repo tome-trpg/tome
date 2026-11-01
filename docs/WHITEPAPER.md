@@ -439,7 +439,7 @@ Docling 是預設引擎，走同一套協定，沒有特權。它的轉接器是
 
 **已實作**：`src/core/engine.ts`、`src/core/extract.ts`、`schemas/tome-engine-1.schema.json`、`engines/docling/`（`tests/core/engine.test.ts`、`tests/core/extract.test.ts`、`tests/core/process.test.ts`、`tests/cli/engine.test.ts`；真的跑 Docling 的是 `tests/engine/docling.test.ts`）。平常的 CI 用 `tests/fixtures/engines/fake/` 的假引擎與錄好的 Docling 輸出，協定的每條失敗路徑都不需要 Docling（ADR-0064）。`source` 層的一塊是版面上的一框：Docling 把跨欄的段落接成一個項目時，轉接器依 `charspan` 拆開，段落由組裝接起來（ADR-0092）。
 
-上表以外的細節，下列已定案（ADR-0085）：環境建法只有 `uv` 與 `none`，`engine.yaml` 不能寫自己的安裝指令；要下載權重的引擎宣告 `prepare`，由 TOME 在安裝時呼叫 `<引擎指令> --prepare --data <目錄>`；版本一律問引擎，`<引擎指令> --version`；引擎的 stderr 不存也不印，失敗只有頁碼與原因代碼；`source` 路徑的雜湊取前 16 字元；一本書同時只跑一個流程，用書資料夾裡的 `book.lock`，持有者已經不在時接手。
+上表以外的細節，下列已定案（ADR-0085）：環境建法只有 `uv` 與 `none`，`engine.yaml` 不能寫自己的安裝指令；要下載權重的引擎宣告 `prepare`，由 TOME 在安裝時呼叫 `<引擎指令> --prepare --data <目錄>`；版本一律問引擎，`<引擎指令> --version`；引擎的 stderr 不存也不印，失敗只有頁碼、原因代碼與引擎的結束狀態（ADR-0101）；`source` 路徑的雜湊取前 16 字元；一本書同時只跑一個流程，用書資料夾裡的 `book.lock`，持有者已經不在時接手。
 
 下列細節也已定案（ADR-0090）。安裝紀錄是引擎資料夾裡的 `install.json`。manifest 另有 PDF 雜湊、資料目錄、設定雜湊，選項目前只有 `device`。頁面檔名是 `p0123.json`，先寫暫存檔再換名字。設定雜湊的輸入是轉接器與鎖定檔的內容、裝置、來源語言。事件只是進度，算數的是檔案：不是有效的 `tome-ir/1`、不是這本書或這份設定的頁面都丟掉重做，engine.json 缺了也算失敗。只有一項還是提案：引擎 10 分鐘沒有事件就終止，這個數字沒有在真實書籍上量過。
 
@@ -1203,6 +1203,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0098](adr/0098-layout-ratios-settled.md) | 閱讀順序通過，版面比例定案 | M1 |
 | [ADR-0099](adr/0099-m2-translation-core-decisions.md) | M2 翻譯核心的選型與範圍 | M2 |
 | [ADR-0100](adr/0100-units-and-masking-decisions.md) | 單位與遮蔽的細節 | M2 |
+| [ADR-0101](adr/0101-engine-exit-status.md) | 回報引擎的結束狀態 | M2 |
 
 ---
 

@@ -78,7 +78,7 @@ describe('tome engine', () => {
     );
     const stream: StreamRunner = async (_command, args, _env, options) => {
       if (args.includes('--version')) options?.onLine?.('9.9.9');
-      return { status: 'exited', code: 0, stderr: '' };
+      return { status: 'exited', code: 0, signal: null, stderr: '' };
     };
     const added = capture({ env, stream, tool: async () => ({ stdout: 'Forged GPU, 8192, 8000\n' }) });
     expect(await run(['engine', 'add', target, '--gpu'], added.io)).toBe(0);
@@ -112,6 +112,20 @@ describe('tome extract', () => {
     expect(result.data['engines']).toMatchObject([{ name: 'fake', version: '1.2.3', device: 'cpu' }]);
     expect(result.data['document']).toMatchObject({ reused: false, pages: { ok: 3, skipped: 0, failed: 0 } });
     expect(extracted.stderr()).toContain('已解析 3/3 頁。');
+  });
+
+  it('shows how the engine ended, in the message and in --json (ADR-0101)', async () => {
+    const { env, session } = await workspace();
+    await run(['engine', 'add', FAKE_ENGINE], session().io);
+    await run(['add', await forgeFile('plain', tempDir()), '--as', 'book'], session().io);
+    const crashing = { ...env, FAKE_ENGINE_SCENARIO: 'crash' };
+    const plain = capture({ env: crashing, tool: async () => null });
+    expect(await run(['extract', 'book'], plain.io)).toBe(1);
+    expect(plain.stdout()).toContain('引擎結束狀態：fake:3。');
+    const json = capture({ env: crashing, tool: async () => null });
+    expect(await run(['extract', 'book', '--json'], json.io)).toBe(1);
+    const failed = envelope(json.stdout()).findings.find((item) => item.code === 'extract.pages_failed');
+    expect(failed?.params['exit']).toBe('fake:3');
   });
 
   it('says what it assembled, and that it reused it the second time', async () => {

@@ -69,6 +69,7 @@ function run(manifest) {
   for (const [index, page] of manifest.pages.entries()) {
     const path = join(manifest.output_dir, fileOf(page));
     if (scenario === 'crash' && index === 1) process.exit(3);
+    if (scenario === 'killed' && index === 1) process.kill(process.pid, 'SIGKILL');
     if (scenario === 'one_failed' && index === 1) {
       say({ event: 'page', page, status: 'failed', reason: 'conversion_failed' });
       results.push({ page, status: 'failed', reason: 'conversion_failed' });

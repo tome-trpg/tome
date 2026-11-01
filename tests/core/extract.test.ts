@@ -15,6 +15,7 @@ import { addEngine, engineDir, type EngineManifest } from '../../src/core/engine
 import { TomeError } from '../../src/core/errors.ts';
 import {
   configHashOf,
+  exitParam,
   extractBook,
   sourceDir,
   sourcePageFile,
@@ -151,6 +152,7 @@ describe('tome extract', () => {
     expect(first.findings.find((item) => item.code === 'extract.pages_failed')?.params).toEqual({
       count: '1',
       pages: '2:conversion_failed',
+      exit: 'fake:0',
     });
     expect(existsSync(join(pagesDir(home), sourcePageFile(2)))).toBe(true);
 
@@ -178,8 +180,55 @@ describe('tome extract', () => {
     expect(findings.find((item) => item.code === 'extract.pages_failed')?.params).toEqual({
       count: '2',
       pages: '2:engine_crashed, 3:engine_crashed',
+      exit: 'fake:3',
     });
     expect(existsSync(join(pagesDir(home), sourcePageFile(0)))).toBe(true);
+  });
+
+  it('says how an engine that was killed ended (ADR-0101)', async () => {
+    const home = await library();
+    const { findings } = await extract(home, 'killed');
+    const params = findings.find((item) => item.code === 'extract.pages_failed')?.params;
+    expect(params?.['pages']).toBe('2:engine_crashed, 3:engine_crashed');
+    // Windows 沒有訊號，行程被終止時 Node 回報的是結束碼 1。
+    expect(params?.['exit']).toBe(process.platform === 'win32' ? 'fake:1' : 'fake:signal SIGKILL');
+  });
+
+  it.each([
+    ['a native crash on Windows', { code: 3221225477, signal: null }, 'fake:3221225477 (0xC0000005)'],
+    ['a signal', { code: null, signal: 'SIGSEGV' as const }, 'fake:signal SIGSEGV'],
+    ['neither a code nor a signal', { code: null, signal: null }, 'fake:unknown'],
+  ])('reports %s by how the engine ended (ADR-0101)', async (_name, ended, exit) => {
+    const home = await library();
+    const { findings } = await extractBook({
+      home,
+      slug: 'book',
+      env: process.env,
+      tool: NO_GPU,
+      stream: async () => ({ status: 'exited', stderr: '', ...ended }),
+    });
+    expect(findings.find((item) => item.code === 'extract.pages_failed')?.params['exit']).toBe(exit);
+  });
+
+  it('lists only the engines that have failed pages', () => {
+    const results = [
+      { name: 'first', exit: '0', failed: [] },
+      { name: 'second', exit: '3', failed: [{ page: 1, reason: 'engine_crashed' }] },
+      { name: 'third', exit: 'timeout', failed: [{ page: 2, reason: 'timeout' }] },
+    ];
+    expect(exitParam(results)).toBe('second:3, third:timeout');
+  });
+
+  it('keeps stderr out of what it reports (ADR-0085)', async () => {
+    const home = await library();
+    const { findings } = await extractBook({
+      home,
+      slug: 'book',
+      env: process.env,
+      tool: NO_GPU,
+      stream: async () => ({ status: 'exited', code: 1, signal: null, stderr: 'a line of the book' }),
+    });
+    expect(JSON.stringify(findings)).not.toContain('a line of the book');
   });
 
   it.each([
@@ -226,13 +275,13 @@ describe('tome extract', () => {
     const run = (outcome: Awaited<ReturnType<StreamRunner>>): Promise<ExtractResult> =>
       extractBook({ home, slug: 'book', env: process.env, tool: NO_GPU, stream: async () => outcome });
     const quiet = await run({ status: 'timeout' });
-    expect(quiet.findings.find((item) => item.code === 'extract.pages_failed')?.params['pages']).toContain(
-      '1:timeout',
-    );
+    const quietParams = quiet.findings.find((item) => item.code === 'extract.pages_failed')?.params;
+    expect(quietParams?.['pages']).toContain('1:timeout');
+    expect(quietParams?.['exit']).toBe('fake:timeout');
     const gone = await run({ status: 'not_found' });
-    expect(gone.findings.find((item) => item.code === 'extract.pages_failed')?.params['pages']).toContain(
-      '1:engine_not_found',
-    );
+    const goneParams = gone.findings.find((item) => item.code === 'extract.pages_failed')?.params;
+    expect(goneParams?.['pages']).toContain('1:engine_not_found');
+    expect(goneParams?.['exit']).toBe('fake:not_found');
   });
 
   it('gives the engine no keys, and gives it the offline settings it declared', async () => {
@@ -540,7 +589,7 @@ describe('choosing a device', () => {
       tool: async () => ({ stdout: 'Forged GPU, 8192, 8000\n' }),
       stream: async (_command, args, _env, options) => {
         if (args.includes('--version')) options?.onLine?.('1.0.0');
-        return { status: 'exited', code: 0, stderr: '' };
+        return { status: 'exited', code: 0, signal: null, stderr: '' };
       },
     });
     await addBook({ home, pdf: await forgeFile('plain', tempDir()), name: 'book' });
@@ -553,7 +602,7 @@ describe('choosing a device', () => {
     const stream: StreamRunner = async (_command, args) => {
       const manifest = args[args.indexOf('--manifest') + 1] ?? '';
       device = (JSON.parse(readFileSync(manifest, 'utf8')) as EngineManifest).options.device;
-      return { status: 'exited', code: 0, stderr: '' };
+      return { status: 'exited', code: 0, signal: null, stderr: '' };
     };
     const tool: ToolRunner = async () => (free === null ? null : { stdout: `Forged GPU, 8192, ${free}\n` });
     await extractBook({ home, slug: 'book', env: {}, tool, stream });
