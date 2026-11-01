@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { Ajv2020, type ValidateFunction } from 'ajv/dist/2020.js';
 import type { BookConfig } from './book.ts';
+import type { EngineEvent, EngineInstall, EngineManifest, EngineRun, EngineSpec } from './engine.ts';
 import type { TomeIr } from './ir.ts';
 import type { Language } from './language.ts';
 import type { Probe } from './probe.ts';
@@ -10,6 +11,7 @@ const PACK_FILE = 'tome-pack-1.schema.json';
 const BOOK_FILE = 'tome-book-1.schema.json';
 const PROBE_FILE = 'tome-probe-1.schema.json';
 const LANGUAGE_FILE = 'tome-lang-1.schema.json';
+const ENGINE_FILE = 'tome-engine-1.schema.json';
 
 export type PackFileKind =
   | 'pack'
@@ -40,6 +42,7 @@ interface Compiled {
   readonly bookId: string;
   readonly probeId: string;
   readonly languageId: string;
+  readonly engineId: string;
 }
 
 let cached: Compiled | undefined;
@@ -52,7 +55,8 @@ function compiled(): Compiled {
     const book = loadSchema(BOOK_FILE);
     const probe = loadSchema(PROBE_FILE);
     const language = loadSchema(LANGUAGE_FILE);
-    for (const schema of [ir, pack, book, probe, language]) ajv.addSchema(schema);
+    const engine = loadSchema(ENGINE_FILE);
+    for (const schema of [ir, pack, book, probe, language, engine]) ajv.addSchema(schema);
     cached = {
       ajv,
       irId: ir.$id,
@@ -60,6 +64,7 @@ function compiled(): Compiled {
       bookId: book.$id,
       probeId: probe.$id,
       languageId: language.$id,
+      engineId: engine.$id,
     };
   }
   return cached;
@@ -114,6 +119,26 @@ export function validateProbe(data: unknown): Validation<Probe> {
 
 export function validateLanguage(data: unknown): Validation<Language> {
   return validateAs(compiled().languageId, data);
+}
+
+export function validateEngineSpec(data: unknown): Validation<EngineSpec> {
+  return validateAs(compiled().engineId, data);
+}
+
+export function validateEngineManifest(data: unknown): Validation<EngineManifest> {
+  return validateAs(`${compiled().engineId}#/$defs/manifest`, data);
+}
+
+export function validateEngineEvent(data: unknown): Validation<EngineEvent> {
+  return validateAs(`${compiled().engineId}#/$defs/event`, data);
+}
+
+export function validateEngineRun(data: unknown): Validation<EngineRun> {
+  return validateAs(`${compiled().engineId}#/$defs/run`, data);
+}
+
+export function validateEngineInstall(data: unknown): Validation<EngineInstall> {
+  return validateAs(`${compiled().engineId}#/$defs/install`, data);
 }
 
 export function validatePackFile(kind: PackFileKind, data: unknown): Validation<unknown> {

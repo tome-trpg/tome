@@ -37,7 +37,7 @@ describe('runDoctor', () => {
       'uv.missing',
       'key.ok',
       'workspace.ok',
-      'engines.pending',
+      'engine.none',
       'prices.pending',
     ]);
     expect(findings.find((item) => item.code === 'uv.missing')?.level).toBe('info');

@@ -20,6 +20,10 @@ export function promptText(key: keyof typeof catalog.prompt, params: Params): st
   return fill(catalog.prompt[key], params);
 }
 
+export function progressText(key: keyof typeof catalog.progress, params: Params = {}): string {
+  return fill(catalog.progress[key], params);
+}
+
 export function levelText(level: FindingLevel): string {
   return catalog.level[level];
 }

@@ -1,7 +1,9 @@
 // 函式庫入口。CLI 只是外面一層（ADR-0028）。
 export * from './book.ts';
 export * from './doctor.ts';
+export * from './engine.ts';
 export * from './errors.ts';
+export * from './extract.ts';
 export * from './findings.ts';
 export * from './ir.ts';
 export * from './language.ts';

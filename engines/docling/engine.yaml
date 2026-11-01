@@ -1,0 +1,23 @@
+schema: tome-engine/1
+name: docling
+pages: [native]
+command: [python, main.py]
+license:
+  code: MIT
+  weights: Apache-2.0 AND CDLA-Permissive-2.0
+setup:
+  kind: uv
+  extras:
+    cpu: cpu
+    gpu: gpu
+  prepare: true
+# 執行時離線（ADR-0039）。權重在 tome engine add 時下載好，之後不連網。
+env:
+  HF_HUB_OFFLINE: '1'
+  TRANSFORMERS_OFFLINE: '1'
+  HF_HUB_DISABLE_TELEMETRY: '1'
+# 參考機器量到引擎最多占 819 MB，不隨頁數增加，取整到 1 GB（ADR-0085）。比的是剩餘的 VRAM。
+# Windows 要多下載約 2 GB，Linux 的 CUDA 套件更多。
+gpu:
+  min_vram_mb: 1024
+  download_mb: 2000

@@ -1,0 +1,63 @@
+# 測試素材的來源清單（PC-2、ADR-0061）。tests/fixtures 底下的每個檔案都要在這裡登記授權與雜湊，
+# 未登記的讓 CI 失敗（tests/tools/fixtures.test.ts）。這裡沒有任何書的內容。
+assets:
+  - path: tests/fixtures/engine-outputs/docling/blocks/engine.json
+    source: recorded from Docling 2.140.0 on the forged case blocks
+    license: Apache-2.0
+    sha256: 9ac2c25792c1d1380aeada2bfc0d61bed91cfde2b6ceb129eea5f4a6a79ca282
+  - path: tests/fixtures/engine-outputs/docling/blocks/p0000.json
+    source: recorded from Docling 2.140.0 on the forged case blocks
+    license: Apache-2.0
+    sha256: 323f991c6822e2d7b56411db692b0dee75fc874c4e089fcbc0f32fcc6f4550be
+  - path: tests/fixtures/engine-outputs/docling/blocks/p0001.json
+    source: recorded from Docling 2.140.0 on the forged case blocks
+    license: Apache-2.0
+    sha256: b508d1d22af764c0d5924289ba339a63e0d7ed8eab0b7cfe5de50e2405172977
+  - path: tests/fixtures/engines/fake/engine.yaml
+    source: written for this repository
+    license: Apache-2.0
+    sha256: 1244a772ae2dad575a9db3704e704070d6a582ce084dbfc2acc264c538c42bd6
+  - path: tests/fixtures/engines/fake/main.mjs
+    source: written for this repository
+    license: Apache-2.0
+    sha256: de7add3ae12595260c558a9a186610c4830f90e8896ab483621a6d3df0df0b6f
+  - path: tests/fixtures/packs/sample-pack/LICENSE
+    source: written for this repository
+    license: Apache-2.0
+    sha256: 1a981d908a45fb43f02a7d3d74323053dcf63c44fdab3f4e6f0817bf23013a04
+  - path: tests/fixtures/packs/sample-pack/NOTICE
+    source: written for this repository
+    license: Apache-2.0
+    sha256: 405eb5e410589601b5a77a407ebf85050faae9e487479c1205f0b9c8a0161b62
+  - path: tests/fixtures/packs/sample-pack/entities.yaml
+    source: written for this repository
+    license: Apache-2.0
+    sha256: 5225bc9fe2478d06991afcfdaeaf29f604529f959d2ae308e96bb984c2e41666
+  - path: tests/fixtures/packs/sample-pack/few_shots.md
+    source: written for this repository
+    license: Apache-2.0
+    sha256: 55d8aa64a2b0cc8bee23112ef9ec97219da9912396777417c9e9da970af7bb31
+  - path: tests/fixtures/packs/sample-pack/glossary.yaml
+    source: written for this repository
+    license: Apache-2.0
+    sha256: 194d407960f69968df82e163ce9940d73b4b722a93ca7770244e39776a5ba2a3
+  - path: tests/fixtures/packs/sample-pack/pack.yaml
+    source: written for this repository
+    license: Apache-2.0
+    sha256: 41ddb7babd014141752e645e0f90bbeee7184363d731cf8f8aef9ce2bf738e69
+  - path: tests/fixtures/packs/sample-pack/persona_and_tone.md
+    source: written for this repository
+    license: Apache-2.0
+    sha256: 1a4c68bce6e2c044da889eaf2fcb070f2e3a444eb703a439af4aa4339cae1d1d
+  - path: tests/fixtures/packs/sample-pack/roles.yaml
+    source: written for this repository
+    license: Apache-2.0
+    sha256: 6df8715af394ce52f66de06b13f12dfb105a5c291070f512682f8220ba96e446
+  - path: tests/fixtures/packs/sample-pack/syntax_patterns.yaml
+    source: written for this repository
+    license: Apache-2.0
+    sha256: c98589da86c32517e15c23511b079ebec483e8a97c0d52baf2a2bf474a87b7d1
+  - path: tests/fixtures/packs/sample-pack/tests/basic.yaml
+    source: written for this repository
+    license: Apache-2.0
+    sha256: 95fea2a57e45d765845c4fa653ac0e2c59f388f959004039c4b8191000835e89

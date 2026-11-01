@@ -1,0 +1,66 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import type { Envelope } from '../../src/cli/output.ts';
+import { run } from '../../src/cli/run.ts';
+import { readEngineSpec, locateEngine } from '../../src/core/engine.ts';
+import type { SourcePage } from '../../src/core/ir.ts';
+import { runTool } from '../../src/core/process.ts';
+import { validateEngineRun, validateIr } from '../../src/core/schema.ts';
+import { forgeFile } from '../forge/index.ts';
+import { capture, tempDir } from '../helpers.ts';
+
+// 真的跑 Docling（ADR-0064）。平常的 CI 跳過，`.github/workflows/engine.yml` 裝好引擎後才跑。
+const home = process.env['TOME_ENGINE_HOME'];
+
+function filesUnder(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    return statSync(path).isDirectory() ? filesUnder(path) : [path];
+  });
+}
+
+function json(path: string): unknown {
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+describe.skipIf(home === undefined)('Docling on a forged PDF', () => {
+  it('writes source pages that pass tome-ir/1', { timeout: 900_000 }, async () => {
+    const root = home ?? '';
+    const session = () => capture({ env: { ...process.env, TOME_HOME: root }, tool: runTool });
+    expect(await run(['add', await forgeFile('blocks', tempDir()), '--as', 'blocks'], session().io)).toBe(0);
+
+    const extracted = session();
+    expect(await run(['extract', 'blocks', '--json'], extracted.io)).toBe(0);
+    const { data } = JSON.parse(extracted.stdout()) as Envelope;
+    expect(data).toMatchObject({ pages: 2, failed: 0 });
+
+    const files = filesUnder(join(root, 'books', 'blocks', 'ir', 'source'));
+    const pages = files
+      .filter((path) => /p\d{4}\.json$/.test(path))
+      .sort()
+      .map((path) => {
+        const checked = validateIr(json(path));
+        expect(checked.ok).toBe(true);
+        return json(path) as SourcePage;
+      });
+    expect(pages.map((page) => page.page)).toEqual([0, 1]);
+
+    for (const page of pages) {
+      expect(page.blocks.every((block) => block.spans.every((span) => span.page === page.page))).toBe(true);
+      expect(new Set(page.blocks.map((block) => block.role))).toEqual(
+        new Set(['heading', 'paragraph', 'table', 'figure', 'caption', 'furniture']),
+      );
+      const table = page.blocks.find((block) => block.role === 'table')?.table;
+      expect(table).toMatchObject({ rows: 4, cols: 4 });
+      expect(table?.cells.map((cell) => cell.text)).toContain('Crossing');
+    }
+
+    const record = files.find((path) => path.endsWith('engine.json')) ?? '';
+    const checked = validateEngineRun(json(record));
+    expect(checked.ok).toBe(true);
+    if (checked.ok) {
+      expect(checked.value.license).toEqual(readEngineSpec(locateEngine('docling').dir).license);
+    }
+  });
+});

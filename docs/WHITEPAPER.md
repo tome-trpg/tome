@@ -33,7 +33,7 @@ date: 2026-11-01
 | **假說** | 架構倚賴的假設，必須先驗證 | [§11](#11-風險與假說) 的條目 |
 | **提案** | 原則已定案，欄位名稱這類細節實作時可以調整 | 所在章節的說明 |
 
-**這份文件裡的成本與品質數字，除了下面列出的實測，都不是實測。** 成本依公開價目推算，價目查證日是 2026-10-31。實測目前有這幾項：`node:sqlite` 的能力檢查（[佐證 §2.9](research/2026-10-31-landscape.md#29-nodesqlite-實測)）、憑證庫（[H-14](#11-風險與假說)）、規則包正則的限時（[H-16](#11-風險與假說)）、文字層品質判斷（[H-10](#11-風險與假說)），以及 `tome probe` 在合成書上的速度（[§10](#10-品質需求) 的 Q-9，真實書籍還沒量，所以仍是目標）。
+**這份文件裡的成本與品質數字，除了下面列出的實測，都不是實測。** 成本依公開價目推算，價目查證日是 2026-10-31。實測目前有這幾項：`node:sqlite` 的能力檢查（[佐證 §2.9](research/2026-10-31-landscape.md#29-nodesqlite-實測)）、憑證庫（[H-14](#11-風險與假說)）、規則包正則的限時（[H-16](#11-風險與假說)）、文字層品質判斷（[H-10](#11-風險與假說)）、Docling 在合成 PDF 上的磁碟量、速度與 VRAM（[§5.3](#53-解析引擎協定)），以及 `tome probe` 在合成書上的速度（[§10](#10-品質需求) 的 Q-9，真實書籍還沒量，所以仍是目標）。
 
 文中的「輪」是設計討論的回合，見[附錄 B](#附錄-b討論順序與路線圖)。編號不重用，所以 TC、S、H 有跳號，那些項目已撤銷。ADR 裡的 prompt 指專案最初的需求說明，沒有公開，規格都以這份文件為準。「第一版」就是 0.1.0。
 
@@ -320,7 +320,7 @@ flowchart LR
 
 對應錯但字元都合法的文字層，字元類別抓不到，所以再比頁面的字母分布與來源語言設定檔的餘弦相似度，字母少於 200 個的頁不判斷，低於 0.8 算 `broken_text`。不用常見字比對，因為索引頁與數值塊幾乎沒有常見字，會被誤判。這兩個數字也是提案。
 
-頁面的引擎分配要等引擎協定完成。
+**已實作**：每頁的 `engine` 依 `tome.yaml` 的 `engines` 順序分配，沒有引擎能處理的頁沒有這個欄位。引擎一變，探測就重算。GPU 或 CPU 在 `tome extract` 當下決定：裝的是 CUDA 版，而且剩餘 VRAM 達到引擎宣告的門檻才用 GPU，否則退回 CPU（`tests/core/extract.test.ts`，ADR-0085）。
 
 ### 5.2 Document IR
 
@@ -397,6 +397,19 @@ flowchart LR
 Docling 是預設引擎，走同一套協定，沒有特權。它的轉接器是 Python，主程式是 TypeScript，兩邊只靠 `tome-ir` 的 JSON Schema 溝通。它能配合的地方都查過：`convert()` 有 `page_range`，權重可用 `docling-tools models download` 預先下載，再以 `artifacts_path` 指定，遠端服務預設關閉。
 
 **已知限制**：第一版沒有網路沙箱，「執行時離線」靠的是協定、環境變數與引擎審查，TOME 無法在技術上擋住惡意引擎。第一方引擎之外的引擎，使用者要自己判斷能不能信任。
+
+**已實作**：`src/core/engine.ts`、`src/core/extract.ts`、`schemas/tome-engine-1.schema.json`、`engines/docling/`（`tests/core/engine.test.ts`、`tests/core/extract.test.ts`、`tests/core/process.test.ts`、`tests/cli/engine.test.ts`；真的跑 Docling 的是 `tests/engine/docling.test.ts`）。平常的 CI 用 `tests/fixtures/engines/fake/` 的假引擎與錄好的 Docling 輸出，協定的每條失敗路徑都不需要 Docling（ADR-0064）。`tome extract` 目前只跑引擎、存 `source` 層，組裝與字元守恆在下一個回合接上（ADR-0085）。
+
+上表以外的細節是提案。環境建法只有 `uv` 與 `none`，`engine.yaml` 不能寫自己的安裝指令；要下載權重的引擎宣告 `prepare`，由 TOME 在安裝時呼叫 `<引擎指令> --prepare --data <目錄>`；版本一律問引擎，`<引擎指令> --version`。安裝紀錄是引擎資料夾裡的 `install.json`。manifest 另有 PDF 雜湊、資料目錄、設定雜湊，選項目前只有 `device`。頁面檔名是 `p0123.json`，先寫暫存檔再換名字。設定雜湊的輸入是轉接器與鎖定檔的內容、裝置、來源語言。事件只是進度，算數的是檔案：不是有效的 `tome-ir/1`、不是這本書或這份設定的頁面都丟掉重做，engine.json 缺了也算失敗。引擎的 stderr 不存也不印，失敗只有頁碼與原因代碼。一本書同時只跑一個流程，用書資料夾裡的 `book.lock`，持有者已經不在時接手。引擎 10 分鐘沒有事件就終止，這個數字沒有在真實書籍上量過。
+
+Docling 轉接器的輸出經合成 PDF 驗過（`tests/engine/docling.test.ts`）：標題、段落、表格、圖、圖說、頁尾都有，頁首頁尾與圖裡的字也帶出來，因為字元守恆看的是整頁。權重釘在 commit，只下載 layout 與 TableFormer accurate 兩份。**已驗證**的範圍只到參考機器與合成 PDF，商業書**還沒量**（ADR-0085）：
+
+| 項目 | 結果 |
+| :--- | :--- |
+| 磁碟 | CPU 版環境 1.1 GB，CUDA 版 3.5 GB，權重 367 MB |
+| VRAM 峰值 | 2、12、30 頁的書分別多占 819、819、809 MB，不隨頁數增加，門檻取整到 1,024 MB。比的是剩餘 VRAM，參考機器閒置時桌面就占 1,608 MB |
+| 30 頁雙欄文字 | CPU 版 61 秒，CUDA 版 45 秒，都含啟動 |
+| 12 頁、每頁 3 個表格 | CPU 版 170 秒，CUDA 版 69 秒，都含啟動 |
 
 ### 5.4 語言設定檔
 
@@ -780,7 +793,7 @@ stateDiagram-v2
 
 ### 6.3 工作區
 
-**已實作**：`tome init` 與路徑檢查（`src/core/workspace.ts`、`src/core/path-guard.ts`；`tests/core/workspace.test.ts`、`tests/core/path-guard.test.ts`），資料存取層與遷移（`src/core/store.ts`；`tests/core/store.test.ts`）。檢查會解開 junction 與 symlink。`tome.yaml` 第一行是 `schema: tome-workspace/1`（ADR-0082）。`book.yaml` 的格式是 `tome-book/1`（`schemas/tome-book-1.schema.json`），欄位是提案。`book.db` 目前有 `tome_meta` 與 `stage`，`series.db` 只有 `tome_meta`，下面其他的表到各階段才加。
+**已實作**：`tome init` 與路徑檢查（`src/core/workspace.ts`、`src/core/path-guard.ts`；`tests/core/workspace.test.ts`、`tests/core/path-guard.test.ts`），資料存取層與遷移（`src/core/store.ts`；`tests/core/store.test.ts`）。檢查會解開 junction 與 symlink。`tome.yaml` 第一行是 `schema: tome-workspace/1`（ADR-0082）。`book.yaml` 的格式是 `tome-book/1`（`schemas/tome-book-1.schema.json`），欄位是提案。`book.db` 目前有 `tome_meta` 與 `stage`，`series.db` 只有 `tome_meta`，下面其他的表到各階段才加。`engines/` 底下每個引擎一個資料夾，放轉接器、環境與權重；`ir/source/` 依 PDF 雜湊、引擎、版本、設定雜湊分資料夾，雜湊取前 16 個字元，路徑才不會超過 Windows 的 260 字元（ADR-0085）。
 
 正式支援 Windows 與 Linux，macOS 盡力而為，不測試（ADR-0081）。預設位置是機器本地目錄：Windows 是 `%LOCALAPPDATA%\tome`，Linux 是 `~/.local/share/tome`，macOS 是 `~/Library/Application Support/tome`，可以用 `TOME_HOME` 改。`tome init` MUST 拒絕 git repo 內的路徑，偵測到 OneDrive、Dropbox 這類同步資料夾時要警告，否則譯文與書的片段會被傳上雲端（G-5）。這讓 G-5 成為結構，而不只靠 `.gitignore`。Obsidian vault 用 `tome.yaml` 的 `vault_path` 指定，同樣要過這項檢查。
 
@@ -849,7 +862,7 @@ tome backup|purge <book>               備份與刪除
 
 `tome assemble` 偵測到未回收的 vault 修改就拒絕輸出，列出檔案，要求先跑 `tome sync`，人工譯文不會被覆蓋。
 
-**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2。其他指令還沒有。
+**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗回 1，失敗的頁下次重跑。其他指令還沒有。
 
 ---
 
@@ -891,12 +904,12 @@ tome/
 | 工作流程 | 觸發 | 內容 |
 | :--- | :--- | :--- |
 | `specs` | push 到 `main` 與 PR | spec-guard、`prove`、`cites`、spec-graph、spec-brief、`premises`，Windows 與 Ubuntu。**已實作**：`.github/workflows/specs.yml` |
-| 測試 | push 到 `main` 與 PR | 測試、`npm audit`、相依授權檢查、效能預算、`tome system lint` 與 `test`、測試素材清單檢查。**已實作**前五項：`.github/workflows/test.yml`，檔名是 `test`，`npm audit` 的門檻是 `moderate`（ADR-0082）。內建規則包到 M2 才有，`tome system lint` 與 `test` 目前查測試用的合成包。測試素材清單等第一個素材進 repo 才加 |
-| 引擎 | 改到 `engines/` 或手動 | 安裝 Docling 跑合成 PDF |
+| 測試 | push 到 `main` 與 PR | 測試、`npm audit`、相依授權檢查、效能預算、`tome system lint` 與 `test`、測試素材清單檢查。**已實作**：`.github/workflows/test.yml`，檔名是 `test`，`npm audit` 的門檻是 `moderate`（ADR-0082）。內建規則包到 M2 才有，`tome system lint` 與 `test` 目前查測試用的合成包。測試素材清單是 `tests/fixtures/SOURCES.yaml`，由 `tests/tools/fixtures.test.ts` 檢查 |
+| 引擎 | 改到 `engines/` 或手動 | 安裝 Docling 跑合成 PDF。**已實作**：`.github/workflows/engine.yml`，Ubuntu 與 Windows 都跑，Ubuntu 上把網路拿掉再跑，連網就會失敗。有路徑過濾，不設必要檢查（ADR-0085） |
 | 變異 | 排程 | 六個關鍵模組 |
 | 發佈 | `v*` 標籤或手動演練 | 見下節 |
 
-Action 全部釘在 commit，簽出不保留 token，安裝用 `--ignore-scripts`。Dependabot 更新相依與 Action，有冷卻期：npm 的 patch 一週、minor 兩週、major 一個月，Action 一律一週，安全更新不等。
+Action 全部釘在 commit，簽出不保留 token，安裝用 `--ignore-scripts`。Dependabot 更新相依與 Action，有冷卻期：npm 與 uv 的 patch 一週、minor 兩週、major 一個月，Action 一律一週，安全更新不等。`@spec-family/*` 是維護者自己的工具，不受冷卻期限制（ADR-0082）。`engines/docling/` 另外用 `exclude-newer = "14 days"`，重鎖時只看上架滿 14 天的版本，安全更新用 `exclude-newer-package` 開例外（ADR-0085）。Dependabot 對這份設定的實際行為**還沒驗證**，要等第一次週更。
 
 ### 7.4 發佈
 
@@ -1007,11 +1020,11 @@ CI 跑 Windows 與 Ubuntu。公開 repo 的 CI MUST NOT 放任何 API 金鑰。�
 | 公開素材 | BRP ORC 文件、GUMSHOE SRD、公有領域的 Lovecraft 作品 | 下載後驗證雜湊，不進 repo |
 | 本機私有 | 使用者自己的商業書 | 只在本機，結果不公開 |
 
-repo 裡 MUST NOT 有任何 PDF。每個測試素材 MUST 在來源清單登記授權與雜湊值，未登記的讓 CI 失敗（PC-2）。
+repo 裡 MUST NOT 有任何 PDF。每個測試素材 MUST 在來源清單登記授權與雜湊值，未登記的讓 CI 失敗（PC-2）。**已實作**：`tests/fixtures/SOURCES.yaml`（`tests/tools/fixtures.test.ts`）。
 
 **合成 PDF 鍛造**（S-11）只用 `pdfkit`，它是開發相依，底層物件用它的低階介面補。`pdf-lib` 五年沒有更新，又帶進白名單外的授權，所以不用（ADR-0084）。案例有雙欄、跨欄邊欄、跨頁表格、首字放大、標題轉外框、背景紋理、頁尾購買者浮水印、連字、斷字、壞掉的 ToUnicode、隱藏文字、書籤、頁碼標籤、連結。直書與假名標音在日文階段才加。驗證基準一律用生成時的標準答案。
 
-**已實作**：鍛造器在 `tests/forge/`（`tests/forge/forge.test.ts`），同一個案例每次產生同樣的位元組，加密案例除外。目前的案例是頁面分類與文件結構用的：純文字、書籤與頁碼標籤與連結、掃描頁、純圖片、壞 ToUnicode、隱藏文字、跨頁攤開、兩種加密、大本效能書。版面案例跟 document 層一起做。頁碼標籤與壞 ToUnicode 都做得出來（ADR-0061 的待驗證項）。
+**已實作**：鍛造器在 `tests/forge/`（`tests/forge/forge.test.ts`），同一個案例每次產生同樣的位元組，加密案例除外。目前的案例是頁面分類與文件結構用的：純文字、書籤與頁碼標籤與連結、掃描頁、純圖片、壞 ToUnicode、隱藏文字、跨頁攤開、兩種加密、大本效能書，以及給引擎測試的 `blocks`，一頁有標題、段落、表格、圖、圖說與頁尾。其他版面案例跟 document 層一起做。頁碼標籤與壞 ToUnicode 都做得出來（ADR-0061 的待驗證項）。
 
 ### 8.6 評測
 
@@ -1123,6 +1136,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0082](adr/0082-m0-toolchain-and-conventions.md) | M0 的工具鏈與 CLI 慣例 | M0 |
 | [ADR-0083](adr/0083-keyring-native-license-exception.md) | 憑證庫原生模組的授權例外 | M0 |
 | [ADR-0084](adr/0084-m1-parsing-decisions.md) | M1 解析的選型與範圍 | M1 |
+| [ADR-0085](adr/0085-engine-protocol-decisions.md) | 引擎協定與 Docling 的選型 | M1 |
 
 ---
 
@@ -1276,7 +1290,11 @@ M1 已實作的項目：
 | Q-9 的效能預算 | `tests/perf/probe-budget.test.ts` | `npm test` |
 | 語言設定檔 | `languages/`、`schemas/tome-lang-1.schema.json`、`src/core/language.ts` | `tests/core/language.test.ts` |
 | `tome system new`、`list`、`lint`、`test` | `src/core/pack.ts`、`src/core/pack-lint.ts`、`src/core/pack-test.ts` | `tests/core/pack.test.ts`、`tests/cli/system.test.ts` |
-| 正則的 worker 限時 | `src/core/patterns.ts`、`src/core/pattern-worker.ts` | `tests/core/patterns.test.ts` |
+| 正則的 worker 限時 | `src/core/patterns.ts`、`src/core/pattern-worker.ts` | `tests/core/patterns.test.ts`、`tests/core/patterns-timer.test.ts` |
+| `tome-engine/1`、`tome engine add`、`list`、`remove` | `src/core/engine.ts`、`src/core/process.ts`、`schemas/tome-engine-1.schema.json` | `tests/core/engine.test.ts`、`tests/core/process.test.ts`、`tests/cli/engine.test.ts` |
+| Docling 引擎 | `engines/docling/`、`.github/workflows/engine.yml` | `tests/engine/docling.test.ts`、`tests/core/recorded-engine.test.ts` |
+| `tome extract` 的 `source` 層 | `src/core/extract.ts` | `tests/core/extract.test.ts` |
+| 測試素材清單 | `tests/fixtures/SOURCES.yaml` | `tests/tools/fixtures.test.ts` |
 
 M0 的項目都已實作：
 

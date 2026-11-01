@@ -1,7 +1,12 @@
 {
-  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   把金鑰存進作業系統憑證庫\n  add <pdf>                    加入一本書並探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <書>                   探測文件結構與頁面類型\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加 --public 查公開包的要求\n  system test <ID 或路徑>      驗證規則包的模式，不花 token\n\n選項：\n  --json     輸出給機器讀的 JSON\n  --help     顯示這份說明\n  --version  顯示版本\n",
+  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   把金鑰存進作業系統憑證庫\n  add <pdf>                    加入一本書並探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <書>                   探測文件結構與頁面類型\n  extract <書>                 用解析引擎解析書的頁面\n  engine add <名稱或路徑>      安裝解析引擎，加 --gpu 裝 CUDA 版\n  engine list                  列出已安裝的解析引擎\n  engine remove <名稱>         移除解析引擎\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加 --public 查公開包的要求\n  system test <ID 或路徑>      驗證規則包的模式，不花 token\n\n選項：\n  --json     輸出給機器讀的 JSON\n  --help     顯示這份說明\n  --version  顯示版本\n",
   "prompt": {
     "secret": "請輸入 {provider} 的 API 金鑰（輸入時不會顯示）："
+  },
+  "progress": {
+    "sync": "正在建立環境，要下載相依套件，可能要幾分鐘……\n",
+    "prepare": "正在下載模型權重……\n",
+    "page": "已解析 {done}/{total} 頁。\n"
   },
   "level": {
     "fail": "問題",
@@ -9,7 +14,7 @@
     "info": "資訊"
   },
   "template": {
-    "workspace": "schema: tome-workspace/1\n\n# 設定檔 MUST NOT 放金鑰。金鑰用 tome provider auth set 存進作業系統憑證庫。\n\n# Obsidian vault 的路徑，要在任何 git repo 之外。\n# vault_path:\n\n# 翻譯用的模型，翻譯功能完成後必填。TOME 不內建預設模型，建議組合還沒有盲評。\n# scanner_model:\n# translator_model:\n",
+    "workspace": "schema: tome-workspace/1\n\n# 設定檔 MUST NOT 放金鑰。金鑰用 tome provider auth set 存進作業系統憑證庫。\n\n# Obsidian vault 的路徑，要在任何 git repo 之外。\n# vault_path:\n\n# 解析引擎。tome engine add 會更新，同一種頁面有多個引擎時排前面的優先。\n# engines: []\n\n# 翻譯用的模型，翻譯功能完成後必填。TOME 不內建預設模型，建議組合還沒有盲評。\n# scanner_model:\n# translator_model:\n",
     "pack": {
       "pack.yaml": "schema: tome-pack/1\nid: {id}\nversion: 0.1.0\n# 沒寫 extends 就是繼承 generic。\n# extends: generic\n# 只自己用的話不用改。要公開貢獻，請改成開放授權，並加上 LICENSE 與 NOTICE。\nlicense: UNLICENSED\nsource_langs: [en]\n",
       "roles.yaml": "# 區塊角色，寫成 <規則包 ID>:<角色>。detect 列的模式全部命中才算。\nroles: {}\n",
@@ -27,7 +32,25 @@
     "book.name_taken": "名稱 {name} 已經有別的書在用。請用 --as <名稱> 指定另一個。",
     "book.unreadable": "書 {name} 的資料讀不出來，已略過。請檢查它的 book.yaml。",
     "book.updated": "已更新 {name} 的設定。",
-    "engines.pending": "解析引擎：{milestone} 才有，目前不用檢查。",
+    "engine.added": "已安裝引擎 {name} {version}（{device}）。程式授權 {code}，權重授權 {weights}。",
+    "engine.already_added": "引擎 {name} 已經裝好了，沒有更動任何檔案。",
+    "engine.broken": "引擎 {name} 啟動不了。請用 tome engine remove {name} 移除後重新安裝。",
+    "engine.gpu_available": "偵測到 {gpu}。{name} 目前裝的是 CPU 版，要用 GPU 請加 --gpu，至少要多下載 {size} MB。",
+    "engine.install_failed": "安裝 {name} 時，{step} 這一步失敗：{detail}。再執行一次會從頭建立環境。",
+    "engine.listed": "{name} {version}（{device}）：程式授權 {code}，權重授權 {weights}。",
+    "engine.needs_uv": "這個引擎要用 uv 建環境，但找不到 uv。請先安裝 uv 再試一次，tome doctor 可以檢查。",
+    "engine.no_gpu": "沒有偵測到 NVIDIA GPU，所以不下載 CUDA 版。請拿掉 --gpu。",
+    "engine.no_gpu_build": "引擎 {name} 沒有 GPU 版。請拿掉 --gpu。",
+    "engine.none": "還沒有安裝解析引擎。要解析書的時候，用 tome engine add docling 安裝。",
+    "engine.not_installed": "沒有安裝引擎 {name}。可以用 tome engine list 查看。",
+    "engine.ok": "引擎 {name} {version}（{device}）可以啟動。",
+    "engine.removed": "已移除引擎 {name}。書裡已經存好的引擎輸出不受影響。",
+    "engine.third_party": "引擎 {name} 不是 TOME 隨附的。TOME 會執行它，也擋不住它連網，請自己判斷能不能信任。",
+    "extract.done": "解析完成 {pages} 頁：這次跑了 {ran} 頁，沿用 {reused} 頁。",
+    "extract.no_engine": "沒有引擎可以處理這本書的頁面。請先用 tome engine add docling 安裝。",
+    "extract.no_run_record": "引擎 {name} 沒有留下 engine.json，這次的授權紀錄不完整。",
+    "extract.pages_failed": "有 {count} 頁解析失敗（頁碼:原因）：{pages}。再執行一次只會重跑這些頁。",
+    "extract.source_only": "引擎輸出已存進 source 層。組裝與字元守恆還沒做，完成後同一個指令會接著跑。",
     "key.missing": "找不到 {provider} 的金鑰。請執行 tome provider auth set {provider}，或設定環境變數 {env}。",
     "key.ok": "{provider} 的金鑰：已設定（來源：{source}）。",
     "key.stored": "{provider} 的金鑰已存進作業系統憑證庫。",
@@ -60,8 +83,10 @@
     "pack.unknown_pronoun": "實體類別 {class} 的預設代名詞不在目標語言的代名詞集合裡。",
     "pdf.encrypted": "{path} 是加密的 PDF，TOME 一律拒絕處理，包含不需密碼就能開啟、只限制複製的檔案。",
     "prices.pending": "價目表：{milestone} 才有，目前不用檢查。",
+    "probe.assigned": "已分配 {count} 頁給解析引擎。",
     "probe.done": "探測完成，共 {pages} 頁：原生 {native}、掃描 {scan}、壞文字層 {broken_text}、純圖片 {image_only}。",
     "probe.gpu": "偵測到 GPU：{name}，VRAM {vram} MB。",
+    "probe.no_engine": "還沒有引擎可以處理這些頁面。要解析時用 tome engine add docling 安裝。",
     "probe.no_gpu": "沒有偵測到 NVIDIA GPU，解析引擎會用 CPU。",
     "probe.pages_skipped": "有 {count} 頁不是原生文字頁。第一版不翻這些頁面，會列在交付報告裡。",
     "probe.spread": "這本 PDF 看起來是跨頁攤開版型，一個 PDF 頁面可能是印刷的兩頁。",
@@ -83,6 +108,7 @@
     "workspace.vault_ignored": "工作區已經存在，--vault 沒有生效。要改 vault 請直接編輯 {path}。"
   },
   "error": {
+    "book.busy": "這本書正在被另一個 TOME 流程使用（{path}）。請等它結束再試一次。",
     "book.not_found": "找不到書 {name}。請先用 tome add 加入。",
     "book.pdf_changed": "{path} 的內容跟加入時不同。要處理原本的檔案，請用 tome add 重新指到它；要處理新檔案，請當成另一本書加入。",
     "book.pdf_missing": "找不到 PDF：{path}。檔案搬走時，用 tome add 重新指到新位置。",
@@ -94,6 +120,7 @@
     "cli.unknown_option": "沒有這個選項：{option}。請用 tome --help 查看用法。",
     "config.bad_schema": "{path} 不是 {expected} 格式。",
     "config.invalid_yaml": "{path} 不是有效的 YAML。",
+    "engine.not_found": "找不到引擎 {name}。請給隨附引擎的名稱，或含 engine.yaml 的資料夾路徑。",
     "file.corrupt": "{path} 壞了，讀不出內容。它可以重新產生，刪掉後再執行一次就好。",
     "language.unknown": "沒有語言 {lang} 的設定檔。",
     "pack.not_found": "找不到規則包 {id}。可以用 tome system list 查看有哪些。",

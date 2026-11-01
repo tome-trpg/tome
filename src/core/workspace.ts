@@ -65,6 +65,23 @@ export function readWorkspaceConfig(home: string): WorkspaceConfig | null {
   return value as WorkspaceConfig;
 }
 
+/** 解析引擎的順序，同一種頁面有多個引擎時排前面的優先（白皮書 §5.3）。 */
+export function workspaceEngines(home: string): string[] {
+  const value: unknown = readWorkspaceConfig(home)?.['engines'] ?? [];
+  if (!Array.isArray(value) || value.some((name) => typeof name !== 'string')) {
+    throw new TomeError('config.bad_schema', { path: join(home, CONFIG_FILE), expected: WORKSPACE_SCHEMA });
+  }
+  return value as string[];
+}
+
+/** 改動時留著使用者寫的註解。 */
+export function setWorkspaceEngines(home: string, names: readonly string[]): void {
+  const path = join(home, CONFIG_FILE);
+  const document = parseDocument(readFileSync(path, 'utf8'));
+  document.set('engines', document.createNode([...names]));
+  writeFileSync(path, document.toString());
+}
+
 function secretKeys(value: unknown, prefix = ''): string[] {
   if (typeof value !== 'object' || value === null) return [];
   return Object.entries(value).flatMap(([key, child]) => {

@@ -224,6 +224,49 @@ function encrypted(options: Record<string, unknown>): Doc {
   return doc;
 }
 
+const TOLLS = [
+  ['Crossing', 'Toll', 'Bells', 'Warden'],
+  ['Ferry', '3', '2', 'Marsh'],
+  ['Reeds', '5', '1', 'River'],
+  ['Stones', '8', '4', 'Tide'],
+];
+
+function ruledTable(doc: Doc, left: number, top: number): void {
+  const cellWidth = 110;
+  const cellHeight = 24;
+  TOLLS.forEach((row, rowIndex) => {
+    row.forEach((cell, colIndex) => {
+      const x = left + colIndex * cellWidth;
+      const y = top + rowIndex * cellHeight;
+      doc.rect(x, y, cellWidth, cellHeight).stroke();
+      doc.font(rowIndex === 0 ? 'Helvetica-Bold' : 'Helvetica').fontSize(10);
+      doc.text(cell, x + 6, y + 7, { lineBreak: false });
+    });
+  });
+}
+
+/** 引擎測試用：標題、段落、有框線的表格、圖與圖說、頁尾各有一個。 */
+function blocks(): Doc {
+  const doc = open();
+  const figure = noisePng(120, 80, 4);
+  for (let page = 0; page < 2; page += 1) {
+    doc.addPage({ size: LETTER });
+    doc.font('Helvetica-Bold').fontSize(20).fillColor('black');
+    doc.text(page === 0 ? 'The Salt Marsh Ledger' : 'Tolls of the Old Ferry', 72, 72);
+    doc.font('Times-Roman').fontSize(11);
+    doc.text(prose(page, 70), 72, 110, { width: 468 });
+    ruledTable(doc, 72, 220);
+    doc.font('Times-Roman').fontSize(11);
+    doc.text(prose(page + 2, 60), 72, 340, { width: 468 });
+    doc.image(figure, 72, 450, { width: 240 });
+    doc.font('Times-Italic').fontSize(9);
+    doc.text(`Figure ${page + 1}. Grey reeds beside the ferry.`, 72, 620);
+    doc.font('Helvetica').fontSize(8);
+    doc.text(`Forged ledger, page ${page + 1}`, 72, 740, { lineBreak: false });
+  }
+  return doc;
+}
+
 /** 效能預算用：雙欄滿版文字，每 10 頁一張小圖。 */
 export function large(pages: number): Promise<Buffer> {
   const doc = open();
@@ -242,6 +285,7 @@ const repeat = (kind: PageKind, count: number): PageKind[] => Array<PageKind>(co
 
 const CASES = {
   plain: { build: plain, truth: { kinds: repeat('native', 3) } },
+  blocks: { build: blocks, truth: { kinds: repeat('native', 2) } },
   structure: {
     build: structure,
     truth: { kinds: repeat('native', 5), tagged: true, labels: ['i', 'ii', '1', '2', '3'] },
