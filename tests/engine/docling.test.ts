@@ -75,7 +75,11 @@ describe.skipIf(home === undefined)('Docling on a forged PDF', () => {
     const root = home ?? '';
     const session = () => capture({ env: { ...process.env, TOME_HOME: root }, tool: runTool });
     expect(await run(['add', await forgeFile('layout', tempDir()), '--as', 'layout'], session().io)).toBe(0);
-    expect(await run(['extract', 'layout'], session().io)).toBe(0);
+    const extracted = session();
+    const code = await run(['extract', 'layout', '--json'], extracted.io);
+    // 失敗時要看得到原因：這是合成 PDF，訊息裡也沒有書本文字。
+    console.log(JSON.stringify((JSON.parse(extracted.stdout()) as Envelope).findings));
+    expect(code).toBe(0);
 
     const checked = validateIr(json(join(root, 'books', 'layout', 'ir', 'document.json')));
     expect(checked.ok).toBe(true);
