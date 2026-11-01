@@ -1189,6 +1189,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0090](adr/0090-engine-detail-decisions.md) | 引擎協定的實作細節定案 | M1 |
 | [ADR-0091](adr/0091-message-params-for-people.md) | 訊息參數給人看 | M1 |
 | [ADR-0092](adr/0092-document-layer-decisions.md) | document 層與字元守恆的選型 | M1 |
+| [ADR-0093](adr/0093-setup-uv-follows-dependabot.md) | setup-uv 的版本跟著 Dependabot 更新 | M1 |
 
 ---
 

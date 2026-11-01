@@ -146,7 +146,6 @@ M1 的第三個回合開工前比對 ADR-0084 與實際工具，留下八個沒�
 <!-- @assert-count target="engines/docling/main.py" regex="true" symbol="revision.: .[0-9a-f]{40}" expected="2" reason="第 6 項：權重釘在 commit" -->
 <!-- @assert-absence target="engines/docling/main.py" symbol="docling-tools" comments="include" reason="第 6 項：不用會讓權重飄掉的工具" -->
 <!-- @assert-count target="engines/docling/pyproject.toml" symbol=">=3.13,<3.14" expected="1" reason="第 7 項：釘 Python" -->
-<!-- @assert-count target=".github/workflows/engine.yml" symbol="astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884" expected="1" reason="第 8 項：Action 釘在 commit" -->
 <!-- @assert-absence target="src" glob="*.ts" regex="true" symbol="[Dd]ocling" reason="Docling 走同一套協定，沒有特權（白皮書 §5.3）" -->
 <!-- @assert-absence target="languages" symbol="神祇" reason="ADR-0023：遊戲概念不進語言設定檔" -->
 <!-- @assert-count target="package.json" regex="true" symbol="engines.," expected="1" reason="ADR-0071：轉接器隨 npm 包發送" -->
