@@ -92,7 +92,7 @@ describe('reading engine.yaml', () => {
     expect(readEngineSpec(locateEngine('docling').dir).setup.kind).toBe('uv');
   });
 
-  it('declares the Intel library the Docling environment carries (ADR-0086)', () => {
+  it('declares the Intel library the Docling environment carries (ADR-0087)', () => {
     expect(readEngineSpec(locateEngine('docling').dir).license.proprietary).toEqual(['Intel oneMKL']);
   });
 
@@ -271,7 +271,7 @@ describe('adding an engine', () => {
     expect(exitCodeOf(gpu.findings)).toBe(0);
   });
 
-  it('names the proprietary components an engine declares, on both builds (ADR-0086)', async () => {
+  it('names the proprietary components an engine declares, on both builds (ADR-0087)', async () => {
     const home = workspace();
     const target = uvEngine({ license: { ...UV_SPEC.license, proprietary: ['Forged Library', 'Forged Runtime'] } });
     const cpu = await addEngine({ home, target, gpu: false, env: {}, tool: NO_GPU, stream: recorder().stream });

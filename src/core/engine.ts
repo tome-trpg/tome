@@ -403,7 +403,7 @@ export async function addEngine(options: AddEngineOptions): Promise<AddEngineRes
     weights: spec.license.weights,
   });
   // 環境是使用者自行下載的，TOME 不隨附，所以裝完要說清楚。核心不認得廠商，
-  // 專有元件由引擎宣告（ADR-0086）；CUDA 版比照 LC-2（ADR-0085）。
+  // 專有元件由引擎宣告（ADR-0087）；CUDA 版比照 LC-2（ADR-0085）。
   const { proprietary } = spec.license;
   const notices = [
     ...(proprietary === undefined

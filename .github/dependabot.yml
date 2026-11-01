@@ -6,7 +6,7 @@
 # 也沒有更舊的正式版本（ADR-0082 第 21 項）。
 #
 # 例外：uv 的 patch 也等兩週，要跟 engines/docling 的 exclude-newer = "14 days"
-# 一致。等得比它短，提出來的版本在鎖定檔裡解析不出來，更新會失敗（ADR-0086）。
+# 一致。等得比它短，提出來的版本在鎖定檔裡解析不出來，更新會失敗（ADR-0087）。
 version: 2
 updates:
   - package-ecosystem: npm

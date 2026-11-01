@@ -1,12 +1,12 @@
 ---
-id: ADR-0086
+id: ADR-0087
 status: accepted
 date: 2026-11-01
 depends-on: [ADR-0043, ADR-0077, ADR-0085]
 amends: [ADR-0077, ADR-0085]
 ---
 
-# ADR-0086：引擎的專有元件提示與 uv 的冷卻期
+# ADR-0087：引擎的專有元件提示與 uv 的冷卻期
 
 ## 脈絡
 

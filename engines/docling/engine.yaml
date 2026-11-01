@@ -5,7 +5,7 @@ command: [python, main.py]
 license:
   code: MIT
   weights: Apache-2.0 AND CDLA-Permissive-2.0
-  # torch 的 wheel 帶的，CPU 版與 CUDA 版的 Windows、Linux 都量到了（ADR-0086）。
+  # torch 的 wheel 帶的，CPU 版與 CUDA 版的 Windows、Linux 都量到了（ADR-0087）。
   proprietary: [Intel oneMKL]
 setup:
   kind: uv

@@ -45,7 +45,7 @@ protectedFiles:
 
 ## Not Empowered
 
-- ADR-0086 沒寫到的選型、命名、範圍、政策不能自己定成 `accepted`，要先問。
+- ADR-0087 沒寫到的選型、命名、範圍、政策不能自己定成 `accepted`，要先問。
 - 核心不能寫廠商或引擎的名字，文字留在 `zh-TW.json`。
 - 公開 repo 的文件寫「維護者」，不寫人名。
 - 檔案用一般的寫入工具改，不用 Bash 或腳本繞過寫入掛勾。
@@ -63,10 +63,13 @@ protectedFiles:
 - [x] `engine.yaml` 可以寫 `license.proprietary`，schema 擋得下空清單與不是字串的內容
 - [x] `tome engine add docling` 裝完提示 Intel oneMKL，CPU 版與 CUDA 版都一樣，安裝失敗或已經裝好時不提示
 - [x] `.github/dependabot.yml` 的 uv 區塊 `default-days`、`semver-patch-days` 是 14，檔案開頭的註解寫清楚原因
-- [x] ADR-0086 記下維護者的決定、Dependabot 第一次跑的結果與 Linux wheel 的量測，修改 ADR-0077 與 ADR-0085
+- [x] ADR-0087 記下維護者的決定、Dependabot 第一次跑的結果與 Linux wheel 的量測，修改 ADR-0077 與 ADR-0085
 - [x] 白皮書與 `CHANGELOG.md` 照實更新
+
+**Accepted debt**：白皮書的 ADR 索引這個回合不加 ADR-0087，主 session 的 brief 010 正在改那一段，合併後再補一列。
 
 ## Measured
 
-- Linux 的 oneMKL 是看 `libtorch_cpu.so` 的字串與符號，沒有實際執行。提示沒有用真的 `tome engine add docling` 在 Linux 跑過，`engine.yml` 會跑到安裝這一步，但沒有檢查提示的文字。
+- Linux 的 oneMKL 是看 `libtorch_cpu.so` 的字串與符號，沒有實際執行。
+- `engine.yml` 在 `6b02ba2` 的 attempt 1，`docling` 兩個平台都失敗，沒有重跑。`tests/engine/docling.test.ts` 要求執行紀錄的授權與 `engine.yaml` 完全相同，多了 `proprietary` 就不相等。這個測試要設 `TOME_ENGINE_HOME` 才跑，推送前沒有在本機跑。執行紀錄只記程式與權重的授權，所以改成比這兩項。同一次日誌裡，兩個平台都印出了 Intel oneMKL 的提示。
 - Dependabot 失敗的三個安全更新不在這個回合處理。第 3 項的冷卻期是預防，沒有修到它們。
