@@ -1,37 +1,50 @@
-# 參與 TOME
+# 參與指南
 
-設計與理由在[白皮書](docs/WHITEPAPER.md)，每個決策在 [docs/adr](docs/adr)。
+本文件說明參與 TOME 開發時必須遵守的規則，以及開發環境的設定方式。系統設計請參閱[白皮書](docs/WHITEPAPER.md)，個別決策請參閱[架構決策紀錄（ADR）](docs/adr)。
 
-## 最重要的一條
+## 內容限制
 
-**不要在 Issue、PR、測試或規則包裡放任何商業書籍的文字或譯文。** 這包含截圖與「只是一小段」的引用。
+**Issue、Pull Request、測試與規則包都不得包含任何商業書籍的文字或譯文**，截圖與簡短引用也包括在內。
 
-回報解析或翻譯問題時，請用自己寫的合成範例重現。公開 repo 也 MUST NOT 有任何 PDF。
+回報解析或翻譯問題時，請使用自行撰寫的合成範例重現問題。儲存庫中不得存放任何 PDF。
 
-## 環境
+## 開發環境
 
-Node 24 以上。
+開發環境需要 Node.js 24 以上。
 
-```bash
-npm ci --ignore-scripts
-npm run spec
-npm run typecheck
-npm test
-npm run licenses
-```
+| 指令 | 用途 |
+| :--- | :--- |
+| `npm ci --ignore-scripts` | 安裝相依套件，不執行套件的安裝指令碼 |
+| `npm run spec` | 檢查文件、ADR 與引用是否一致 |
+| `npm run typecheck` | 檢查型別 |
+| `npm test` | 執行測試，不需要 API 金鑰 |
+| `npm run licenses` | 檢查全部相依套件的授權 |
 
-`npm run spec` 檢查文件與 ADR。用 `npx` 時一律寫完整套件名，例如 `npx --no-install @spec-family/spec-guard`，不要只寫指令名。
+提交 Pull Request 前，上述檢查都必須通過。
 
-`node src/cli/main.ts` 不用建置就能跑 CLI。測試一律用合成文字，動到真的憑證庫的測試預設不跑，也 MUST 用假金鑰。
+* 使用 `npx` 時，請寫出完整的套件名稱並加上 `--no-install`，例如 `npx --no-install @spec-family/spec-guard`。
+* `node src/cli/main.ts` 不需建置即可執行 CLI。
+* 測試一律使用合成文字。會存取實際憑證庫的測試預設不執行，執行時必須使用假金鑰。
 
-## 改文件
+## 決策紀錄
 
-決策寫成 ADR，放在 `docs/adr/`，格式見 [ADR-0021](docs/adr/0021-document-conventions.md)。決策改變時新增一份 ADR，不改寫歷史。
+決策以 ADR 記錄，存放於 `docs/adr/`，格式請參閱 [ADR-0021](docs/adr/0021-document-conventions.md)。決策變更時應新增一份 ADR，不改寫既有內容。
+
+## 文字規範
+
+下列規範適用於使用者會閱讀的文字，包括 README、本文件、安全政策、變更紀錄、Issue 與 Pull Request 範本，以及 CLI 訊息（[ADR-0086](docs/adr/0086-user-document-style.md)、[ADR-0089](docs/adr/0089-cli-message-style.md)）。
+
+* 語氣專業、內容明確，同時讓初次接觸的讀者也能理解。不使用口語與俚語。
+* 使用完整的陳述句說明內容，操作步驟使用「請」開頭的句子。稱呼讀者時使用「使用者」，不使用「你」。
+* 使用台灣慣用的繁體中文與技術用語，例如「預設」「資料夾」「支援」「正規表示式」，不使用中國大陸用語。
+* 尚未實作的功能必須標明是設計目標或規劃項目，不得寫成已完成。
+
+所有納入版本控制的文字檔都不得出現簡體字，使用者文件也不得出現常見的中國大陸用語，`tests/tools/traditional-chinese.test.ts` 會自動檢查。
 
 ## 規則包
 
-規則包只能是資料，不能含程式，格式見[白皮書 §5.8](docs/WHITEPAPER.md#58-system-pack-規格)。公開的規則包只收開放內容與合成文字，譯名不得抄自任何官方中文版，也 MUST NOT 暗示官方背書。
+規則包只能包含資料，不得包含程式，格式請參閱[白皮書 §5.8](docs/WHITEPAPER.md#58-system-pack-規格)。公開的規則包只收錄開放內容與合成文字，譯名不得取自任何官方中文版，也不得暗示獲得官方背書。
 
 ## 授權
 
-你的貢獻依 Apache-2.0 授權，不需要另外簽 CLA。規則包目錄依各自的授權。
+貢獻的內容以 Apache-2.0 授權釋出，不需要另外簽署 CLA。`systems/` 目錄下的規則包依各自的授權條款。

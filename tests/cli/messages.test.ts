@@ -1,8 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import { errorText, findingText } from '../../src/cli/messages.ts';
 import catalog from '../../src/cli/messages/zh-TW.json' with { type: 'json' };
 import { ERROR_CODES } from '../../src/core/errors.ts';
 import { FINDING_CODES } from '../../src/core/findings.ts';
+import notices from '../../src/core/pack-notices.json' with { type: 'json' };
 
 const HAN = /[一-鿿]/;
 
@@ -24,12 +27,30 @@ describe('the message catalog', () => {
       expect(text).toMatch(HAN);
     }
   });
+
+  // 這兩份清單寫在訊息裡，使用者才知道能填什麼。資料一改，訊息要跟著改。
+  it('names every license a public pack may use', () => {
+    for (const license of Object.keys(notices)) {
+      expect(catalog.finding['pack.unknown_license']).toContain(license);
+      expect(catalog.template.pack['pack.yaml']).toContain(license);
+    }
+  });
+
+  it('names every pronoun of the target language', () => {
+    const { pronouns } = parse(readFileSync('languages/target/zh-TW.yaml', 'utf8')) as {
+      pronouns: string[];
+    };
+    for (const pronoun of pronouns) {
+      expect(catalog.finding['pack.unknown_pronoun']).toContain(pronoun);
+      expect(catalog.template.pack['entities.yaml']).toContain(pronoun);
+    }
+  });
 });
 
 describe('filling a message', () => {
   it('replaces each placeholder', () => {
     expect(findingText('node.too_old', { version: '22.0.0', minimum: '24' })).toBe(
-      'Node 22.0.0 太舊，TOME 需要 24 以上。',
+      'Node 22.0.0 版本過舊，TOME 需要 24 以上。',
     );
   });
 

@@ -22,12 +22,15 @@ import {
 } from '../core/secrets.ts';
 import { initWorkspace, readWorkspaceConfig, resolveHome } from '../core/workspace.ts';
 import {
+  argumentText,
   errorText,
+  flagText,
   packTemplate,
   progressText,
   promptText,
   usageText,
   workspaceTemplate,
+  type ArgumentKey,
 } from './messages.ts';
 import { errorEnvelope, renderFinding, successEnvelope } from './output.ts';
 import { readSecret, type SecretInput } from './read-secret.ts';
@@ -78,6 +81,10 @@ function hostOptions(io: Io): Pick<Io, 'env' | 'platform' | 'tool' | 'stream'> {
   };
 }
 
+function missing(key: ArgumentKey): TomeError {
+  return new TomeError('cli.missing_argument', { argument: argumentText(key) });
+}
+
 function stringValue(parsed: Parsed, name: string): string | undefined {
   const value = parsed.values[name];
   return typeof value === 'string' ? value : undefined;
@@ -97,7 +104,7 @@ function probeFindings({ summary, reused }: ProbeOutcome): Finding[] {
       image_only: String(kinds.image_only),
     }),
     finding('probe.structure', 'info', {
-      tagged: summary.tagged ? 'yes' : 'no',
+      tagged: flagText(summary.tagged),
       outline: String(summary.outline_items),
       unresolved: String(summary.outline_unresolved),
       labels: String(summary.label_pages),
@@ -163,7 +170,7 @@ const COMMANDS: readonly Command[] = [
     positionals: 1,
     run: async (parsed, io) => {
       const pdf = parsed.positionals[0];
-      if (pdf === undefined) throw new TomeError('cli.missing_argument', { argument: '<pdf>' });
+      if (pdf === undefined) throw missing('pdf');
       const result = await addBook({
         home: resolveHome(io.env, io.platform),
         pdf,
@@ -186,7 +193,7 @@ const COMMANDS: readonly Command[] = [
     positionals: 1,
     run: async ({ positionals }, io) => {
       const book = positionals[0];
-      if (book === undefined) throw new TomeError('cli.missing_argument', { argument: '<book>' });
+      if (book === undefined) throw missing('book');
       const outcome = await probeBook(resolveHome(io.env, io.platform), book);
       return {
         data: { book, probe: outcome.summary },
@@ -200,7 +207,7 @@ const COMMANDS: readonly Command[] = [
     positionals: 1,
     run: async ({ positionals }, io) => {
       const slug = positionals[0];
-      if (slug === undefined) throw new TomeError('cli.missing_argument', { argument: '<book>' });
+      if (slug === undefined) throw missing('book');
       const { data, findings } = await extractBook({
         ...hostOptions(io),
         home: resolveHome(io.env, io.platform),
@@ -221,7 +228,7 @@ const COMMANDS: readonly Command[] = [
     positionals: 1,
     run: async ({ positionals, values }, io) => {
       const target = positionals[0];
-      if (target === undefined) throw new TomeError('cli.missing_argument', { argument: '<engine>' });
+      if (target === undefined) throw missing('engine_target');
       const { engine, findings } = await addEngine({
         ...hostOptions(io),
         home: resolveHome(io.env, io.platform),
@@ -256,7 +263,7 @@ const COMMANDS: readonly Command[] = [
     positionals: 1,
     run: async ({ positionals }, io) => {
       const name = positionals[0];
-      if (name === undefined) throw new TomeError('cli.missing_argument', { argument: '<engine>' });
+      if (name === undefined) throw missing('engine');
       return { data: { engine: name }, findings: removeEngine(resolveHome(io.env, io.platform), name) };
     },
   },
@@ -266,7 +273,7 @@ const COMMANDS: readonly Command[] = [
     positionals: 1,
     run: async ({ positionals }, io) => {
       const id = positionals[0];
-      if (id === undefined) throw new TomeError('cli.missing_argument', { argument: '<id>' });
+      if (id === undefined) throw missing('pack_id');
       const home = resolveHome(io.env, io.platform);
       if (readWorkspaceConfig(home) === null) {
         return { data: { id }, findings: [finding('workspace.missing', 'fail', { path: home })] };
@@ -292,7 +299,7 @@ const COMMANDS: readonly Command[] = [
     positionals: 1,
     run: async ({ positionals, values }, io) => {
       const target = positionals[0];
-      if (target === undefined) throw new TomeError('cli.missing_argument', { argument: '<id>' });
+      if (target === undefined) throw missing('pack_target');
       const home = resolveHome(io.env, io.platform);
       const findings = await lintPack(home, locatePack(home, target), {
         public: values['public'] === true,
@@ -306,7 +313,7 @@ const COMMANDS: readonly Command[] = [
     positionals: 1,
     run: async ({ positionals }, io) => {
       const target = positionals[0];
-      if (target === undefined) throw new TomeError('cli.missing_argument', { argument: '<id>' });
+      if (target === undefined) throw missing('pack_target');
       const home = resolveHome(io.env, io.platform);
       return { data: { pack: target }, findings: await testPack(home, locatePack(home, target)) };
     },
@@ -317,9 +324,7 @@ const COMMANDS: readonly Command[] = [
     positionals: 1,
     run: async ({ positionals }, io) => {
       const provider = positionals[0];
-      if (provider === undefined) {
-        throw new TomeError('cli.missing_argument', { argument: '<provider>' });
-      }
+      if (provider === undefined) throw missing('provider');
       if (!isProvider(provider)) {
         // 不回顯這個值：使用者可能把金鑰貼在這裡。
         throw new TomeError('provider.unknown', { supported: PROVIDERS.join(', ') });

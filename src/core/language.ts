@@ -100,3 +100,11 @@ export function loadSourceLanguage(tag: string): LoadedLanguage<SourceLanguage> 
 export function loadTargetLanguage(tag: string): LoadedLanguage<TargetLanguage> {
   return load<TargetLanguage>('target', tag);
 }
+
+/** 語言設定檔的字元正規化。連字與軟連字號的差異在這裡消掉（ADR-0009）。 */
+export function normalizeText(language: SourceLanguage, text: string): string {
+  const { form, replace } = language.normalize;
+  let result = text.normalize(form);
+  for (const [from, to] of Object.entries(replace)) result = result.replaceAll(from, to);
+  return result;
+}

@@ -79,6 +79,6 @@ export async function runDoctor(options: DoctorOptions): Promise<Finding[]> {
     ...keys.flat(),
     ...checkWorkspace(home, env, platform),
     ...(await checkEngines(home, env, tool, platform)),
-    finding('prices.pending', 'info', { milestone: 'M2' }),
+    finding('prices.pending', 'info'),
   ];
 }

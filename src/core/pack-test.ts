@@ -35,7 +35,7 @@ export function readPackTests(dir: string): {
     try {
       value = parse(readFileSync(join(root, entry), 'utf8'));
     } catch {
-      findings.push(finding('pack.bad_file', 'fail', { file, issue: 'yaml' }));
+      findings.push(finding('pack.invalid_yaml', 'fail', { file }));
       continue;
     }
     const checked = validatePackFile('packTest', value);

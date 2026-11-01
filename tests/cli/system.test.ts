@@ -83,7 +83,7 @@ describe('tome system test', () => {
   it('runs the cases of a pack', async () => {
     const { io, stdout } = capture({ env: { TOME_HOME: tempDir() } });
     expect(await run(['system', 'test', SAMPLE], io)).toBe(0);
-    expect(stdout()).toContain('3 個測試案例都通過');
+    expect(stdout()).toContain('3 個測試案例全部通過');
   });
 
   it('exits 2 without a pack', async () => {

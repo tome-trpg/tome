@@ -84,17 +84,53 @@ def sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def spans_of(item, document, page: int) -> list:
+def span_of(prov, document) -> dict:
     """PDF 點，原點在左下，跟 `src/core/pdf.ts` 一樣。"""
-    spans = []
-    for prov in item.prov:
-        height = document.pages[prov.page_no].size.height
-        box = prov.bbox.to_bottom_left_origin(page_height=height)
-        spans.append({"page": prov.page_no - 1, "bbox": [box.l, box.b, box.r, box.t]})
-    if spans:
-        return spans
-    size = document.pages[page + 1].size
-    return [{"page": page, "bbox": [0, 0, size.width, size.height]}]
+    height = document.pages[prov.page_no].size.height
+    box = prov.bbox.to_bottom_left_origin(page_height=height)
+    return {"page": prov.page_no - 1, "bbox": [box.l, box.b, box.r, box.t]}
+
+
+def ranges_of(text: str, provs: list) -> list:
+    """每個框在 text 裡的範圍，以及它的行尾連字號有沒有被拿掉。
+
+    Docling 接段時拿掉行尾連字號與接縫的空白，charspan 卻是拿掉之前算的，
+    所以之後每個框的偏移量都差 2（readingorder_model.py 的 _merge_elements）。
+    """
+    ranges = []
+    drift = 0
+    for prov in provs:
+        start, end = prov.charspan
+        start -= drift
+        end -= drift
+        if ranges and text[start - 1 : start] != " ":
+            drift += 2
+            start -= 2
+            end -= 2
+            ranges[-1] = (ranges[-1][0], start, True)
+        ranges.append((start, end, False))
+    return ranges
+
+
+def pieces_of(item, document, page: int) -> list:
+    """一個版面框一塊。Docling 會把跨欄的段落接成一個項目，順序錯了就拆不開（ADR-0092）。"""
+    text = getattr(item, "text", "")
+    orig = getattr(item, "orig", text)
+    provs = item.prov
+    if not provs:
+        size = document.pages[page + 1].size
+        return [(text, orig, {"page": page, "bbox": [0, 0, size.width, size.height]})]
+    if len(provs) == 1:
+        return [(text, orig, span_of(provs[0], document))]
+    pieces = []
+    for prov, (start, end, hyphen) in zip(provs, ranges_of(text, provs)):
+        # 連字號放回去，組裝才知道這裡是斷字，不是兩個字。
+        tail = "-" if hyphen else ""
+        piece = text[start:end] + tail
+        # orig 長度不同時偏移量對不上，只能用 text。
+        raw = orig[start:end] + tail if len(orig) == len(text) else piece
+        pieces.append((piece, raw, span_of(prov, document)))
+    return pieces
 
 
 def table_of(item) -> dict:
@@ -128,31 +164,35 @@ def blocks_of(document, manifest: dict, page: int, engine_version: str) -> list:
         if not isinstance(item, DocItem):
             continue
         table = table_of(item) if isinstance(item, TableItem) else None
-        text = "\n".join(cell["text"] for cell in table["cells"]) if table else getattr(item, "text", "")
-        raw = text if table else getattr(item, "orig", text)
-        digest = sha256(text)
-        base = f"p{page:04d}-{digest[:6]}"
-        count = seen.get(base, 0)
-        seen[base] = count + 1
-        block = {
-            "id": base if count == 0 else f"{base}-{count}",
-            "content_hash": digest,
-            "role": ROLES.get(str(item.label.value), "paragraph"),
-            "spans": spans_of(item, document, page),
-            "text": text,
-            "raw": raw,
-            "lang": manifest["source_lang"],
-            "writing_mode": "horizontal-tb",
-            "provenance": {
-                "engine": ENGINE,
-                "version": engine_version,
-                "config_hash": manifest["config_hash"],
-            },
-        }
         if table:
-            block["role"] = "toc" if block["role"] == "toc" else "table"
-            block["table"] = table
-        blocks.append(block)
+            text = "\n".join(cell["text"] for cell in table["cells"])
+            pieces = [(text, text, span_of(item.prov[0], document))] if item.prov else pieces_of(item, document, page)
+        else:
+            pieces = pieces_of(item, document, page)
+        for text, raw, span in pieces:
+            digest = sha256(text)
+            base = f"p{page:04d}-{digest[:6]}"
+            count = seen.get(base, 0)
+            seen[base] = count + 1
+            block = {
+                "id": base if count == 0 else f"{base}-{count}",
+                "content_hash": digest,
+                "role": ROLES.get(str(item.label.value), "paragraph"),
+                "spans": [span],
+                "text": text,
+                "raw": raw,
+                "lang": manifest["source_lang"],
+                "writing_mode": "horizontal-tb",
+                "provenance": {
+                    "engine": ENGINE,
+                    "version": engine_version,
+                    "config_hash": manifest["config_hash"],
+                },
+            }
+            if table:
+                block["role"] = "toc" if block["role"] == "toc" else "table"
+                block["table"] = table
+            blocks.append(block)
     return blocks
 
 
