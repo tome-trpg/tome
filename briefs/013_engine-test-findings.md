@@ -45,7 +45,7 @@ protectedFiles:
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
 - [x] 在本機真的跑過 `tests/engine`，`blocks` 測試印出了 findings
 - [x] 印出來的只有合成 PDF 的訊息，沒有書本文字
-- [ ] `specs` 與 `test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
+- [x] `specs` 與 `test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
 
 ## The Defect, Measured
 
