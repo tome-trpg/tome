@@ -44,10 +44,17 @@ export function findGitRoot(canonicalPath: string): string | null {
   }
 }
 
+/** 不用正規表示式：一長串不在結尾的斜線，會讓 `[\\/]+$` 的耗時接近平方成長。 */
+export function withoutTrailingSeparators(value: string): string {
+  let end = value.length;
+  while (end > 0 && (value[end - 1] === '/' || value[end - 1] === '\\')) end -= 1;
+  return value.slice(0, end);
+}
+
 function isSameOrInside(path: string, folder: string, platform: NodeJS.Platform): boolean {
   const fold = (value: string) => (platform === 'win32' ? value.toLowerCase() : value);
   const a = fold(path);
-  const b = fold(folder).replace(/[\\/]+$/, '');
+  const b = withoutTrailingSeparators(fold(folder));
   return a === b || a.startsWith(b + sep);
 }
 

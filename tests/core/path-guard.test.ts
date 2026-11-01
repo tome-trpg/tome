@@ -6,6 +6,7 @@ import {
   detectSyncFolder,
   findGitRoot,
   inspectPath,
+  withoutTrailingSeparators,
 } from '../../src/core/path-guard.ts';
 import { tempDir } from '../helpers.ts';
 
@@ -87,5 +88,24 @@ describe('detectSyncFolder', () => {
     const folder = canonicalize(tempDir());
     const env = { OneDrive: folder.toUpperCase() };
     expect(detectSyncFolder(join(folder, 'tome'), env, 'win32')).toBe('OneDrive');
+  });
+});
+
+describe('withoutTrailingSeparators', () => {
+  it('removes both kinds of separator, from the end only', () => {
+    expect(withoutTrailingSeparators('C:\\')).toBe('C:');
+    expect(withoutTrailingSeparators('/home/x//')).toBe('/home/x');
+    expect(withoutTrailingSeparators('a\\/\\')).toBe('a');
+    expect(withoutTrailingSeparators('a/b')).toBe('a/b');
+    expect(withoutTrailingSeparators('///')).toBe('');
+    expect(withoutTrailingSeparators('')).toBe('');
+  });
+
+  it('stays linear on a long run of separators that does not reach the end', () => {
+    const value = `a${'\\'.repeat(100_000)}b`;
+    const started = performance.now();
+    expect(withoutTrailingSeparators(value)).toBe(value);
+    // 正規表示式 /[\\/]+$/ 在這裡要 20 秒左右，CodeQL 回報成 js/polynomial-redos。
+    expect(performance.now() - started).toBeLessThan(1_000);
   });
 });
