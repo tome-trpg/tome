@@ -10,6 +10,7 @@ export const FINDING_CODES = [
   'engine.already_added',
   'engine.broken',
   'engine.gpu_available',
+  'engine.gpu_license',
   'engine.install_failed',
   'engine.listed',
   'engine.needs_uv',

@@ -398,7 +398,9 @@ export async function addEngine(options: AddEngineOptions): Promise<AddEngineRes
     code: spec.license.code,
     weights: spec.license.weights,
   });
-  return { engine: install, findings: [...findings, added] };
+  // CUDA 版比照 LC-2：使用者自行下載，TOME 不隨附，所以裝完要說清楚（ADR-0085）。
+  const notice = install.device === 'gpu' ? [finding('engine.gpu_license', 'info')] : [];
+  return { engine: install, findings: [...findings, added, ...notice] };
 }
 
 export function removeEngine(home: string, name: string): Finding[] {

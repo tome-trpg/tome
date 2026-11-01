@@ -36,6 +36,7 @@
     "engine.already_added": "引擎 {name} 已經裝好了，沒有更動任何檔案。",
     "engine.broken": "引擎 {name} 啟動不了。請用 tome engine remove {name} 移除後重新安裝。",
     "engine.gpu_available": "偵測到 {gpu}。{name} 目前裝的是 CPU 版，要用 GPU 請加 --gpu，至少要多下載 {size} MB。",
+    "engine.gpu_license": "CUDA 元件是 NVIDIA 專有授權，TOME 不隨附，是你自己下載到這台機器的，使用時適用 NVIDIA 的條款。",
     "engine.install_failed": "安裝 {name} 時，{step} 這一步失敗：{detail}。再執行一次會從頭建立環境。",
     "engine.listed": "{name} {version}（{device}）：程式授權 {code}，權重授權 {weights}。",
     "engine.needs_uv": "這個引擎要用 uv 建環境，但找不到 uv。請先安裝 uv 再試一次，tome doctor 可以檢查。",

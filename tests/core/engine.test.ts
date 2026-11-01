@@ -255,6 +255,32 @@ describe('adding an engine', () => {
     expect(engine?.device).toBe('gpu');
   });
 
+  it('says the CUDA build is proprietary once it is installed, and only then (ADR-0085)', async () => {
+    const home = workspace();
+    const target = uvEngine();
+    const cpu = await addEngine({ home, target, gpu: false, env: {}, tool: NVIDIA, stream: recorder().stream });
+    expect(codes(cpu.findings)).not.toContain('engine.gpu_license');
+
+    const gpu = await addEngine({ home, target, gpu: true, env: {}, tool: NVIDIA, stream: recorder().stream });
+    expect(gpu.findings.at(-2)).toMatchObject({ code: 'engine.added', level: 'info' });
+    expect(gpu.findings.at(-1)).toMatchObject({ code: 'engine.gpu_license', level: 'info' });
+    expect(exitCodeOf(gpu.findings)).toBe(0);
+  });
+
+  it('stays quiet about the CUDA license when the install fails', async () => {
+    const { stream } = recorder([{ status: 'exited', code: 1, stderr: 'boom' }]);
+    const { findings } = await addEngine({
+      home: workspace(),
+      target: uvEngine(),
+      gpu: true,
+      env: {},
+      tool: NVIDIA,
+      stream,
+    });
+    expect(codes(findings)).toContain('engine.install_failed');
+    expect(codes(findings)).not.toContain('engine.gpu_license');
+  });
+
   it('refuses --gpu with no NVIDIA GPU, before anything is downloaded', async () => {
     const { calls, stream } = recorder();
     const { findings } = await addEngine({
