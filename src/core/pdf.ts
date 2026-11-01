@@ -46,6 +46,8 @@ export interface PageFacts {
   /** 所有圖片加總占頁面的比例，上限 1。 */
   readonly imageTotal: number;
   readonly vectorPaths: number;
+  /** 畫出來的向量形狀的外框，已經換算成頁面座標。邊欄靠它判定（ADR-0092）。 */
+  readonly boxes: readonly Bbox[];
   readonly links: readonly PdfLink[];
 }
 
@@ -105,6 +107,33 @@ interface OperatorSummary {
   readonly imageLargest: number;
   readonly imageTotal: number;
   readonly vectorPaths: number;
+  readonly boxes: readonly Bbox[];
+}
+
+/** 比這小的形狀是線條或表格的格子，不會是邊欄。單位是 PDF 點。 */
+const BOX_MIN_WIDTH = 36;
+const BOX_MIN_HEIGHT = 18;
+
+/** `constructPath` 的參數帶著路徑的外框。沒有填色也沒有描邊的路徑看不見，不算。 */
+function pathBox(ops: PdfJs['OPS'], args: readonly unknown[] | null, ctm: Matrix): Bbox | null {
+  const paints = new Set<number>([
+    ops.fill,
+    ops.eoFill,
+    ops.stroke,
+    ops.closeStroke,
+    ops.fillStroke,
+    ops.eoFillStroke,
+    ops.closeFillStroke,
+    ops.closeEOFillStroke,
+  ]);
+  const extent = args?.[2] as ArrayLike<number> | null | undefined;
+  if (!paints.has(Number(args?.[0])) || extent === null || extent === undefined || extent.length !== 4) return null;
+  const [x0 = 0, y0 = 0, x1 = 0, y1 = 0] = Array.from(extent);
+  const corners = [apply(ctm, x0, y0), apply(ctm, x1, y1)];
+  const xs = corners.map(([x]) => x);
+  const ys = corners.map(([, y]) => y);
+  const box: Bbox = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  return box[2] - box[0] >= BOX_MIN_WIDTH && box[3] - box[1] >= BOX_MIN_HEIGHT ? box : null;
 }
 
 function summarizeOperators(
@@ -129,6 +158,7 @@ function summarizeOperators(
   let imageLargest = 0;
   let imageTotal = 0;
   let vectorPaths = 0;
+  const boxes: Bbox[] = [];
 
   fnArray.forEach((fn, index) => {
     const args = argsArray[index] as unknown[] | null;
@@ -150,9 +180,11 @@ function summarizeOperators(
       imageTotal = Math.min(1, imageTotal + share);
     } else if (fn === ops.constructPath) {
       vectorPaths += 1;
+      const box = pathBox(ops, args, state.ctm);
+      if (box !== null) boxes.push(box);
     }
   });
-  return { visibleGlyphs, invisibleGlyphs, imageLargest, imageTotal, vectorPaths };
+  return { visibleGlyphs, invisibleGlyphs, imageLargest, imageTotal, vectorPaths, boxes };
 }
 
 async function destinationPage(doc: PdfDocument, dest: unknown): Promise<number | null> {
