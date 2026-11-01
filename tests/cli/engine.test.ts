@@ -5,7 +5,7 @@ import { stringify } from 'yaml';
 import { run } from '../../src/cli/run.ts';
 import type { Envelope } from '../../src/cli/output.ts';
 import type { StreamRunner } from '../../src/core/process.ts';
-import { forgeFile } from '../forge/index.ts';
+import { forge, forgeFile } from '../forge/index.ts';
 import { capture, tempDir, type Captured } from '../helpers.ts';
 
 const FAKE_ENGINE = resolve('tests/fixtures/engines/fake');
@@ -16,7 +16,9 @@ function envelope(text: string): Envelope {
 
 async function workspace(): Promise<{ env: NodeJS.ProcessEnv; home: string; session(): Captured }> {
   const home = join(tempDir(), 'home');
-  const env = { ...process.env, TOME_HOME: home };
+  const textFile = join(tempDir(), 'forged-text.json');
+  writeFileSync(textFile, JSON.stringify((await forge('plain')).truth.text));
+  const env = { ...process.env, TOME_HOME: home, FAKE_ENGINE_TEXT_FILE: textFile };
   const session = (): Captured => capture({ env, tool: async () => null });
   await run(['init'], session().io);
   return { env, home, session };
@@ -108,7 +110,20 @@ describe('tome extract', () => {
     const result = envelope(extracted.stdout());
     expect(result.data).toMatchObject({ book: 'book', pages: 3, ran: 3, failed: 0 });
     expect(result.data['engines']).toMatchObject([{ name: 'fake', version: '1.2.3', device: 'cpu' }]);
+    expect(result.data['document']).toMatchObject({ reused: false, pages: { ok: 3, skipped: 0, failed: 0 } });
     expect(extracted.stderr()).toContain('已解析 3/3 頁。');
+  });
+
+  it('says what it assembled, and that it reused it the second time', async () => {
+    const { session } = await workspace();
+    await run(['engine', 'add', FAKE_ENGINE], session().io);
+    await run(['add', await forgeFile('plain', tempDir()), '--as', 'book'], session().io);
+    const first = session();
+    expect(await run(['extract', 'book'], first.io)).toBe(0);
+    expect(first.stdout()).toContain('已組裝 document 層');
+    const second = session();
+    expect(await run(['extract', 'book'], second.io)).toBe(0);
+    expect(second.stdout()).toContain('沿用既有的 document 層');
   });
 
   it('never prints the text of the book', async () => {
@@ -117,7 +132,8 @@ describe('tome extract', () => {
     await run(['add', await forgeFile('plain', tempDir()), '--as', 'book'], session().io);
     const extracted = session();
     await run(['extract', 'book'], extracted.io);
-    expect(extracted.stdout() + extracted.stderr()).not.toContain('Synthetic text');
+    const [firstPage] = (await forge('plain')).truth.text ?? [];
+    expect(extracted.stdout() + extracted.stderr()).not.toContain(firstPage?.[0]?.slice(0, 20));
     expect(readFileSync(join(home, 'tome.yaml'), 'utf8')).toContain('fake');
   });
 

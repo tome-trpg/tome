@@ -94,10 +94,20 @@ export interface Section {
   readonly children: readonly Section[];
 }
 
+/** 一個實體頁的去向。只有計數與原因代碼，沒有書本文字。 */
+export interface PageStatus {
+  readonly page: number;
+  readonly status: 'ok' | 'skipped' | 'failed';
+  readonly reason?: string;
+  readonly missing?: number;
+  readonly total?: number;
+}
+
 export interface IrDocument {
   readonly schema: 'tome-ir/1';
   readonly layer: 'document';
   readonly pdf_sha256: string;
+  readonly pages: readonly PageStatus[];
   readonly page_map: readonly { readonly page: number; readonly label: string }[];
   readonly sections: readonly Section[];
   readonly blocks: readonly DocumentBlock[];

@@ -212,6 +212,19 @@
         "label": { "type": "string", "minLength": 1 }
       }
     },
+    "pageStatus": {
+      "description": "What became of one physical page. Holds counts and reason codes, never book text.",
+      "type": "object",
+      "required": ["page", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "page": { "$ref": "#/$defs/pageIndex" },
+        "status": { "enum": ["ok", "skipped", "failed"] },
+        "reason": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "missing": { "type": "integer", "minimum": 0 },
+        "total": { "type": "integer", "minimum": 0 }
+      }
+    },
     "section": {
       "type": "object",
       "required": ["title", "children"],
@@ -242,12 +255,17 @@
     },
     "document": {
       "type": "object",
-      "required": ["schema", "layer", "pdf_sha256", "page_map", "sections", "blocks"],
+      "required": ["schema", "layer", "pdf_sha256", "pages", "page_map", "sections", "blocks"],
       "additionalProperties": false,
       "properties": {
         "schema": { "const": "tome-ir/1" },
         "layer": { "const": "document" },
         "pdf_sha256": { "$ref": "#/$defs/sha256" },
+        "pages": {
+          "description": "One entry per physical page. Blocks of a page that is not ok are not in blocks.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/pageStatus" }
+        },
         "page_map": {
           "type": "array",
           "items": { "$ref": "#/$defs/pageLabel" }

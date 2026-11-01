@@ -1,9 +1,16 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
 import { workspaceTemplate } from '../../src/cli/messages.ts';
-import { addBook, bookDir, probeBook, readBook, withBookLock } from '../../src/core/book.ts';
+import {
+  addBook,
+  bookDir,
+  probeBook,
+  readBook,
+  stageFingerprint,
+  withBookLock,
+} from '../../src/core/book.ts';
 import { addEngine, engineDir, type EngineManifest } from '../../src/core/engine.ts';
 import { TomeError } from '../../src/core/errors.ts';
 import {
@@ -14,15 +21,18 @@ import {
   type ExtractResult,
 } from '../../src/core/extract.ts';
 import { exitCodeOf, type Finding } from '../../src/core/findings.ts';
+import type { IrDocument } from '../../src/core/ir.ts';
 import { keyEnvName } from '../../src/core/secrets.ts';
 import type { StreamRunner, ToolRunner } from '../../src/core/process.ts';
 import { validateIr, validateEngineManifest } from '../../src/core/schema.ts';
 import { openBookStore } from '../../src/core/store.ts';
 import { initWorkspace } from '../../src/core/workspace.ts';
-import { forgeFile, type ForgeCase } from '../forge/index.ts';
+import { forge, forgeFile, LAYOUT_TRUTH, type ForgeCase } from '../forge/index.ts';
 import { tempDir } from '../helpers.ts';
 
 const FAKE_ENGINE = resolve('tests/fixtures/engines/fake');
+const RECORDED_LAYOUT = resolve('tests/fixtures/engine-outputs/docling/layout');
+const SAMPLE_PACK = resolve('tests/fixtures/packs/sample-pack');
 const NO_GPU: ToolRunner = async () => null;
 
 function codes(findings: readonly Finding[]): string[] {
@@ -34,14 +44,19 @@ async function library(forged: ForgeCase = 'plain', engine = true): Promise<stri
   initWorkspace({ home, env: {}, template: workspaceTemplate });
   if (engine) await addEngine({ home, target: FAKE_ENGINE, gpu: false, env: process.env, tool: NO_GPU });
   await addBook({ home, pdf: await forgeFile(forged, tempDir()), name: 'book' });
+  writeFileSync(textFile(home), JSON.stringify((await forge(forged)).truth.text ?? []));
   return home;
+}
+
+function textFile(home: string): string {
+  return join(home, 'forged-text.json');
 }
 
 function extract(home: string, scenario = 'ok', extraEnv: NodeJS.ProcessEnv = {}): Promise<ExtractResult> {
   return extractBook({
     home,
     slug: 'book',
-    env: { ...process.env, FAKE_ENGINE_SCENARIO: scenario, ...extraEnv },
+    env: { ...process.env, FAKE_ENGINE_SCENARIO: scenario, FAKE_ENGINE_TEXT_FILE: textFile(home), ...extraEnv },
     tool: NO_GPU,
   });
 }
@@ -83,7 +98,7 @@ describe('tome extract', () => {
     const home = await library();
     const { findings, data } = await extract(home);
     expect(exitCodeOf(findings)).toBe(0);
-    expect(codes(findings)).toEqual(['extract.done', 'extract.source_only']);
+    expect(codes(findings)).toEqual(['extract.done', 'extract.assembled']);
     expect(findings[0]?.params).toEqual({ pages: '3', ran: '3', reused: '0' });
     expect(data).toMatchObject({ pages: 3, ran: 3, reused: 0, failed: 0 });
     for (const page of [0, 1, 2]) {
@@ -197,6 +212,15 @@ describe('tome extract', () => {
     });
   });
 
+  it('keeps asking for the run record when every page is reused', async () => {
+    const home = await library();
+    await extract(home, 'no_record');
+    const { findings, data } = await extract(home);
+    expect(data).toMatchObject({ ran: 0, reused: 3 });
+    expect(codes(findings)).toContain('extract.no_run_record');
+    expect(exitCodeOf(findings)).toBe(1);
+  });
+
   it('reports an engine that went quiet or cannot start', async () => {
     const home = await library();
     const run = (outcome: Awaited<ReturnType<StreamRunner>>): Promise<ExtractResult> =>
@@ -253,6 +277,210 @@ describe('tome extract', () => {
       onPage: (done, total) => steps.push(`${done}/${total}`),
     });
     expect(steps).toEqual(['1/3', '2/3', '3/3']);
+  });
+});
+
+function documentOf(home: string): IrDocument {
+  const value: unknown = JSON.parse(readFileSync(join(bookDir(home, 'book'), 'ir', 'document.json'), 'utf8'));
+  const checked = validateIr(value);
+  expect(checked.ok).toBe(true);
+  return value as IrDocument;
+}
+
+describe('the document layer', () => {
+  it('turns a forged PDF into a document that passes tome-ir/1', async () => {
+    const home = await library();
+    const { data } = await extract(home);
+    const document = documentOf(home);
+    expect(document.pages.map(({ status }) => status)).toEqual(['ok', 'ok', 'ok']);
+    expect(document.blocks.length).toBeGreaterThan(0);
+    expect(document.blocks.every(({ flow }) => flow === 'main')).toBe(true);
+    expect(data['document']).toMatchObject({ reused: false, pages: { ok: 3, skipped: 0, failed: 0 } });
+  });
+
+  it('fails a page whose characters got lost, and keeps it out of the document', async () => {
+    const home = await library();
+    const { findings } = await extract(home, 'lost_text');
+    expect(exitCodeOf(findings)).toBe(1);
+    const lost = findings.find((item) => item.code === 'extract.characters_missing');
+    expect(lost).toMatchObject({ level: 'fail', params: { count: '3' } });
+    expect(lost?.params['pages']).toMatch(/^1:\d+\/\d+, 2:/);
+    const document = documentOf(home);
+    expect(document.pages[0]).toMatchObject({ status: 'failed', reason: 'characters_missing' });
+    expect(document.blocks).toEqual([]);
+  });
+
+  it('never puts book text in what it reports', async () => {
+    const home = await library();
+    const { findings, data } = await extract(home, 'lost_text');
+    const [firstPage] = (await forge('plain')).truth.text ?? [];
+    const report = JSON.stringify({ findings, data });
+    expect(report).not.toContain(firstPage?.[0]?.slice(0, 16));
+  });
+
+  it('lists pages that are not native as skipped', async () => {
+    const home = await library('scan');
+    await extract(home);
+    expect(documentOf(home).pages.map(({ status, reason }) => [status, reason])).toEqual([
+      ['skipped', 'scan'],
+      ['skipped', 'scan'],
+      ['skipped', 'scan'],
+      ['ok', undefined],
+    ]);
+  });
+
+  it('still writes a document when the book has no native page', async () => {
+    const home = await library('images');
+    const { findings } = await extract(home);
+    expect(exitCodeOf(findings)).toBe(0);
+    expect(codes(findings)).not.toContain('extract.done');
+    expect(documentOf(home)).toMatchObject({ blocks: [], sections: [] });
+    expect(documentOf(home).pages.map(({ status }) => status)).toEqual(['skipped', 'skipped']);
+  });
+
+  it('keeps a page the engine failed out of the blocks, and goes on with the others', async () => {
+    const home = await library();
+    const { findings } = await extract(home, 'one_failed');
+    expect(exitCodeOf(findings)).toBe(1);
+    expect(documentOf(home).pages[1]).toEqual({ page: 1, status: 'failed', reason: 'conversion_failed' });
+    expect(documentOf(home).blocks.map(({ spans }) => spans[0]?.page)).toEqual([0, 2]);
+  });
+
+  it('does not assemble again when nothing changed', async () => {
+    const home = await library();
+    await extract(home);
+    const before = readFileSync(join(bookDir(home, 'book'), 'ir', 'document.json'), 'utf8');
+    const { data, findings } = await extract(home);
+    expect(data['document']).toMatchObject({ reused: true });
+    expect(codes(findings)).toContain('extract.document_reused');
+    expect(readFileSync(join(bookDir(home, 'book'), 'ir', 'document.json'), 'utf8')).toBe(before);
+  });
+
+  it('builds the same document again from the same layers', async () => {
+    const home = await library();
+    await extract(home);
+    const first = documentOf(home);
+    rmSync(join(bookDir(home, 'book'), 'ir', 'document.json'));
+    await extract(home);
+    expect(documentOf(home)).toEqual(first);
+  });
+
+  it('applies overrides, keeps them across a rebuild, and reports what does not match', async () => {
+    const home = await library();
+    await extract(home);
+    const [first, second] = documentOf(home).blocks;
+    writeFileSync(
+      join(bookDir(home, 'book'), 'overrides.yaml'),
+      stringify({
+        schema: 'tome-overrides/1',
+        operations: [
+          { op: 'role', block: first?.id, role: 'sidebar' },
+          { op: 'skip', block: second?.id },
+          { op: 'skip', block: 'p0099-abcdef' },
+        ],
+      }),
+    );
+    const { findings, data } = await extract(home);
+    expect(data['document']).toMatchObject({ reused: false });
+    expect(findings.find((item) => item.code === 'overrides.no_block')).toMatchObject({
+      level: 'warn',
+      params: { index: '3', block: 'p0099-abcdef' },
+    });
+    expect(exitCodeOf(findings)).toBe(0);
+    const { blocks } = documentOf(home);
+    expect(blocks[0]).toMatchObject({ id: first?.id, role: 'sidebar' });
+    expect(blocks.map(({ id }) => id)).not.toContain(second?.id);
+  });
+
+  it('refuses an overrides file that is not the format', async () => {
+    const home = await library();
+    writeFileSync(join(bookDir(home, 'book'), 'overrides.yaml'), 'schema: tome-overrides/1\noperations: nope\n');
+    await expect(extract(home)).rejects.toMatchObject({ code: 'config.bad_schema' });
+  });
+
+  it('decides the roles a rule pack declares', async () => {
+    const home = await library();
+    cpSync(SAMPLE_PACK, join(home, 'systems', 'sample-pack'), { recursive: true });
+    await addBook({ home, pdf: await forgeFile('plain', tempDir()), name: 'book', system: 'sample-pack' });
+    const texts = (await forge('plain')).truth.text ?? [];
+    writeFileSync(textFile(home), JSON.stringify([[...(texts[0] ?? []), 'HP 12 AC 14.'], ...texts.slice(1)]));
+    await extract(home);
+    expect(documentOf(home).blocks.map(({ role }) => role)).toEqual([
+      'sample-pack:stat_block',
+      'paragraph',
+      'paragraph',
+    ]);
+  });
+
+  it('says which pattern ran away, and stops short of recording the stage', async () => {
+    const home = await library();
+    const pack = join(home, 'systems', 'runaway');
+    mkdirSync(pack, { recursive: true });
+    writeFileSync(join(pack, 'pack.yaml'), stringify({ schema: 'tome-pack/1', id: 'runaway', version: '0.1.0', license: 'Apache-2.0', source_langs: ['en'] }));
+    writeFileSync(join(pack, 'syntax_patterns.yaml'), stringify({ patterns: [{ id: 'bad', use: 'detect', regex: '(a+)+$' }] }));
+    writeFileSync(join(pack, 'roles.yaml'), stringify({ roles: { slow: { detect: ['bad'] } } }));
+    await addBook({ home, pdf: await forgeFile('plain', tempDir()), name: 'book', system: 'runaway' });
+    const texts = (await forge('plain')).truth.text ?? [];
+    writeFileSync(textFile(home), JSON.stringify([[...(texts[0] ?? []), `${'a'.repeat(40)}!`], ...texts.slice(1)]));
+    const { findings } = await extract(home);
+    expect(findings.find((item) => item.code === 'pack.slow_regex')).toMatchObject({
+      level: 'fail',
+      params: { pattern: 'bad' },
+    });
+    const store = openBookStore(home, 'book');
+    try {
+      expect(stageFingerprint(store, 'document')).toBeNull();
+    } finally {
+      store.close();
+    }
+  });
+});
+
+describe('the recorded layout book', () => {
+  async function layoutBook(): Promise<IrDocument> {
+    const home = await library('layout');
+    const { findings } = await extract(home, 'ok', { FAKE_ENGINE_RECORDED: RECORDED_LAYOUT });
+    expect(exitCodeOf(findings)).toBe(0);
+    return documentOf(home);
+  }
+
+  it('reads the flow in order, past the sidebar, the columns and the page break', async () => {
+    const { blocks } = await layoutBook();
+    const flow = blocks.find(({ text }) => text.startsWith('Alpha opening'));
+    const positions = LAYOUT_TRUTH.flow.map((phrase) => flow?.text.indexOf(phrase) ?? -1);
+    expect(positions.every((position) => position >= 0)).toBe(true);
+    expect(positions).toEqual([...positions].sort((left, right) => left - right));
+    expect(flow?.spans.map(({ page }) => page)).toEqual([0, 0, 0, 0, 1]);
+  });
+
+  it('takes the sidebar and the column box out of the main flow', async () => {
+    const { blocks } = await layoutBook();
+    const aside = blocks.filter(({ flow }) => flow === 'aside').map(({ text }) => text);
+    expect(aside[0]).toBe(LAYOUT_TRUTH.sidebar[0]);
+    expect(aside[1]?.startsWith(LAYOUT_TRUTH.sidebar[1] ?? '')).toBe(true);
+    expect(aside[2]?.startsWith(LAYOUT_TRUTH.columnBox)).toBe(true);
+  });
+
+  it('closes the drop cap, joins the table, and marks the purchaser line', async () => {
+    const { blocks } = await layoutBook();
+    expect(blocks.some(({ text }) => text.startsWith(LAYOUT_TRUTH.dropCap))).toBe(true);
+    expect(blocks.filter(({ role }) => role === 'table').map(({ table }) => table?.rows)).toEqual([
+      LAYOUT_TRUTH.tableRows,
+    ]);
+    const purchaser = blocks.filter(({ text }) => text === LAYOUT_TRUTH.furniture);
+    expect(purchaser.map(({ role }) => role)).toEqual(['furniture', 'furniture', 'furniture']);
+  });
+
+  it('turns the ligature into plain letters', async () => {
+    const { blocks } = await layoutBook();
+    expect(blocks.some(({ text }) => text === LAYOUT_TRUTH.ligature)).toBe(true);
+  });
+
+  it('builds sections from the headings, with no bookmarks in the book', async () => {
+    const { sections, blocks, page_map: pageMap } = await layoutBook();
+    expect(sections.map(({ title }) => title)).toEqual([LAYOUT_TRUTH.heading, LAYOUT_TRUTH.plainHeading]);
+    expect(blocks.at(-1)?.role).toBe('furniture');
+    expect(pageMap).toEqual([]);
   });
 });
 
