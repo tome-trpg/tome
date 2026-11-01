@@ -298,16 +298,26 @@ export interface VerifyContextOptions {
   readonly slug: string;
 }
 
-/** 這本書驗證要用的語言、詞條與片語表。 */
-export async function bookVerifyContext({ home, slug }: VerifyContextOptions): Promise<VerifyContext> {
+export interface BookVerifyContext {
+  /** 規則包讀不全時是 null，理由在 `findings`。 */
+  readonly context: VerifyContext | null;
+  readonly findings: readonly Finding[];
+}
+
+/**
+ * 這本書驗證要用的語言、詞條與片語表。規則包讀不全時詞條會少掉，
+ * 譯名驗證就默默不做了，所以不給 context，由呼叫端停下來（ADR-0102）。
+ */
+export async function bookVerifyContext({ home, slug }: VerifyContextOptions): Promise<BookVerifyContext> {
   const book = readBook(home, slug);
   const id = systemOf(book);
   const location = findPack(home, id);
   if (location === null) throw new TomeError('pack.not_found', { id });
-  const { pack } = resolvePack(home, location);
-  const terms = pack === null ? [] : termsFor(pack, book.config.source_lang);
+  const { pack, findings } = resolvePack(home, location);
+  if (pack === null || findings.some(({ level }) => level === 'fail')) return { context: null, findings };
   const { profile: language } = loadTargetLanguage(workspaceTargetLang(home));
-  return { language, terms, phraseCheck: await loadPhraseCheck(language) };
+  const terms = termsFor(pack, book.config.source_lang);
+  return { context: { language, terms, phraseCheck: await loadPhraseCheck(language) }, findings };
 }
 
 export interface VerifyBookResult {
@@ -315,15 +325,16 @@ export interface VerifyBookResult {
   readonly findings: readonly Finding[];
 }
 
+const EMPTY_RUN = { checked: 0, passed: 0, failed: 0, gave_up: 0 };
+
 async function verifyLocked(home: string, slug: string): Promise<VerifyBookResult> {
   const store = openBookStore(home, slug);
   try {
     const rows = store.all<VerifyRow>(LATEST_RESPONSES);
-    if (rows.length === 0) {
-      return { data: { checked: 0, passed: 0, failed: 0, gave_up: 0 }, findings: [finding('verify.nothing', 'info')] };
-    }
+    if (rows.length === 0) return { data: EMPTY_RUN, findings: [finding('verify.nothing', 'info')] };
     // 片語表約 6 MB，有東西要驗證才載入。
-    const context = await bookVerifyContext({ home, slug });
+    const { context, findings } = await bookVerifyContext({ home, slug });
+    if (context === null) return { data: EMPTY_RUN, findings };
     const states = store.transaction(() =>
       rows.map((row) => {
         const placeholders = JSON.parse(row.placeholders) as Placeholder[];

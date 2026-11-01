@@ -53,6 +53,41 @@ describe('quotes (ADR-0102)', () => {
   it('leaves the apostrophe alone', () => {
     expect(format("Warden's Lantern")).toBe("Warden's Lantern");
   });
+
+  it.each([
+    ['6" 長、8" 寬', '6" 長、8" 寬'],
+    ['比例尺 1" = 5 feet', '比例尺1" = 5 feet'],
+    ['長 6.5" 的劍', '長6.5" 的劍'],
+    ['一把 12＂ 的劍"', '一把12＂ 的劍"'],
+  ])('keeps an inch mark after a number: %j', (text, expected) => {
+    expect(format(text)).toBe(expected);
+  });
+
+  it('does not count an inch mark when it pairs the quotes', () => {
+    expect(format('他說"長 6" 的劍"')).toBe('他說「長6" 的劍」');
+    expect(format('"6" 的劍')).toBe('"6" 的劍');
+  });
+
+  it('counts a quote after a placeholder, which is not a number', () => {
+    const placeholders = [{ id: 1, kind: 'dice', text: '1D6' }];
+    expect(format('"擲 <ph id="1"/>"', placeholders)).toBe('「擲1D6」');
+  });
+});
+
+describe('web addresses (ADR-0102)', () => {
+  it.each([
+    ['請看 https://example.com。', '請看https://example.com。'],
+    ['https://example.com/?q=1&amp;x=(2)', 'https://example.com/?q=1&x=(2)'],
+    ['http://example.com:8080/a,b', 'http://example.com:8080/a,b'],
+    ['見 https://example.com/a,然後', '見https://example.com/a，然後'],
+    ['網址是(https://example.com/a)。', '網址是（https://example.com/a）。'],
+  ])('%j', (text, expected) => {
+    expect(format(text)).toBe(expected);
+  });
+
+  it('still changes punctuation after the address ends', () => {
+    expect(format('https://example.com 然後,走吧')).toBe('https://example.com然後，走吧');
+  });
 });
 
 describe('spacing around Latin text (ADR-0102)', () => {
@@ -92,6 +127,9 @@ describe('a long translation', () => {
     ['many short runs', '甲 乙 '.repeat(LONG / 4)],
     ['many quotes', '"'.repeat(LONG)],
     ['many brackets', '('.repeat(LONG)],
+    ['many address marks', '://'.repeat(LONG / 3)],
+    ['a long address', `https://${'a'.repeat(LONG)}`],
+    ['many inch marks', '6"'.repeat(LONG / 2)],
   ])('formats %s in linear time', (_name, text) => {
     const started = performance.now();
     format(text);

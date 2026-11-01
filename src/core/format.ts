@@ -6,7 +6,11 @@ import type { Segment } from './tags.ts';
 
 const ASCII_WORD = /^[A-Za-z0-9]$/;
 const HAN = /^\p{Script=Han}$/u;
-const STRAIGHT_QUOTE = '"';
+/** 緊接在數字後面的是英寸記號，單位不換算（ADR-0029），也不算引號的配對（ADR-0102）。 */
+const STRAIGHT_QUOTE = /(?<!\p{Nd})"/gu;
+const ADDRESS_MARK = '://';
+/** 結尾的這些字元是句子的標點，不是網址的一部分。 */
+const ADDRESS_TRAILING = `,.;:?!'"`;
 /** 佔位符當成拉丁文字。 */
 const PLACEHOLDER_STAND_IN = 'x';
 
@@ -20,7 +24,7 @@ function mapText(segments: readonly Segment[], change: (text: string) => string)
 function countQuotes(segments: readonly Segment[]): number {
   let count = 0;
   mapText(segments, (text) => {
-    count += text.split(STRAIGHT_QUOTE).length - 1;
+    count += text.match(STRAIGHT_QUOTE)?.length ?? 0;
     return text;
   });
   return count;
@@ -38,7 +42,7 @@ function formatQuotes(segments: readonly Segment[], language: TargetLanguage): S
       .replaceAll('‘', inner_open)
       .replaceAll('’', inner_close);
     if (!paired) return curly;
-    return curly.replaceAll(STRAIGHT_QUOTE, () => {
+    return curly.replace(STRAIGHT_QUOTE, () => {
       const quote = opening ? open : close;
       opening = !opening;
       return quote;
@@ -50,7 +54,23 @@ function isAsciiWord(character: string): boolean {
   return ASCII_WORD.test(character);
 }
 
-/** 兩側都是半形英文字母或數字時不換，`1,000`、`3:00` 才不會壞。括號跟著開括號的決定走。 */
+/** 網址到空白或非 ASCII 字元為止。`start` 是 `://` 的位置，協定名稱本來就不會被換。 */
+function addressEnd(text: string, start: number): number {
+  let end = start;
+  while (end < text.length && text.charCodeAt(end) > 0x20 && text.charCodeAt(end) < 0x7f) end += 1;
+  const closesOwnBracket = text.slice(start, end).includes('(');
+  while (end > start) {
+    const last = text[end - 1] ?? '';
+    if (!(ADDRESS_TRAILING.includes(last) || (last === ')' && !closesOwnBracket))) break;
+    end -= 1;
+  }
+  return end;
+}
+
+/**
+ * 兩側都是半形英文字母或數字時不換，`1,000`、`3:00` 才不會壞。括號跟著開括號的決定走。
+ * 網址整段不動（ADR-0102）。
+ */
 function replacePunctuation(
   text: string,
   before: string,
@@ -62,6 +82,12 @@ function replacePunctuation(
   let result = '';
   let index = 0;
   while (index < text.length) {
+    if (text.startsWith(ADDRESS_MARK, index)) {
+      const end = addressEnd(text, index);
+      result += text.slice(index, end);
+      index = end;
+      continue;
+    }
     const rule = rules.find(([from]) => text.startsWith(from, index));
     if (rule === undefined) {
       result += text[index] ?? '';

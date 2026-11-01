@@ -1,3 +1,4 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { run } from '../../src/cli/run.ts';
@@ -192,6 +193,43 @@ describe('tome verify (ADR-0102)', () => {
       expect(text).not.toContain('warden');
     }
     expect(plain.stdout()).toContain('未通過');
+  });
+
+  describe('with a rule pack that cannot be trusted', () => {
+    /** 在工作區放一個 `generic`，蓋過內建的，檔案內容由測試指定。 */
+    function brokenPack(env: NodeJS.ProcessEnv, files: Readonly<Record<string, string>>): void {
+      const dir = join(env['TOME_HOME'] ?? '', 'systems', 'generic');
+      mkdirSync(dir, { recursive: true });
+      for (const [file, text] of Object.entries(files)) writeFileSync(join(dir, file), text);
+    }
+
+    const MANIFEST = 'schema: tome-pack/1\nid: generic\nversion: 0.1.0\nlicense: Apache-2.0\nsource_langs: [en]\n';
+
+    it.each([
+      ['a glossary that does not parse', { 'pack.yaml': MANIFEST, 'glossary.yaml': 'terms: [' }, 'pack.invalid_yaml'],
+      ['a glossary of the wrong shape', { 'pack.yaml': MANIFEST, 'glossary.yaml': 'terms: nope\n' }, 'pack.bad_file'],
+      ['a manifest that does not parse', { 'pack.yaml': 'schema: [' }, 'pack.invalid_yaml'],
+      ['a parent that is gone', { 'pack.yaml': `${MANIFEST}extends: gone\n` }, 'pack.parent_missing'],
+    ])('stops at %s, so terms are not skipped in silence', async (_name, files, code) => {
+      const { env, open } = await library();
+      const store = open();
+      received(store, 'a', GOOD, 'RECEIVED');
+      store.close();
+      brokenPack(env, files);
+      const { exit, output } = await verify(env);
+      expect(exit).toBe(1);
+      expect(output.findings.map((item) => item.code)).toContain(code);
+      expect(output.findings.map((item) => item.code)).not.toContain('verify.done');
+      const after = open();
+      expect(stateOf(after, 'a')).toEqual({ state: 'RECEIVED', attempts: 1, translation: null });
+      after.close();
+    });
+
+    it('needs no rule pack when there is nothing to verify', async () => {
+      const { env } = await library();
+      brokenPack(env, { 'pack.yaml': 'schema: [' });
+      expect((await verify(env)).exit).toBe(0);
+    });
   });
 
   it('refuses a second run while the first is going, and an unknown book', async () => {

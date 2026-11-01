@@ -149,9 +149,10 @@ function encodingHan(check: ScriptCheck): ReadonlySet<string> {
  */
 export function scriptViolations(check: ScriptCheck, text: string): string[] {
   const allowed = encodingHan(check);
-  const outside = [...text.matchAll(HAN)].map(([character]) => character).filter((character) => !allowed.has(character));
+  // 例外詞裡的字可能不在編碼裡，所以兩項判定都用拿掉例外詞之後的文字。
   let rest = text;
   for (const word of check.allowed_words) rest = rest.replaceAll(word, '');
+  const outside = [...rest.matchAll(HAN)].map(([character]) => character).filter((character) => !allowed.has(character));
   const shared = [...rest].filter((character) => check.shared_forms.includes(character));
   const misused = check.misused_words.filter((word) => text.includes(word));
   return [...new Set([...outside, ...shared, ...misused])];

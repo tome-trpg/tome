@@ -40,6 +40,12 @@ describe('the language profiles', () => {
       expect(scriptViolations({ ...check, misused_words: ['渡口'] }, '渡口')).toEqual(['渡口']);
     });
 
+    it('lets an allowed word hold a character the encoding does not have', () => {
+      const rare = String.fromCodePoint(0x3402);
+      expect(scriptViolations(check, rare)).toEqual([rare]);
+      expect(scriptViolations({ ...check, allowed_words: [`甲${rare}`] }, `甲${rare}`)).toEqual([]);
+    });
+
     it('counts a repeated finding once', () => {
       expect(scriptViolations(check, `${SHARED}${SHARED}`)).toHaveLength(1);
     });
