@@ -80,3 +80,4 @@ protectedFiles:
 - `state.ts` 與 `opencc.ts` 是先寫的，測試寫好後用改壞的版本確認過會失敗。這一步也查出 model-based 測試太弱：隨機事件大多不合法，走不到 `STALE` 之後。改成只走合法轉換，序列拉長到 200，再確認改壞時會失敗。非法轉換由另一個測試逐一檢查。
 - OpenCC 的 `twp` 比 `tw` 多的只有 `TWPhrases`，用 `Trie.matchPrefix` 拿得到逐字的詞，不用比對差異。
 - 片語表的誤報率沒有量，它只報告，不影響重送。
+- 新相依 `opencc-js` 1.4.2 用在用語檢查，只有 `src/core/opencc.ts` 碰它，依據是 ADR-0099 第 16 項。2026-08-22 上架，授權 `MIT AND Apache-2.0`，字典資料另有第三方授權聲明，也是 Apache-2.0，沒有相依，也沒有安裝腳本。程式本身沒有逐行審過。
