@@ -59,8 +59,8 @@ protectedFiles:
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
 - [x] 新的測試先在舊行為上失敗過
 - [x] 改到 `src/core/extract.ts` 的提交，推送前清掉暫存工作區的書，在本機真的跑過 `tests/engine`
-- [ ] `specs`、`test`、`engine` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `specs`、`test`、`engine` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
 - [x] 訊息與 `--json` 只有數字與模型 ID，不含書本文字
 - [x] 這個回合沒有連網，有測試把關
 
