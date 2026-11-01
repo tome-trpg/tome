@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-01
 type: defect
 wave: 11
@@ -20,7 +20,16 @@ protectedFiles:
   - package.json
   - schemas/**
   - src/**
+integrity: sha256-2701840882448963f958ab9442ce641f14c843e6e696fb48fd68c2bc04d5c995
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-01.**
+> blocks 測試改成先印 findings 再斷言結束碼，Windows 間歇失敗時紀錄才看得出原因。間歇失敗本身還沒修。
+> Merged in pull request [#30](https://github.com/tome-trpg/tome/pull/30).
+> Recorded at commit `12a88b1`: 2 files changed, +64 −2.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 013 — 引擎測試失敗時要看得到原因
 
