@@ -66,6 +66,7 @@ protectedFiles:
 - [x] `tome engine list`、`remove` 與 `tome doctor` 的引擎檢查可用
 - [x] 改到 `engines/` 時 `engine.yml` 安裝 Docling 跑合成 PDF，輸出通過 `tome-ir/1` 驗證
 - [x] Docling 的程式授權與權重授權都留下紀錄（LC-3）
+- [x] `--extra gpu` 的全部套件在 Windows 與 Linux 都審過，寫進 ADR-0085，`--gpu` 裝完提示 CUDA 元件是 NVIDIA 專有授權
 - [x] `languages/target/zh-TW.yaml` 的第四句只說代名詞依實體卡（ADR-0023）
 - [x] `.github/dependabot.yml` 加上 uv，`@spec-family/*` 用 `exclude` 排除在 npm 的冷卻期之外（ADR-0082 第 21 項），檔案開頭的註解寫清楚
 - [x] 白皮書與 `CHANGELOG.md` 照實更新，沒量過的數字不寫成已實作
@@ -74,7 +75,9 @@ protectedFiles:
 
 2026-11-01，參考機器，Docling 2.140.0，合成 PDF。數字與判讀在 ADR-0085，白皮書 §5.3 有摘要。
 
-- 本機實測沒有 `HF_HUB_OFFLINE` 以外的網路隔離。真正拿掉網路的是 `engine.yml` 的 Ubuntu 工作，本機 Windows 沒有隔離。
+- 本機實測沒有 `HF_HUB_OFFLINE` 以外的網路隔離。真正拿掉網路的是 `engine.yml` 的 Ubuntu 工作，本機 Windows 沒有隔離。那個工作通過只證明解析不需要網路，不證明沒有嘗試連線。
+- CUDA 版的授權審查是看中繼資料、wheel 裡的授權文字與函式庫檔名，Linux 沒有實際安裝，也沒有逐一稽核二進位檔。Windows 的 `torch` wheel 帶 NVIDIA 與 Intel 的專有元件，中繼資料沒有提到。
+- 大檔逐頁呼叫 `convert` 的額外成本沒量，列在 ADR-0085 的 Open Questions。
 - `engine.yml` 在 `bfbe939` 的 attempt 1，`docling (ubuntu-24.04)` 失敗。測試釘住了版面模型的判斷：第 2 頁的圖說在 Ubuntu 判成 `paragraph`，Windows 是 `caption`，文字相同。沒有重跑，測試改驗每段鍛造的文字都在，比原本嚴格。兩個平台為什麼判得不同還沒查。
 - Dependabot 對 `exclude-newer = "14 days"` 的實際行為沒驗證，只驗了 uv 0.13.6。
 - 商業書沒量。H-5、H-7、H-8、H-9 都還是假說。

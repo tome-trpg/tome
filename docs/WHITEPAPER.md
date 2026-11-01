@@ -145,7 +145,7 @@ TRPG 書的翻譯跟一般 PDF 翻譯不一樣，難處有六個：
 | LC-2 | AGPL、GPL、非商業、OpenRAIL 類引擎 MUST NOT 在主程式行程內匯入，也不隨附；只能由使用者自行安裝，以獨立行程溝通 | 同上 |
 | LC-3 | 引擎的程式授權與權重授權分開審查。權重授權要留下紀錄，因為兩者常常不同 | 同上（Marker、MinerU、NDLOCR-Lite 都是例子） |
 
-LC-1 到 LC-3 已定案（ADR-0016、ADR-0043）。常見的 PyMuPDF 是 AGPL-3.0，不符合 LC-1。主程式用 pdf.js（Apache-2.0）讀 PDF 結構，套件是 `unpdf`（MIT），它內含 pdf.js，沒有原生模組；官方的 `pdfjs-dist` 會把授權在白名單外的 `@napi-rs/canvas` 載入主程式行程，所以不用（ADR-0084）。Docling 引擎用自己的環境，內含 pypdfium2、RapidOCR 等寬鬆授權的元件。
+LC-1 到 LC-3 已定案（ADR-0016、ADR-0043）。常見的 PyMuPDF 是 AGPL-3.0，不符合 LC-1。主程式用 pdf.js（Apache-2.0）讀 PDF 結構，套件是 `unpdf`（MIT），它內含 pdf.js，沒有原生模組；官方的 `pdfjs-dist` 會把授權在白名單外的 `@napi-rs/canvas` 載入主程式行程，所以不用（ADR-0084）。Docling 引擎用自己的環境，內含 pypdfium2、RapidOCR 等寬鬆授權的元件，也有 LGPL 的 GEOS、FFmpeg 與 Intel 的 OpenMP、MKL，CUDA 版另有 NVIDIA 的專有元件。這些都由使用者自行下載，TOME 不隨附，審查結果在 ADR-0085。
 
 LC-1 有一個明文例外：`@napi-rs/keyring` 的 Linux 二進位檔靜態連結 `libdbus`，TOME 依 AFL-2.1 使用，不重新散布二進位檔，已定案（ADR-0083）。
 
@@ -392,15 +392,17 @@ flowchart LR
 | 環境 | 每個引擎一個獨立環境與鎖定檔，放在工作區。Python 引擎用 uv，其他語言照 `engine.yaml` 的寫法 |
 | 選擇 | 同一種頁面有多個引擎時，依 `tome.yaml` 的 `engines` 順序 |
 | 權重 | 只在 `tome engine add` 時下載，這是對外出口模組之外唯一的例外（ADR-0081）。執行時 MUST 離線 |
-| 授權 | 主程式 MUST NOT 依賴任何引擎套件。不符合 LC-1 的引擎由使用者自行安裝（LC-2） |
+| 授權 | 主程式 MUST NOT 依賴任何引擎套件。不符合 LC-1 的引擎由使用者自行安裝（LC-2）。CUDA 版的 NVIDIA 專有元件比照辦理，TOME 不隨附，`--gpu` 裝完會提示（ADR-0085） |
 
 Docling 是預設引擎，走同一套協定，沒有特權。它的轉接器是 Python，主程式是 TypeScript，兩邊只靠 `tome-ir` 的 JSON Schema 溝通。它能配合的地方都查過：`convert()` 有 `page_range`，權重可用 `docling-tools models download` 預先下載，再以 `artifacts_path` 指定，遠端服務預設關閉。
 
-**已知限制**：第一版沒有網路沙箱，「執行時離線」靠的是協定、環境變數與引擎審查，TOME 無法在技術上擋住惡意引擎。第一方引擎之外的引擎，使用者要自己判斷能不能信任。
+**已知限制**：第一版沒有網路沙箱，「執行時離線」靠的是協定、環境變數與引擎審查，TOME 無法在技術上擋住惡意引擎。第一方引擎之外的引擎，使用者要自己判斷能不能信任。Docling 在 Ubuntu 上拿掉網路後解析成功，**已驗證**的只有解析不需要網路：程式吞掉的連線失敗不會讓測試失敗，所以不能證明它沒有嘗試連線。鎖定檔裡沒有常見的遙測套件，這是看套件名稱，不是看行為（ADR-0085）。
 
 **已實作**：`src/core/engine.ts`、`src/core/extract.ts`、`schemas/tome-engine-1.schema.json`、`engines/docling/`（`tests/core/engine.test.ts`、`tests/core/extract.test.ts`、`tests/core/process.test.ts`、`tests/cli/engine.test.ts`；真的跑 Docling 的是 `tests/engine/docling.test.ts`）。平常的 CI 用 `tests/fixtures/engines/fake/` 的假引擎與錄好的 Docling 輸出，協定的每條失敗路徑都不需要 Docling（ADR-0064）。`tome extract` 目前只跑引擎、存 `source` 層，組裝與字元守恆在下一個回合接上（ADR-0085）。
 
-上表以外的細節是提案。環境建法只有 `uv` 與 `none`，`engine.yaml` 不能寫自己的安裝指令；要下載權重的引擎宣告 `prepare`，由 TOME 在安裝時呼叫 `<引擎指令> --prepare --data <目錄>`；版本一律問引擎，`<引擎指令> --version`。安裝紀錄是引擎資料夾裡的 `install.json`。manifest 另有 PDF 雜湊、資料目錄、設定雜湊，選項目前只有 `device`。頁面檔名是 `p0123.json`，先寫暫存檔再換名字。設定雜湊的輸入是轉接器與鎖定檔的內容、裝置、來源語言。事件只是進度，算數的是檔案：不是有效的 `tome-ir/1`、不是這本書或這份設定的頁面都丟掉重做，engine.json 缺了也算失敗。引擎的 stderr 不存也不印，失敗只有頁碼與原因代碼。一本書同時只跑一個流程，用書資料夾裡的 `book.lock`，持有者已經不在時接手。引擎 10 分鐘沒有事件就終止，這個數字沒有在真實書籍上量過。
+上表以外的細節，下列已定案（ADR-0085）：環境建法只有 `uv` 與 `none`，`engine.yaml` 不能寫自己的安裝指令；要下載權重的引擎宣告 `prepare`，由 TOME 在安裝時呼叫 `<引擎指令> --prepare --data <目錄>`；版本一律問引擎，`<引擎指令> --version`；引擎的 stderr 不存也不印，失敗只有頁碼與原因代碼；`source` 路徑的雜湊取前 16 字元；一本書同時只跑一個流程，用書資料夾裡的 `book.lock`，持有者已經不在時接手。
+
+其餘是提案。安裝紀錄是引擎資料夾裡的 `install.json`。manifest 另有 PDF 雜湊、資料目錄、設定雜湊，選項目前只有 `device`。頁面檔名是 `p0123.json`，先寫暫存檔再換名字。設定雜湊的輸入是轉接器與鎖定檔的內容、裝置、來源語言。事件只是進度，算數的是檔案：不是有效的 `tome-ir/1`、不是這本書或這份設定的頁面都丟掉重做，engine.json 缺了也算失敗。引擎 10 分鐘沒有事件就終止，這個數字沒有在真實書籍上量過。
 
 Docling 轉接器的輸出經合成 PDF 驗過（`tests/engine/docling.test.ts`）：標題、段落、表格、圖、圖說、頁尾都有，頁首頁尾與圖裡的字也帶出來，因為字元守恆看的是整頁。權重釘在 commit，只下載 layout 與 TableFormer accurate 兩份。**已驗證**的範圍只到參考機器與合成 PDF，商業書**還沒量**（ADR-0085）：
 
@@ -907,7 +909,7 @@ tome/
 | :--- | :--- | :--- |
 | `specs` | push 到 `main` 與 PR | spec-guard、`prove`、`cites`、spec-graph、spec-brief、`premises`，Windows 與 Ubuntu。**已實作**：`.github/workflows/specs.yml` |
 | 測試 | push 到 `main` 與 PR | 測試、`npm audit`、相依授權檢查、效能預算、`tome system lint` 與 `test`、測試素材清單檢查。**已實作**：`.github/workflows/test.yml`，檔名是 `test`，`npm audit` 的門檻是 `moderate`（ADR-0082）。內建規則包到 M2 才有，`tome system lint` 與 `test` 目前查測試用的合成包。測試素材清單是 `tests/fixtures/SOURCES.yaml`，由 `tests/tools/fixtures.test.ts` 檢查 |
-| 引擎 | 改到 `engines/` 或手動 | 安裝 Docling 跑合成 PDF。**已實作**：`.github/workflows/engine.yml`，Ubuntu 與 Windows 都跑，Ubuntu 上把網路拿掉再跑，連網就會失敗。有路徑過濾，不設必要檢查（ADR-0085） |
+| 引擎 | 改到 `engines/` 或手動 | 安裝 Docling 跑合成 PDF。**已實作**：`.github/workflows/engine.yml`，Ubuntu 與 Windows 都跑，Ubuntu 上把網路拿掉再跑，通過只證明解析不需要網路，不證明沒有嘗試連線。有路徑過濾，不設必要檢查（ADR-0085） |
 | 變異 | 排程 | 六個關鍵模組 |
 | 發佈 | `v*` 標籤或手動演練 | 見下節 |
 

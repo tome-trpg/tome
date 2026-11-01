@@ -64,7 +64,8 @@ jobs:
           TOME_ENGINE_HOME: ${{ runner.temp }}/tome
         run: npx --no-install vitest run tests/engine
 
-      # 執行時 MUST 離線（ADR-0039）。Ubuntu 上把網路整個拿掉再跑，連網就會失敗。
+      # 執行時 MUST 離線（ADR-0039）。Ubuntu 上把網路整個拿掉再跑，通過只證明解析不需要網路。
+      # 程式吞掉的連線失敗不會讓測試失敗，所以不能證明它沒有嘗試連線（ADR-0085）。
       - name: Extract a forged PDF with no network
         if: ${{ runner.os == 'Linux' }}
         env:

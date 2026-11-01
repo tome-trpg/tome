@@ -11,7 +11,7 @@ setup:
     cpu: cpu
     gpu: gpu
   prepare: true
-# 執行時離線（ADR-0039）。權重在 tome engine add 時下載好，之後不連網。
+# 執行時 MUST 離線（ADR-0039）。權重在 tome engine add 時下載好，解析不需要網路。
 env:
   HF_HUB_OFFLINE: '1'
   TRANSFORMERS_OFFLINE: '1'
