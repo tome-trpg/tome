@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-02
 type: feature
 wave: 13
@@ -26,7 +26,16 @@ protectedFiles:
   - engines/**
   - languages/**
   - package-lock.json
+integrity: sha256-08f7d133142989b6c2cd35a1205ce9618b6a57bacbcf23885b5f0841afe5ffcb
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-02.**
+> M2 的第一個回合：內建規則包 generic、document 層轉翻譯單位、遮蔽與還原、標籤協定，以及 tome probe 建議規則包。沒指定 --system 的書一律用 generic。
+> Merged in pull request [#40](https://github.com/tome-trpg/tome/pull/40).
+> Recorded at commit `7f12a18`: 47 files changed, +2383 −88.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 015 — 單位與遮蔽
 
