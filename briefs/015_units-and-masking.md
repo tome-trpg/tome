@@ -54,22 +54,30 @@ protectedFiles:
 
 ## Invariants
 
-- [ ] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
-- [ ] 新的測試先在舊行為上失敗過
-- [ ] 改到 `src/core/extract.ts` 的提交，推送前在本機真的跑過 `tests/engine`
+- [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
+- [x] 新的測試先在舊行為上失敗過
+- [x] 改到 `src/core/extract.ts` 的提交，推送前在本機真的跑過 `tests/engine`
 - [ ] `specs`、`test`、`engine` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
-- [ ] 訊息與 `--json` 只有規則包 ID 與數字，不含書本文字
-- [ ] 核心沒有寫死語言或遊戲概念
+- [x] 訊息與 `--json` 只有規則包 ID 與數字，不含書本文字
+- [x] 核心沒有寫死語言或遊戲概念
 
 ## Acceptance Criteria
 
-- [ ] `generic` 通過 `tome system lint --public` 與 `tome system test`，CI 也跑建置結果
-- [ ] 沒指定 `--system` 的書用 `generic`，`tome extract` 也載入它
-- [ ] `lintPack` 的目標語言是參數，`tome.yaml` 的 `target_lang` 選填，預設 `zh-TW`
-- [ ] 哪些區塊產生單位符合 ADR-0100，`furniture` 不產生
-- [ ] 遮蔽再還原回到原樣，含 `<`、`&`、`</s>` 的文字也一樣，有 fast-check 測試
-- [ ] 書本文字關不掉 `<s>`，有測試
-- [ ] 標籤解析回報未知標籤、沒成對與巢狀錯誤，`<new-term>`、`<flag>` 解析得出來
-- [ ] `tome probe` 建議規則包，門檻與結果符合 ADR-0100，書已有 `system` 時不顯示
-- [ ] `tests/perf/probe-budget.test.ts` 涵蓋有 `suggest` 的情況
-- [ ] 白皮書的成熟度標籤、附錄 B、CHANGELOG 更新，ADR-0099 的斷言補進「驗證」
+- [x] `generic` 通過 `tome system lint --public` 與 `tome system test`，CI 也跑建置結果
+- [x] 沒指定 `--system` 的書用 `generic`，`tome extract` 也載入它
+- [x] `lintPack` 的目標語言是參數，`tome.yaml` 的 `target_lang` 選填，預設 `zh-TW`
+- [x] 哪些區塊產生單位符合 ADR-0100，`furniture` 不產生
+- [x] 遮蔽再還原回到原樣，含 `<`、`&`、`</s>` 的文字也一樣，有 fast-check 測試
+- [x] 書本文字關不掉 `<s>`，有測試
+- [x] 標籤解析回報未知標籤、沒成對與巢狀錯誤，`<new-term>`、`<flag>` 解析得出來
+- [x] `tome probe` 建議規則包，門檻與結果符合 ADR-0100，書已有 `system` 時不顯示
+- [x] `tests/perf/probe-budget.test.ts` 涵蓋有 `suggest` 的情況
+- [x] 白皮書的成熟度標籤、附錄 B、CHANGELOG 更新，ADR-0099 的斷言補進「驗證」
+
+## Measured
+
+2026-11-02，Windows 參考機器。只用合成文字與合成 PDF。
+
+- 建議規則包的額外耗時：400 頁、約 150 萬字元，3 個規則包、各 3 個關鍵詞與 2 個模式，三次分別 0.5、0.3、0.8 秒。同一輪 `probePdf` 本身花 3.7 到 10.2 秒，波動來自機器當時的負載，沒有另外控制。
+- 3 頁的門檻沒有在商業書上量過，所以是提案。
+- 單位外的文字解析時略過，算不算協定錯誤沒有寫在 ADR-0100，要在 016 的驗證一起問。
