@@ -467,7 +467,7 @@ Docling 環境的 `pillow` 用 `override-dependencies` 蓋過 Docling 2.140.0 �
 
 目標語言只測試與承諾 zh-TW。評測與 QA 的成本會隨語言數相乘，所以 G-2 的目標語言部分只保證「加語言時不必改架構」。
 
-**已實作**：`languages/source/en.yaml`、`languages/target/zh-TW.yaml`，格式是 `tome-lang/1`（`schemas/tome-lang-1.schema.json`），載入在 `src/core/language.ts`（`tests/core/language.test.ts`），隨 npm 包發送（ADR-0084）。欄位是提案。來源設定檔的文字品質資料已接進 `tome probe`；正規化、斷字還原與接段的資料要到組裝步驟才用到；Pass 0 提示到 M3 才加。目標設定檔的排版規則、長度比例與 `script_check` 已接進驗證，OpenCC 的片語表接進只報告的用語檢查（ADR-0102）。風格指南要在 M2 接進提示前由維護者審過，用語檢查表留空。語言代碼只拿來組檔名，有斷言擋下核心依語言代碼分支。
+**已實作**：`languages/source/en.yaml`、`languages/target/zh-TW.yaml`，格式是 `tome-lang/1`（`schemas/tome-lang-1.schema.json`），載入在 `src/core/language.ts`（`tests/core/language.test.ts`），隨 npm 包發送（ADR-0084）。欄位是提案。來源設定檔的文字品質資料已接進 `tome probe`；正規化、斷字還原與接段的資料要到組裝步驟才用到；Pass 0 提示到 M3 才加。目標設定檔的排版規則、長度比例與 `script_check` 已接進驗證，OpenCC 的片語表接進只報告的用語檢查（ADR-0102）。風格指南由維護者審過，已接進提示（ADR-0103），用語檢查表留空。語言代碼只拿來組檔名，有斷言擋下核心依語言代碼分支。
 
 ### 5.5 輸出：Obsidian vault
 
@@ -507,7 +507,7 @@ vault 可以直接修改（ADR-0012）。`tome sync` 比對上次輸出與目前
 
 **已實作**：`document` 層轉翻譯單位、遮蔽與還原、標籤協定（`src/core/units.ts`、`src/core/mask.ts`、`src/core/tags.ts`；`tests/core/units.test.ts`、`tests/core/mask.test.ts`、`tests/core/tags.test.ts`）。遮蔽再還原回到原樣由 fast-check 把關，文字裡有 `<`、`&`、`</s>` 也一樣，書本文字關不掉 `<s>`。下列細節已定案（ADR-0100）：`furniture`、`toc`、`index`、`credits`、`figure` 不產生單位，沒有文字的也不產生；表格的每個儲存格一個單位，用 `block_id` 當群組；重疊時起點較前的優先，同起點取較長的；佔位符編號在單位內從 1 起算。
 
-**已實作**：零 token 驗證、譯後自動排版、翻譯記憶、單位寫進 `book.db`（`src/core/verify.ts`、`src/core/format.ts`、`src/core/memory.ts`、`src/core/opencc.ts`、`src/core/units.ts`；`tests/core/verify.test.ts`、`tests/core/format.test.ts`、`tests/core/memory.test.ts`、`tests/core/units.test.ts`）。細節見 ADR-0102。請求組成與 LLM 呼叫都還沒有，所以驗證目前只用得到存下來的回應。
+**已實作**：零 token 驗證、譯後自動排版、翻譯記憶、單位寫進 `book.db`（`src/core/verify.ts`、`src/core/format.ts`、`src/core/memory.ts`、`src/core/opencc.ts`、`src/core/units.ts`；`tests/core/verify.test.ts`、`tests/core/format.test.ts`、`tests/core/memory.test.ts`、`tests/core/units.test.ts`）。細節見 ADR-0102。LLM 呼叫還沒有，所以驗證目前只用得到存下來的回應。
 
 ```mermaid
 flowchart LR
@@ -547,6 +547,8 @@ flowchart LR
 * 同一個表格、邊欄或規則包宣告的群組，單位 MUST 在同一個請求，表頭一起送。重送失敗的單位或對半拆時，同組的其他單位當上下文帶上。
 * 靜態前綴放語言規範、規則包與全書提要。
 * 動態部分放上文、這批命中的實體卡，以及**活躍實體**：最近 5 個區塊出現過的實體卡也一起送，請求開頭的 He、It 才選得對他、祂。
+
+**已實作**：請求組成（`src/core/request.ts`、`src/core/prompt.ts`；`tests/core/request.test.ts`、`tests/core/prompt.test.ts`）。指令在 `prompts/translate.md`，提示由維護者逐字審過，測試釘住雜湊。靜態前綴位元組一致。實體卡、活躍實體與全書提要要等 M3，M2 的動態部分是上文、命中的規則包詞條與這批出現的角色風格（ADR-0103）。
 
 **遮蔽**：規則全部來自規則包，引擎核心不含任何模式（G-2），骰子格式放在一律載入的 `generic` 包，沒指定 `--system` 的書也用它（ADR-0100）。實體卡標成 `keep_source` 的咒文、虛構語言、密碼線索在主翻譯時也走遮蔽，LLM 碰不到。實體卡到 M3 才有，M2 先遮蔽規則包詞庫裡標成 `keep_source` 的詞條。遮蔽後不含任何字母的單位不送 LLM，只有數字與標點的儲存格也算（ADR-0100）。被遮蔽的原文存在 `book.db` 的單位資料裡。
 
@@ -663,9 +665,11 @@ interface RequestResult {
 | DeepSeek | 自動快取 | 無，走即時佇列，建議排離峰 |
 | Gemini | 隱式快取 | Batch API |
 
-**模型**：TOME 不內建預設模型，因為便宜模型的品質還沒驗證（H-2），不該替使用者選，也不該在沒注意時花到貴的模型。`scanner_model`（Pass 0 用）與 `translator_model`（主翻譯用）在 `tome.yaml` 必填，用到時才檢查，可以依區塊角色覆寫，例如規則文字用便宜模型、敘事文字用好模型。同一個群組用第一個單位的角色決定模型。`fallback_model` 選填，拒答時改送。範本會列出建議組合，並註明還沒有盲評。
+**模型**：TOME 不內建預設模型，因為便宜模型的品質還沒驗證（H-2），不該替使用者選，也不該在沒注意時花到貴的模型。`scanner_model`（Pass 0 用）與 `translator_model`（主翻譯用）在 `tome.yaml` 必填，用到時才檢查，依區塊角色覆寫排到 M4（ADR-0103），例如規則文字用便宜模型、敘事文字用好模型。同一個群組用第一個單位的角色決定模型。`fallback_model` 選填，拒答時改送。範本會列出建議組合，並註明還沒有盲評。
 
-**思考**：主翻譯預設關閉。能關的模型就關，不能關的用低 effort，估價要計入思考成本。實測後再決定哪些角色值得開（H-13）。
+**已實作**：`providers/anthropic.yaml`，格式是 `tome-provider/1`（`schemas/tome-provider-1.schema.json`、`src/core/provider.ts`；`tests/core/provider.test.ts`）。這是 TOME 知道怎麼呼叫的模型清單，不是預設模型，不在表上的模型拒絕執行，查證滿 60 天時警告（ADR-0099）。
+
+**思考**：主翻譯預設關閉。能關的模型就關，不能關的用低 effort，估價要計入思考成本。實測後再決定哪些角色值得開（H-13）。思考也吃 `max_tokens`，所以 `max_tokens` 取含思考的預估輸出的 2 倍，下限 1,024（ADR-0103）。
 
 **執行模式**
 
@@ -852,7 +856,7 @@ stateDiagram-v2
 
 ### 6.3 工作區
 
-**已實作**：`tome init` 與路徑檢查（`src/core/workspace.ts`、`src/core/path-guard.ts`；`tests/core/workspace.test.ts`、`tests/core/path-guard.test.ts`），資料存取層與遷移（`src/core/store.ts`；`tests/core/store.test.ts`）。檢查會解開 junction 與 symlink。`tome.yaml` 第一行是 `schema: tome-workspace/1`（ADR-0082），選填的 `target_lang` 是目標語言，預設 `zh-TW`（ADR-0100）。`book.yaml` 的格式是 `tome-book/1`（`schemas/tome-book-1.schema.json`），欄位是提案。`book.db` 目前有 `tome_meta`、`stage`、`unit`、`response`、`issue`，`series.db` 有 `tome_meta` 與翻譯記憶的 `memory`，下面其他的表到各階段才加（ADR-0102）。`engines/` 底下每個引擎一個資料夾，放轉接器、環境與權重；`ir/source/` 依 PDF 雜湊、引擎、版本、設定雜湊分資料夾，雜湊取前 16 個字元，路徑才不會超過 Windows 的 260 字元（ADR-0085）。
+**已實作**：`tome init` 與路徑檢查（`src/core/workspace.ts`、`src/core/path-guard.ts`；`tests/core/workspace.test.ts`、`tests/core/path-guard.test.ts`），資料存取層與遷移（`src/core/store.ts`；`tests/core/store.test.ts`）。檢查會解開 junction 與 symlink。`tome.yaml` 第一行是 `schema: tome-workspace/1`（ADR-0082），選填的 `target_lang` 是目標語言，預設 `zh-TW`（ADR-0100）。`book.yaml` 的格式是 `tome-book/1`（`schemas/tome-book-1.schema.json`），欄位是提案。`book.db` 目前有 `tome_meta`、`stage`、`unit`、`response`、`issue`、`ledger`，`series.db` 有 `tome_meta` 與翻譯記憶的 `memory`，下面其他的表到各階段才加（ADR-0102、ADR-0103）。`engines/` 底下每個引擎一個資料夾，放轉接器、環境與權重；`ir/source/` 依 PDF 雜湊、引擎、版本、設定雜湊分資料夾，雜湊取前 16 個字元，路徑才不會超過 Windows 的 260 字元（ADR-0085）。
 
 正式支援 Windows 與 Linux，macOS 盡力而為，不測試（ADR-0081）。預設位置是機器本地目錄：Windows 是 `%LOCALAPPDATA%\tome`，Linux 是 `~/.local/share/tome`，macOS 是 `~/Library/Application Support/tome`，可以用 `TOME_HOME` 改。`tome init` MUST 拒絕 git repo 內的路徑，偵測到 OneDrive、Dropbox 這類同步資料夾時要警告，否則譯文與書的片段會被傳上雲端（G-5）。這讓 G-5 成為結構，而不只靠 `.gitignore`。Obsidian vault 用 `tome.yaml` 的 `vault_path` 指定，同樣要過這項檢查。
 
@@ -921,7 +925,7 @@ tome backup|purge <book>               備份與刪除
 
 `tome assemble` 偵測到未回收的 vault 修改就拒絕輸出，列出檔案，要求先跑 `tome sync`，人工譯文不會被覆蓋。
 
-**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。`tome verify <書>` 也已實作（`tests/cli/verify.test.ts`），全部通過回 0，有失敗回 1（ADR-0102）。其他指令還沒有。
+**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。`tome verify <書>` 也已實作（`tests/cli/verify.test.ts`），全部通過回 0，有失敗回 1（ADR-0102）。`tome estimate <書> [--budget <美元>] [--chapters <範圍>] [--confirm]`、`tome translate <書> --dry-run` 也已實作（`tests/cli/estimate.test.ts`），`--confirm` 沒有預算或超過預算時回 1，不在表上的模型回 2（ADR-0103）。其他指令還沒有。
 
 ---
 
@@ -1019,6 +1023,8 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 * 用 `--budget` 提高上限後續跑。
 
 **估價**在本機完成，不連網：依字元數與各家比例估算，顯示成區間。`tome trial` 先翻一小段，用實際 `usage` 校準比例，人工改動也回饋成風格範例。試翻用小批次執行，才量得到 Batch 的快取命中率。估價同時顯示資料保留時間（DC-3）。
+
+**已實作**：`tome estimate`、`--confirm`、`--budget`、`--chapters`、`tome translate --dry-run`、預算檢查與費用帳本（`src/core/request.ts`、`src/core/estimate.ts`、`src/core/budget.ts`、`src/core/ledger.ts`；`tests/cli/estimate.test.ts`、`tests/core/estimate.test.ts`、`tests/core/budget.test.ts`、`tests/core/ledger.test.ts`）。估價的比例與思考的倍數都是**提案**，沒有量過，要等 `tome trial`（ADR-0103）。實際送出要到下一個回合才有。
 
 **快取**依實測決定。靜態前綴一律保持位元組一致，但不為了門檻灌水，詞庫只送命中的詞條與活躍實體。試翻量到的命中率高於損益兩平點，才開 1 小時快取與預熱。Gemini 預設走隱式快取。
 
@@ -1213,6 +1219,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0100](adr/0100-units-and-masking-decisions.md) | 單位與遮蔽的細節 | M2 |
 | [ADR-0101](adr/0101-engine-exit-status.md) | 回報引擎的結束狀態 | M2 |
 | [ADR-0102](adr/0102-verify-and-memory-decisions.md) | 驗證與翻譯記憶的細節 | M2 |
+| [ADR-0103](adr/0103-cost-and-requests-decisions.md) | 成本與請求的細節 | M2 |
 
 ---
 
@@ -1371,6 +1378,10 @@ M2 已實作的項目：
 | 簡體與用語檢查 | `src/core/language.ts`、`src/core/opencc.ts` | `tests/core/verify.test.ts`、`tests/tools/traditional-chinese.test.ts` |
 | 翻譯記憶 | `src/core/memory.ts` | `tests/core/memory.test.ts` |
 | 單位狀態機 | `src/core/state.ts`、`src/core/units.ts` | `tests/core/state.test.ts`、`tests/core/units.test.ts` |
+| 模型資料 | `providers/anthropic.yaml`、`src/core/provider.ts` | `tests/core/provider.test.ts` |
+| 提示與請求組成 | `prompts/translate.md`、`src/core/prompt.ts`、`src/core/request.ts` | `tests/core/prompt.test.ts`、`tests/core/request.test.ts` |
+| 估價、預算、費用帳本 | `src/core/estimate.ts`、`src/core/budget.ts`、`src/core/ledger.ts` | `tests/core/estimate.test.ts`、`tests/core/budget.test.ts`、`tests/core/ledger.test.ts` |
+| `tome estimate`、`--dry-run` | `src/core/request.ts` | `tests/cli/estimate.test.ts` |
 
 M1 已實作的項目：
 

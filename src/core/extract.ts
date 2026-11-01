@@ -395,6 +395,23 @@ function reusableDocument(path: string, fingerprint: string, previous: string | 
   return checked.ok && checked.value.layer === 'document' ? checked.value : null;
 }
 
+/** 翻譯的唯一輸入（白皮書 §5.2）。 */
+export function readDocument(home: string, slug: string): IrDocument {
+  const path = join(bookDir(home, slug), DOCUMENT_FILE);
+  if (!existsSync(path)) throw new TomeError('document.missing', { name: slug });
+  let value: unknown;
+  try {
+    value = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    throw new TomeError('file.corrupt', { path });
+  }
+  const checked = validateIr(value);
+  if (!checked.ok || checked.value.layer !== 'document') {
+    throw new TomeError('config.bad_schema', { path, expected: 'tome-ir/1' });
+  }
+  return checked.value;
+}
+
 interface DocumentResult {
   readonly data: Readonly<Record<string, unknown>>;
   readonly findings: readonly Finding[];

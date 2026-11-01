@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/tome-trpg/tome/main/schemas/tome-provider-1.schema.json",
+  "title": "tome-provider/1",
+  "description": "The models TOME knows how to call, with their prices and the parameters that differ between them. It is not a default model. Ships with the program.",
+  "type": "object",
+  "required": ["schema", "id", "verified", "retention_days", "estimate", "models"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "tome-provider/1" },
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+    "verified": {
+      "description": "When the prices were read from the official page.",
+      "$ref": "#/$defs/date"
+    },
+    "retention_days": {
+      "description": "How long a batch stays with the provider.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "estimate": {
+      "description": "Proposals until a trial run measures them.",
+      "type": "object",
+      "required": ["chars_per_token", "output_ratio", "low", "high", "retry_margin"],
+      "additionalProperties": false,
+      "properties": {
+        "chars_per_token": { "type": "number", "exclusiveMinimum": 0 },
+        "output_ratio": { "type": "number", "exclusiveMinimum": 0 },
+        "low": { "type": "number", "exclusiveMinimum": 0 },
+        "high": { "type": "number", "exclusiveMinimum": 0 },
+        "retry_margin": { "type": "number", "minimum": 0 }
+      }
+    },
+    "models": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/model" }
+    }
+  },
+  "$defs": {
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "price": {
+      "description": "US dollars per million tokens.",
+      "type": "object",
+      "required": [
+        "input",
+        "output",
+        "cache_read",
+        "cache_write_5m",
+        "cache_write_1h",
+        "batch_input",
+        "batch_output"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "input": { "type": "number", "minimum": 0 },
+        "output": { "type": "number", "minimum": 0 },
+        "cache_read": { "type": "number", "minimum": 0 },
+        "cache_write_5m": { "type": "number", "minimum": 0 },
+        "cache_write_1h": { "type": "number", "minimum": 0 },
+        "batch_input": { "type": "number", "minimum": 0 },
+        "batch_output": { "type": "number", "minimum": 0 }
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": ["id", "effective", "price", "thinking", "fallback"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "effective": { "$ref": "#/$defs/date" },
+        "price": { "$ref": "#/$defs/price" },
+        "long_prompt": {
+          "description": "A request whose prompt goes over this length pays these prices instead.",
+          "type": "object",
+          "required": ["over_tokens", "price"],
+          "additionalProperties": false,
+          "properties": {
+            "over_tokens": { "type": "integer", "minimum": 1 },
+            "price": { "$ref": "#/$defs/price" }
+          }
+        },
+        "thinking": {
+          "description": "How main translation turns thinking down on this model.",
+          "type": "object",
+          "required": ["mode"],
+          "additionalProperties": false,
+          "properties": {
+            "mode": { "enum": ["none", "between_tools", "disabled"] },
+            "effort": { "enum": ["low", "medium", "high"] },
+            "output_factor": {
+              "description": "Thinking counts as output, so a model that cannot turn it off costs more. A proposal until measured.",
+              "type": "number",
+              "minimum": 1
+            }
+          }
+        },
+        "fallback": {
+          "type": "object",
+          "required": ["server"],
+          "additionalProperties": false,
+          "properties": {
+            "server": {
+              "description": "Whether the provider retries a refused request on another model by itself.",
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    }
+  }
+}
