@@ -31,3 +31,4 @@
 - 一本壞掉的書不再擋住 `tome add`，改成回報發現。
 - 壞掉的 `probe.json` 回報成檔案損壞，不再要使用者回報 TOME 的問題。
 - 規則包正則的限時改算 CPU 時間，機器忙時正常的模式不再被判成超時。
+- Docling 環境的 `pillow`、`certifi`、`setuptools` 升到修掉安全通報的版本。
