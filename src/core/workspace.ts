@@ -7,6 +7,8 @@ import { finding, type Finding } from './findings.ts';
 import { inspectPath } from './path-guard.ts';
 
 export const WORKSPACE_SCHEMA = 'tome-workspace/1';
+/** 目標語言只承諾這一個（ADR-0009）。`tome.yaml` 沒寫或沒有工作區時用它（ADR-0100）。 */
+export const DEFAULT_TARGET_LANG = 'zh-TW';
 const CONFIG_FILE = 'tome.yaml';
 const SUBDIRECTORIES = ['systems', 'engines', 'series', 'books'] as const;
 const SECRET_KEY_NAME = /api[_-]?key|secret|token|password/i;
@@ -63,6 +65,14 @@ export function readWorkspaceConfig(home: string): WorkspaceConfig | null {
     throw new TomeError('config.bad_schema', { path, expected: WORKSPACE_SCHEMA });
   }
   return value as WorkspaceConfig;
+}
+
+export function workspaceTargetLang(home: string): string {
+  const value: unknown = readWorkspaceConfig(home)?.['target_lang'] ?? DEFAULT_TARGET_LANG;
+  if (typeof value !== 'string') {
+    throw new TomeError('config.bad_schema', { path: join(home, CONFIG_FILE), expected: WORKSPACE_SCHEMA });
+  }
+  return value;
 }
 
 /** 解析引擎的順序，同一種頁面有多個引擎時排前面的優先（白皮書 §5.3）。 */

@@ -37,8 +37,8 @@ TOME 的設計目標是解決這些問題，並讓譯文可以直接用於實際
 | :--- | :--- | :--- |
 | 建立工作區、檢查環境 | `tome init`、`tome doctor` | 已實作 |
 | 設定 API 金鑰 | `tome provider auth set` | 已實作 |
-| 登記書籍、探測 PDF | `tome add`、`tome probe` | 已實作 |
-| 管理規則包 | `tome system new`、`list`、`lint`、`test` | 已實作 |
+| 登記書籍、探測 PDF | `tome add`、`tome probe` | 已實作，並可依規則包的資料建議適用的規則包 |
+| 管理規則包 | `tome system new`、`list`、`lint`、`test` | 已實作，內建 `generic` 規則包 |
 | 管理解析引擎 | `tome engine add`、`list`、`remove` | 已實作 |
 | 解析頁面 | `tome extract` | 已實作：將原生文字頁交給解析引擎，組裝成文件，並檢查字元是否遺失 |
 | 翻譯與輸出 | 尚未提供 | 規劃中 |
@@ -82,7 +82,7 @@ npm install -g tome-trpg
 
 ## 授權
 
-程式碼採用 [Apache-2.0](LICENSE) 授權。內建規則包加入後將各有獨立授權，詳見 [NOTICE](NOTICE)。
+程式碼採用 [Apache-2.0](LICENSE) 授權。內建規則包各有獨立授權，詳見 [NOTICE](NOTICE)。
 
 TOME 是獨立專案，與任何 TRPG 出版社都沒有關聯，也未獲得其背書。文件中提及的商標屬於各自的權利人。本專案文件中的法律說明不構成法律意見。
 

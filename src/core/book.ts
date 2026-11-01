@@ -15,9 +15,23 @@ import { engineForPage, installedEngines, type InstalledEngine } from './engine.
 import { TomeError } from './errors.ts';
 import { finding, type Finding } from './findings.ts';
 import { loadSourceLanguage } from './language.ts';
-import { findPack } from './pack.ts';
+import {
+  findPack,
+  packCandidates,
+  ROOT_PACK,
+  suggestPack,
+  type PackCandidate,
+  type SuggestedPack,
+} from './pack.ts';
 import { openPdf } from './pdf.ts';
-import { probePdf, PROBE_VERSION, summarizeProbe, type Probe, type ProbeSummary } from './probe.ts';
+import {
+  pageText,
+  probePdf,
+  PROBE_VERSION,
+  summarizeProbe,
+  type Probe,
+  type ProbeSummary,
+} from './probe.ts';
 import { validateBook, validateProbe } from './schema.ts';
 import { assertSafeId, isReservedName, openBookStore, type Store } from './store.ts';
 import { readWorkspaceConfig } from './workspace.ts';
@@ -46,6 +60,11 @@ export interface Book {
 
 export function bookDir(home: string, slug: string): string {
   return join(home, 'books', slug);
+}
+
+/** 沒指定 `--system` 的書用 `generic`（ADR-0100）。 */
+export function systemOf(book: Book): string {
+  return book.config.system ?? ROOT_PACK;
 }
 
 /** 預設取檔名，清掉不合法的字元（ADR-0084）。結果一定過得了 `assertSafeId`。 */
@@ -155,10 +174,11 @@ function fingerprintOf(
   sha256: string,
   languageHash: string,
   engines: readonly InstalledEngine[],
+  candidates: readonly PackCandidate[],
 ): string {
   const routes = engines.map(({ spec }) => [spec.name, spec.pages]);
   return createHash('sha256')
-    .update(`${PROBE_VERSION}\n${sha256}\n${languageHash}\n${JSON.stringify(routes)}`)
+    .update(`${PROBE_VERSION}\n${sha256}\n${languageHash}\n${JSON.stringify([routes, candidates])}`)
     .digest('hex');
 }
 
@@ -205,6 +225,19 @@ export interface ProbeOutcome {
   readonly probe: Probe;
   readonly summary: ProbeSummary;
   readonly reused: boolean;
+  /** 要顯示的建議。書已有規則包時是 null，結果仍存在 `probe` 裡（ADR-0100）。 */
+  readonly suggestion: SuggestedPack | null;
+  readonly findings: readonly Finding[];
+}
+
+function probeOutcome(
+  book: Book,
+  probe: Probe,
+  reused: boolean,
+  findings: readonly Finding[],
+): ProbeOutcome {
+  const suggestion = book.config.system === undefined ? (probe.suggested_pack ?? null) : null;
+  return { probe, summary: summarizeProbe(probe), reused, suggestion, findings };
 }
 
 async function verifiedPdf(book: Book): Promise<void> {
@@ -220,23 +253,29 @@ export async function probeBook(home: string, slug: string): Promise<ProbeOutcom
   const { path, sha256 } = book.config.pdf;
   const language = loadSourceLanguage(book.config.source_lang);
   const engines = installedEngines(home);
-  const fingerprint = fingerprintOf(sha256, language.hash, engines);
+  const candidates = packCandidates(home);
+  const fingerprint = fingerprintOf(sha256, language.hash, engines, candidates);
   const store = openBookStore(home, slug);
   try {
     const previous = stageFingerprint(store, PROBE_STAGE) === fingerprint ? readProbe(home, slug) : null;
-    if (previous !== null) {
-      return { probe: previous, summary: summarizeProbe(previous), reused: true };
-    }
+    if (previous !== null) return probeOutcome(book, previous, true, []);
     const opened = await openPdf(path);
     // 雜湊對得上卻變成加密，只有 book.yaml 被手改才會發生。
     if (opened.status === 'encrypted') throw new TomeError('book.pdf_changed', { path });
     try {
-      const probe = await probePdf(opened.pdf, sha256, language.profile.text_quality, (kind) =>
-        engineForPage(kind, engines),
+      const texts: string[] = [];
+      const probed = await probePdf(
+        opened.pdf,
+        sha256,
+        language.profile.text_quality,
+        (kind) => engineForPage(kind, engines),
+        candidates.length === 0 ? undefined : (facts) => texts.push(pageText(facts)),
       );
+      const { suggested, findings } = await suggestPack(candidates, texts);
+      const probe = suggested === null ? probed : { ...probed, suggested_pack: suggested };
       writeProbe(home, slug, probe);
       recordStage(store, PROBE_STAGE, fingerprint);
-      return { probe, summary: summarizeProbe(probe), reused: false };
+      return probeOutcome(book, probe, false, findings);
     } finally {
       await opened.pdf.close();
     }

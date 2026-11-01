@@ -20,7 +20,12 @@ import {
   keyEnvName,
   type SecretStore,
 } from '../core/secrets.ts';
-import { initWorkspace, readWorkspaceConfig, resolveHome } from '../core/workspace.ts';
+import {
+  initWorkspace,
+  readWorkspaceConfig,
+  resolveHome,
+  workspaceTargetLang,
+} from '../core/workspace.ts';
 import {
   argumentText,
   errorText,
@@ -90,8 +95,13 @@ function stringValue(parsed: Parsed, name: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+/** 機器要讀的值放 `data`（ADR-0091）。 */
+function probeData({ summary, suggestion }: ProbeOutcome): Readonly<Record<string, unknown>> {
+  return { ...summary, suggested_pack: suggestion };
+}
+
 /** 只有數字與路徑。書籤標題這類書本文字留在工作區（ADR-0059）。 */
-function probeFindings({ summary, reused }: ProbeOutcome): Finding[] {
+function probeFindings({ summary, reused, suggestion, findings }: ProbeOutcome): Finding[] {
   const { kinds, assigned } = summary;
   const skipped = summary.pages - kinds.native;
   return [
@@ -115,6 +125,16 @@ function probeFindings({ summary, reused }: ProbeOutcome): Finding[] {
     assigned > 0
       ? finding('probe.assigned', 'info', { count: String(assigned) })
       : finding('probe.no_engine', 'info'),
+    ...findings,
+    ...(suggestion === null
+      ? []
+      : [
+          finding('probe.pack_suggested', 'info', {
+            id: suggestion.id,
+            keyword_pages: String(suggestion.keyword_pages),
+            pattern_pages: String(suggestion.pattern_pages),
+          }),
+        ]),
   ];
 }
 
@@ -182,7 +202,7 @@ const COMMANDS: readonly Command[] = [
         return { data: { book: result.book ?? null }, findings: result.findings };
       }
       return {
-        data: { book: result.book ?? null, probe: result.probe.summary },
+        data: { book: result.book ?? null, probe: probeData(result.probe) },
         findings: [...result.findings, ...probeFindings(result.probe), await gpuFinding(io)],
       };
     },
@@ -196,7 +216,7 @@ const COMMANDS: readonly Command[] = [
       if (book === undefined) throw missing('book');
       const outcome = await probeBook(resolveHome(io.env, io.platform), book);
       return {
-        data: { book, probe: outcome.summary },
+        data: { book, probe: probeData(outcome) },
         findings: [...probeFindings(outcome), await gpuFinding(io)],
       };
     },
@@ -303,6 +323,7 @@ const COMMANDS: readonly Command[] = [
       const home = resolveHome(io.env, io.platform);
       const findings = await lintPack(home, locatePack(home, target), {
         public: values['public'] === true,
+        targetLang: workspaceTargetLang(home),
       });
       return { data: { pack: target }, findings };
     },

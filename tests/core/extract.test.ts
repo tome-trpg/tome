@@ -426,6 +426,22 @@ describe('the document layer', () => {
     ]);
   });
 
+  it('uses generic for a book with no --system (ADR-0100)', async () => {
+    const home = await library();
+    const dir = join(home, 'systems', 'generic');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'pack.yaml'),
+      'schema: tome-pack/1\nid: generic\nversion: 0.1.0\nlicense: Apache-2.0\nsource_langs: [en]\n',
+    );
+    writeFileSync(join(dir, 'roles.yaml'), 'roles:\n  marked:\n    detect: [marker]\n');
+    writeFileSync(join(dir, 'syntax_patterns.yaml'), "patterns:\n  - { id: marker, use: detect, regex: 'Marked here' }\n");
+    const texts = (await forge('plain')).truth.text ?? [];
+    writeFileSync(textFile(home), JSON.stringify([[...(texts[0] ?? []), 'Marked here.'], ...texts.slice(1)]));
+    await extract(home);
+    expect(documentOf(home).blocks.map(({ role }) => role)[0]).toBe('generic:marked');
+  });
+
   it('says which pattern ran away, and stops short of recording the stage', async () => {
     const home = await library();
     const pack = join(home, 'systems', 'runaway');

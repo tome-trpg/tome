@@ -79,7 +79,9 @@ function load<T extends Language>(kind: T['kind'], tag: string): LoadedLanguage<
   const primary = tag.split('-')[0] ?? tag;
   const lang = read(kind, tag) === null ? primary : tag;
   const text = read(kind, lang);
-  if (text === null) throw new TomeError('language.unknown', { lang: tag });
+  if (text === null) {
+    throw new TomeError(kind === 'target' ? 'language.unknown_target' : 'language.unknown', { lang: tag });
+  }
   const checked = validateLanguage(parse(text));
   if (!checked.ok || checked.value.kind !== kind || checked.value.lang !== lang) {
     throw new TomeError('config.bad_schema', {

@@ -505,6 +505,8 @@ vault 可以直接修改（ADR-0012）。`tome sync` 比對上次輸出與目前
 
 本節的原則已定案（ADR-0026、ADR-0029、ADR-0081）。標記名稱與欄位是提案，第一版實作時可以調整。
 
+**已實作**：`document` 層轉翻譯單位、遮蔽與還原、標籤協定（`src/core/units.ts`、`src/core/mask.ts`、`src/core/tags.ts`；`tests/core/units.test.ts`、`tests/core/mask.test.ts`、`tests/core/tags.test.ts`）。遮蔽再還原回到原樣由 fast-check 把關，文字裡有 `<`、`&`、`</s>` 也一樣，書本文字關不掉 `<s>`。下列細節已定案（ADR-0100）：`furniture`、`toc`、`index`、`credits`、`figure` 不產生單位，沒有文字的也不產生；表格的每個儲存格一個單位，用 `block_id` 當群組；重疊時起點較前的優先，同起點取較長的；佔位符編號在單位內從 1 起算。單位目前只在記憶體裡，還不寫 `book.db`，驗證、翻譯記憶與請求組成也還沒有。
+
 ```mermaid
 flowchart LR
     DOC[(document 層)] --> MASK[遮蔽]
@@ -531,8 +533,10 @@ flowchart LR
 | `<s>` | 雙向 | 一個翻譯單位。`id` 是請求內的短編號，由 TOME 對應回 `unit_id` |
 | `<ph>` | 雙向 | 被遮蔽的內容，空元素，`kind` 告訴 LLM 這是什麼，對應 XLIFF 的 `ph` |
 | `<pc>` | 雙向 | 成對的行內格式，可以隨語序移動，對應 XLIFF 的 `pc` |
-| `<new-term>` | 回傳 | LLM 標出實體卡沒有的專有名詞 |
-| `<flag>` | 回傳 | LLM 標出不可譯的內容，如文字謎題、藏頭、雙關 |
+| `<new-term>` | 回傳 | LLM 標出實體卡沒有的專有名詞，寫成 `<new-term source="原文">譯文</new-term>`，包在 `<s>` 裡 |
+| `<flag>` | 回傳 | LLM 標出不可譯的內容，如文字謎題、藏頭、雙關，寫成 `<flag reason="原因">譯文</flag>`，包在 `<s>` 裡 |
+
+書本文字進標籤前 MUST 跳脫 `&`、`<`、`>`，屬性值另跳脫 `"`，收回後還原（ADR-0099、ADR-0100）。回應裡的未知標籤、沒成對、巢狀錯誤與未跳脫的 `<` 都算協定錯誤。沒跳脫的 `&` 當成字面字元，不算錯，LLM 常這樣寫，重送要花錢。
 
 第一版不做 TMX、TBX、XLIFF 匯入匯出。標記模型對齊 XLIFF，之後要加不必改內部。
 
@@ -542,7 +546,7 @@ flowchart LR
 * 靜態前綴放語言規範、規則包與全書提要。
 * 動態部分放上文、這批命中的實體卡，以及**活躍實體**：最近 5 個區塊出現過的實體卡也一起送，請求開頭的 He、It 才選得對他、祂。
 
-**遮蔽**：規則全部來自規則包，引擎核心不含任何模式（G-2），骰子格式放在一律載入的 `generic` 包。實體卡標成 `keep_source` 的咒文、虛構語言、密碼線索在主翻譯時也走遮蔽，LLM 碰不到。全是佔位符的單位不送 LLM。被遮蔽的原文存在 `book.db` 的單位資料裡。
+**遮蔽**：規則全部來自規則包，引擎核心不含任何模式（G-2），骰子格式放在一律載入的 `generic` 包，沒指定 `--system` 的書也用它（ADR-0100）。實體卡標成 `keep_source` 的咒文、虛構語言、密碼線索在主翻譯時也走遮蔽，LLM 碰不到。實體卡到 M3 才有，M2 先遮蔽規則包詞庫裡標成 `keep_source` 的詞條。遮蔽後不含任何字母的單位不送 LLM，只有數字與標點的儲存格也算（ADR-0100）。被遮蔽的原文存在 `book.db` 的單位資料裡。
 
 **驗證與重試**：全部不花 token。確定是錯誤的才重送，風格問題只列報告，因為重送要花錢，用語檢查也有誤報（ADR-0060）。
 
@@ -683,7 +687,7 @@ interface RequestResult {
 
 本節的原則已定案（ADR-0042 到 ADR-0051）。`tome system init` 與 `gumshoe-srd` 排到 0.1.0 之後（ADR-0080）。欄位名稱是提案，第一版實作時可以調整。
 
-**已實作**：`tome-pack/1` 的 schema 在 `schemas/tome-pack-1.schema.json`，涵蓋 `pack.yaml`、`roles.yaml`、`entities.yaml`、`glossary.yaml`、`syntax_patterns.yaml` 與 `tests/*.yaml`，驗證在 `src/core/schema.ts`（`tests/core/schema.test.ts`）。每個物件都拒絕未知欄位，所以規則包指定不了連線端點或金鑰。`tome system new`、`list`、`lint`、`test` 在 `src/core/pack.ts`、`src/core/pack-lint.ts`、`src/core/pack-test.ts`（`tests/core/pack.test.ts`、`tests/cli/system.test.ts`），正則在 `src/core/patterns.ts` 與 `src/core/pattern-worker.ts` 的 worker thread 裡執行（`tests/core/patterns.test.ts`）。內建規則包要到 M2 才有，目前用測試專用的合成包 `tests/fixtures/packs/sample-pack` 驗證，CI 也用建置結果跑它。
+**已實作**：`tome-pack/1` 的 schema 在 `schemas/tome-pack-1.schema.json`，涵蓋 `pack.yaml`、`roles.yaml`、`entities.yaml`、`glossary.yaml`、`syntax_patterns.yaml` 與 `tests/*.yaml`，驗證在 `src/core/schema.ts`（`tests/core/schema.test.ts`）。每個物件都拒絕未知欄位，所以規則包指定不了連線端點或金鑰。`tome system new`、`list`、`lint`、`test` 在 `src/core/pack.ts`、`src/core/pack-lint.ts`、`src/core/pack-test.ts`（`tests/core/pack.test.ts`、`tests/cli/system.test.ts`），正則在 `src/core/patterns.ts` 與 `src/core/pattern-worker.ts` 的 worker thread 裡執行（`tests/core/patterns.test.ts`）。內建規則包 `generic` 在 `systems/generic/`（`tests/core/generic-pack.test.ts`），CI 用建置結果跑它與測試專用的合成包 `tests/fixtures/packs/sample-pack`。`tome system lint` 檢查代名詞時用的目標語言來自 `tome.yaml` 的 `target_lang`（ADR-0100）。
 
 下面的細節是提案。`detect` 列的模式全部命中才算該角色，要「其一」就在正則裡寫分支。正則一律開 `g` 與 `u`，`flags` 只能再加 `i`、`m`、`s`。測試案例是 `id`、`text`，加上預期抓到的 `matches` 或預期的 `role`，`role: null` 表示不該判定出角色。`lint` 依序查非資料檔與連結、schema、`id` 與資料夾、繼承、模式、參照、代名詞；手寫的危險寫法檢查只是警告，用對抗輸入實跑超時才算失敗。`--public` 另查 `LICENSE`、`NOTICE`、必要聲明與至少一個測試案例，必要聲明的清單在 `src/core/pack-notices.json`，授權要是清單裡的 `Apache-2.0`、`ORC`、`CC-BY-3.0`（ADR-0048、ADR-0084）。組裝時會判定規則包宣告的角色，用的是同一個 worker，逾時就回報是哪個模式（`tests/core/extract.test.ts`）。
 
@@ -729,7 +733,7 @@ source_langs: [en]
 
 | ID | 內容 | 授權 | 必要聲明 |
 | :--- | :--- | :--- | :--- |
-| `generic` | 骰子格式、常見角色與實體類別 | Apache-2.0 | 無 |
+| `generic` | 骰子格式、頁碼參照、常見角色與實體類別（**已實作**，內容見 ADR-0100） | Apache-2.0 | 無 |
 | `d100-orc` | 依 Basic Roleplaying: Universal Game Engine 的 ORC 內容 | ORC License | ORC 聲明、署名、Reserved Material 聲明 |
 | `gumshoe-srd`（0.1.0 之後） | 依 GUMSHOE SRD | CC BY 3.0 | 固定署名文字，並標明有更動 |
 
@@ -768,6 +772,8 @@ source_langs: [en]
 | `tome glossary why <詞>` | 顯示這個譯名來自哪一層、哪個規則包 |
 
 翻譯記憶的風格版本用該角色風格文字的雜湊，不用規則包版本號。改一個角色的文風，其他段落不用重翻。`tome probe` 可以依關鍵詞與骰子格式建議規則包，但只建議，`--system` 仍由使用者指定。
+
+**已實作**：規則包在 `pack.yaml` 的 `suggest` 寫 `keywords` 與 `patterns`，`tome probe` 計算有關鍵詞的頁數與有模式命中的頁數，兩者相加至少 3 頁才建議，取最高分的一個，`generic` 不參與（`src/core/pack.ts`、`src/core/book.ts`；`tests/core/pack.test.ts`、`tests/core/book.test.ts`、`tests/cli/book.test.ts`）。結果只有規則包 ID 與頁數，存在 `ir/probe.json`，書已有規則包時不顯示。3 頁是提案，要等商業書量過（ADR-0100）。
 
 ## 6. 執行期視圖
 
@@ -830,7 +836,7 @@ stateDiagram-v2
     STALE --> QUEUED
 ```
 
-不需要 LLM 的單位包括全是佔位符的單位，以及整塊對上的數值塊。
+不需要 LLM 的單位包括遮蔽後不含字母的單位，以及整塊對上的數值塊。
 
 個資閘門命中後有兩種處理：確實是個資，就在 `overrides` 用 `redact` 遮掉那段衍生文字；是誤判，例如 NPC 剛好同名，就加進 `book.yaml` 的例外清單。沒處理的 `BLOCKED` 單位輸出時不放原文，只放 `[!untranslated]` 與說明，否則個資會進入輸出。`REFUSED` 會先自動走回退，沒有路才停下。`BLOCKED`、`FAILED_QA` 與走完回退的 `REFUSED` 會停留到有人處理，`tome translate --retry-failed` 把它們放回佇列。`DONE` 裡的人工譯文不會變成 `STALE`。
 
@@ -838,7 +844,7 @@ stateDiagram-v2
 
 ### 6.3 工作區
 
-**已實作**：`tome init` 與路徑檢查（`src/core/workspace.ts`、`src/core/path-guard.ts`；`tests/core/workspace.test.ts`、`tests/core/path-guard.test.ts`），資料存取層與遷移（`src/core/store.ts`；`tests/core/store.test.ts`）。檢查會解開 junction 與 symlink。`tome.yaml` 第一行是 `schema: tome-workspace/1`（ADR-0082）。`book.yaml` 的格式是 `tome-book/1`（`schemas/tome-book-1.schema.json`），欄位是提案。`book.db` 目前有 `tome_meta` 與 `stage`，`series.db` 只有 `tome_meta`，下面其他的表到各階段才加。`engines/` 底下每個引擎一個資料夾，放轉接器、環境與權重；`ir/source/` 依 PDF 雜湊、引擎、版本、設定雜湊分資料夾，雜湊取前 16 個字元，路徑才不會超過 Windows 的 260 字元（ADR-0085）。
+**已實作**：`tome init` 與路徑檢查（`src/core/workspace.ts`、`src/core/path-guard.ts`；`tests/core/workspace.test.ts`、`tests/core/path-guard.test.ts`），資料存取層與遷移（`src/core/store.ts`；`tests/core/store.test.ts`）。檢查會解開 junction 與 symlink。`tome.yaml` 第一行是 `schema: tome-workspace/1`（ADR-0082），選填的 `target_lang` 是目標語言，預設 `zh-TW`（ADR-0100）。`book.yaml` 的格式是 `tome-book/1`（`schemas/tome-book-1.schema.json`），欄位是提案。`book.db` 目前有 `tome_meta` 與 `stage`，`series.db` 只有 `tome_meta`，下面其他的表到各階段才加。`engines/` 底下每個引擎一個資料夾，放轉接器、環境與權重；`ir/source/` 依 PDF 雜湊、引擎、版本、設定雜湊分資料夾，雜湊取前 16 個字元，路徑才不會超過 Windows 的 260 字元（ADR-0085）。
 
 正式支援 Windows 與 Linux，macOS 盡力而為，不測試（ADR-0081）。預設位置是機器本地目錄：Windows 是 `%LOCALAPPDATA%\tome`，Linux 是 `~/.local/share/tome`，macOS 是 `~/Library/Application Support/tome`，可以用 `TOME_HOME` 改。`tome init` MUST 拒絕 git repo 內的路徑，偵測到 OneDrive、Dropbox 這類同步資料夾時要警告，否則譯文與書的片段會被傳上雲端（G-5）。這讓 G-5 成為結構，而不只靠 `.gitignore`。Obsidian vault 用 `tome.yaml` 的 `vault_path` 指定，同樣要過這項檢查。
 
@@ -907,7 +913,7 @@ tome backup|purge <book>               備份與刪除
 
 `tome assemble` 偵測到未回收的 vault 修改就拒絕輸出，列出檔案，要求先跑 `tome sync`，人工譯文不會被覆蓋。
 
-**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。其他指令還沒有。
+**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。其他指令還沒有。
 
 ---
 
@@ -949,7 +955,7 @@ tome/
 | 工作流程 | 觸發 | 內容 |
 | :--- | :--- | :--- |
 | `specs` | push 到 `main` 與 PR | spec-guard、`prove`、`cites`、spec-graph、spec-brief、`premises`，Windows 與 Ubuntu。**已實作**：`.github/workflows/specs.yml` |
-| 測試 | push 到 `main` 與 PR | 測試、`npm audit`、相依授權檢查、效能預算、`tome system lint` 與 `test`、測試素材清單檢查。**已實作**：`.github/workflows/test.yml`，檔名是 `test`，`npm audit` 的門檻是 `moderate`（ADR-0082）。內建規則包到 M2 才有，`tome system lint` 與 `test` 目前查測試用的合成包。測試素材清單是 `tests/fixtures/SOURCES.yaml`，由 `tests/tools/fixtures.test.ts` 檢查 |
+| 測試 | push 到 `main` 與 PR | 測試、`npm audit`、相依授權檢查、效能預算、`tome system lint` 與 `test`、測試素材清單檢查。**已實作**：`.github/workflows/test.yml`，檔名是 `test`，`npm audit` 的門檻是 `moderate`（ADR-0082）。`tome system lint` 與 `test` 查內建規則包 `generic` 與測試用的合成包。測試素材清單是 `tests/fixtures/SOURCES.yaml`，由 `tests/tools/fixtures.test.ts` 檢查 |
 | 引擎 | 改到 `engines/`、`tests/engine/`、引擎核心與 schema，或手動 | 安裝 Docling 跑合成 PDF。**已實作**：`.github/workflows/engine.yml`，Ubuntu 與 Windows 都跑，Ubuntu 上把網路拿掉再跑，通過只證明解析不需要網路，不證明沒有嘗試連線。有路徑過濾，不設必要檢查（ADR-0085、ADR-0096、ADR-0097） |
 | 變異 | 排程 | 六個關鍵模組 |
 | 發佈 | `v*` 標籤或手動演練 | 見下節 |
@@ -1196,6 +1202,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0097](adr/0097-engine-workflow-covers-the-core.md) | 改到引擎核心與 schema 也要跑引擎工作流程 | M1 |
 | [ADR-0098](adr/0098-layout-ratios-settled.md) | 閱讀順序通過，版面比例定案 | M1 |
 | [ADR-0099](adr/0099-m2-translation-core-decisions.md) | M2 翻譯核心的選型與範圍 | M2 |
+| [ADR-0100](adr/0100-units-and-masking-decisions.md) | 單位與遮蔽的細節 | M2 |
 
 ---
 
@@ -1215,7 +1222,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | Q-8 | 盲評分數 | 平均 4 分以上 | 維護者盲評（ADR-0079） | G-1 |
 | Q-9 | 400 頁 `tome probe` | 參考機器 30 秒內 | 在參考機器實測。CI 另設較寬的門檻防止變慢 | ADR-0068 |
 
-**Q-9 的第一次量測**（2026-11-01，參考機器，Node 24.22.1）：`tome add` 含探測與行程啟動，合成的 400 頁雙欄文字書 0.6 MB，三次都約 2.2 秒；合成的 1,200 頁書，其中 400 頁帶滿版圖，313 MB，約 14 秒。合成書的字型與圖片都比商業書單純，真實書籍還沒量過，所以 Q-9 仍是目標。
+**Q-9 的第一次量測**（2026-11-01，參考機器，Node 24.22.1）：`tome add` 含探測與行程啟動，合成的 400 頁雙欄文字書 0.6 MB，三次都約 2.2 秒；合成的 1,200 頁書，其中 400 頁帶滿版圖，313 MB，約 14 秒。合成書的字型與圖片都比商業書單純，真實書籍還沒量過，所以 Q-9 仍是目標。建議規則包（ADR-0100）的額外耗時在 2026-11-02 量過：同一本 400 頁、約 150 萬字元的書，3 個規則包、各 3 個關鍵詞與 2 個模式，三次分別多花 0.5、0.3、0.8 秒，由 `tests/perf/probe-budget.test.ts` 把關。
 
 **第一版的完成條件**：公開的 ORC 文件一章，加本機商業書一章，全流程跑完，Q-1 到 Q-8 達標。
 
@@ -1338,7 +1345,17 @@ Gemini 顯式快取也算過：Flash-Lite 上 8k 前綴省下約 0.13，但排�
 | M3 譯名與輸出 | Pass 0、審定、`tome glossary import`、數值塊欄位化、vault、`tome sync`、`tome run`、交付報告、一致性報告、`tome purge`、`tome backup` | 能帶團閱讀的成品 |
 | M4 首版 | `d100-orc`、試翻校準、盲評、發佈流程 | Q-1 到 Q-8 達標，發佈 0.1.0 |
 
-**目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。下一階段是 M2，回合與範圍見 ADR-0099，還沒開始。
+**目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。目前在 M2，回合與範圍見 ADR-0099，還不能翻譯。
+
+M2 已實作的項目：
+
+| 項目 | 路徑 | 測試或斷言 |
+| :--- | :--- | :--- |
+| `generic` 規則包 | `systems/generic/` | `tests/core/generic-pack.test.ts` |
+| `document` 轉翻譯單位 | `src/core/units.ts` | `tests/core/units.test.ts` |
+| 遮蔽與還原 | `src/core/mask.ts` | `tests/core/mask.test.ts` |
+| 標籤協定 | `src/core/tags.ts` | `tests/core/tags.test.ts` |
+| `tome probe` 建議規則包 | `src/core/pack.ts`、`src/core/book.ts` | `tests/core/pack.test.ts`、`tests/core/book.test.ts`、`tests/perf/probe-budget.test.ts` |
 
 M1 已實作的項目：
 

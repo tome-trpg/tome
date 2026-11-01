@@ -1,0 +1,5 @@
+schema: tome-pack/1
+id: generic
+version: 0.1.0
+license: Apache-2.0
+source_langs: [en]

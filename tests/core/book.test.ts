@@ -244,6 +244,68 @@ describe('probeBook', () => {
     expect(await failure(() => probeBook(home, 'plain'))).toBe('config.bad_schema');
   });
 
+  describe('suggesting a pack (ADR-0100)', () => {
+    /** 合成書的假文字每頁都有這些字。 */
+    const KEYWORDS = '[the, of, and, warden, salt]';
+
+    function hintedPack(home: string, id = 'hinted'): void {
+      createPack(home, id, packTemplate(id));
+      const path = join(home, 'systems', id, 'pack.yaml');
+      writeFileSync(path, `${readFileSync(path, 'utf8')}suggest:\n  keywords: ${KEYWORDS}\n`);
+    }
+
+    it('keeps only the pack and the page counts in probe.json', async () => {
+      const home = workspace();
+      hintedPack(home);
+      const { probe } = await addBook({ home, pdf: await forgeFile('plain', tempDir()) });
+      expect(probe?.suggestion).toEqual({ id: 'hinted', keyword_pages: 3, pattern_pages: 0 });
+      const stored = JSON.parse(readFileSync(join(bookDir(home, 'plain'), 'ir', 'probe.json'), 'utf8')) as {
+        suggested_pack: unknown;
+      };
+      expect(stored.suggested_pack).toEqual({ id: 'hinted', keyword_pages: 3, pattern_pages: 0 });
+    });
+
+    it('suggests nothing with no pack that says what to look for', async () => {
+      const home = workspace();
+      const { probe } = await addBook({ home, pdf: await forgeFile('plain', tempDir()) });
+      expect(probe?.suggestion).toBeNull();
+    });
+
+    it('stays quiet for a book that already has a pack, and only then', async () => {
+      const home = workspace();
+      hintedPack(home);
+      createPack(home, 'chosen', packTemplate('chosen'));
+      const { probe } = await addBook({ home, pdf: await forgeFile('plain', tempDir()), system: 'chosen' });
+      expect(probe?.suggestion).toBeNull();
+      expect(probe?.probe.suggested_pack?.id).toBe('hinted');
+    });
+
+    it('still gives the suggestion when it reuses the result', async () => {
+      const home = workspace();
+      hintedPack(home);
+      await addBook({ home, pdf: await forgeFile('plain', tempDir()) });
+      const outcome = await probeBook(home, 'plain');
+      expect(outcome.reused).toBe(true);
+      expect(outcome.suggestion?.id).toBe('hinted');
+    });
+
+    it('runs again when a pack that suggests is added', async () => {
+      const home = workspace();
+      await addBook({ home, pdf: await forgeFile('plain', tempDir()) });
+      hintedPack(home);
+      const outcome = await probeBook(home, 'plain');
+      expect(outcome.reused).toBe(false);
+      expect(outcome.suggestion?.id).toBe('hinted');
+    });
+
+    it('does not run again for a pack with nothing to suggest', async () => {
+      const home = workspace();
+      await addBook({ home, pdf: await forgeFile('plain', tempDir()) });
+      createPack(home, 'plain-pack', packTemplate('plain-pack'));
+      expect((await probeBook(home, 'plain')).reused).toBe(true);
+    });
+  });
+
   it('runs again when the language profile changes the fingerprint', async () => {
     const home = workspace();
     await addBook({ home, pdf: await forgeFile('plain', tempDir()) });

@@ -82,6 +82,10 @@ M2 開工前比對白皮書、ADR 與實際套件，留下一批沒定的項目�
 這些項目都在各回合實作，斷言由回合補進這一節。
 
 <!-- @assert-absence target="package.json" symbol="@anthropic-ai/sdk" comments="include" reason="第 14 項：SDK 到 018 才加入，加入時改成檢查版本" -->
+<!-- @assert-count target="src/core/book.ts" symbol="suggestPack(" expected="1" reason="第 2 項：tome probe 建議規則包" -->
+<!-- @assert-count target="src/core/units.ts" symbol="'furniture'" expected="1" reason="第 8 項：furniture 不產生翻譯單位" -->
+<!-- @assert-absence target="src/core/mask.ts" symbol="<pc" reason="第 9 項：<pc> 等 M3 的 runs 才產生" -->
+<!-- @assert-count target="src/core/mask.ts" symbol="escapeText(" min="2" reason="第 28 項：書本文字進標籤前跳脫" -->
 
 ## 後果
 

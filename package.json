@@ -28,7 +28,8 @@
     "dist",
     "engines",
     "languages",
-    "schemas"
+    "schemas",
+    "systems"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

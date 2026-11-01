@@ -189,7 +189,7 @@ describe('the tools on a busy machine', () => {
   it('does not fail a normal pattern in lint', { timeout: 10_000 }, async () => {
     slowStart(600);
     const home = tempDir();
-    const findings = await lintPack(home, pack(home), { public: false });
+    const findings = await lintPack(home, pack(home), { public: false, targetLang: 'zh-TW' });
     expect(findings.map((item) => item.code)).toEqual(['pack.lint_ok']);
   });
 
@@ -207,7 +207,7 @@ describe('the tools on a busy machine', () => {
       void spin(worker);
     };
     const home = tempDir();
-    const findings = await lintPack(home, pack(home), { public: false });
+    const findings = await lintPack(home, pack(home), { public: false, targetLang: 'zh-TW' });
     expect(findings.map((item) => item.code)).toEqual(['pack.slow_regex']);
   });
 
@@ -234,7 +234,7 @@ describe('the tools on a busy machine', () => {
     };
     const home = tempDir();
     const location = pack(home);
-    const linted = await lintPack(home, location, { public: false });
+    const linted = await lintPack(home, location, { public: false, targetLang: 'zh-TW' });
     expect(linted.map((item) => item.code)).toEqual(['pack.slow_regex']);
     const tested = await testPack(home, location);
     expect(tested.map((item) => item.code)).toEqual(['pack.test_passed']);

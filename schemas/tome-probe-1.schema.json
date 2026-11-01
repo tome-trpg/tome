@@ -22,6 +22,17 @@
     "page_count": { "type": "integer", "minimum": 0 },
     "tagged": { "type": "boolean" },
     "spread": { "type": "boolean" },
+    "suggested_pack": {
+      "description": "The rule pack tome probe suggests. Only an id and page counts, never book text.",
+      "type": "object",
+      "required": ["id", "keyword_pages", "pattern_pages"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "keyword_pages": { "type": "integer", "minimum": 0 },
+        "pattern_pages": { "type": "integer", "minimum": 0 }
+      }
+    },
     "outline": { "$ref": "#/$defs/outline" },
     "page_labels": {
       "type": "array",

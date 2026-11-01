@@ -4,14 +4,18 @@ import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { TomeError } from './errors.ts';
 import { finding, type Finding } from './findings.ts';
-import type { MatchRange, PatternInput } from './patterns.ts';
+import { findTerm, foldCase, type TermMatch } from './mask.ts';
+import { runPatterns, type MatchRange, type PatternInput } from './patterns.ts';
 import { validatePackFile, type PackFileKind } from './schema.ts';
 import { assertSafeId } from './store.ts';
 
 // 規則包的載入與繼承（白皮書 §5.8）。規則包是不受信任的資料，這裡只讀固定的檔名。
 
-const ROOT_PACK = 'generic';
+/** 隱含的根，沒指定規則包的書也用它（ADR-0100）。 */
+export const ROOT_PACK = 'generic';
 const PACK_ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+/** 至少這麼多頁相符才建議。是提案，等商業書量過（ADR-0100）。 */
+const MIN_SUGGEST_PAGES = 3;
 
 type DataFile = Exclude<PackFileKind, 'packTest'>;
 
@@ -30,6 +34,10 @@ export interface PackManifest {
   readonly extends?: string;
   readonly license: string;
   readonly source_langs: readonly string[];
+  readonly suggest?: {
+    readonly keywords?: readonly string[];
+    readonly patterns?: readonly string[];
+  };
 }
 
 export interface RoleDefinition {
@@ -52,7 +60,13 @@ export interface GlossaryTerm {
   readonly target: string;
   readonly class?: string;
   readonly keep_source?: boolean;
-  readonly match?: unknown;
+  readonly match?: TermMatch;
+}
+
+export interface LocalizedTerm {
+  /** 詞條在這個來源語言的寫法。 */
+  readonly text: string;
+  readonly term: GlossaryTerm;
 }
 
 export interface PackContent {
@@ -88,6 +102,8 @@ export interface ResolvedPack {
   readonly roles: readonly ResolvedRole[];
   readonly patterns: readonly PatternDefinition[];
   readonly classes: ReadonlySet<string>;
+  /** 子包的在前面。 */
+  readonly terms: readonly GlossaryTerm[];
 }
 
 export function isPackId(value: string): boolean {
@@ -219,13 +235,15 @@ function merge(chain: readonly LoadedPack[]): ResolvedPack {
     for (const name of Object.keys(content.classes)) classes.add(name);
   }
   const id = chain[0]?.content.manifest.id ?? '';
-  return { id, chain, roles: [...roles.values()], patterns: [...patterns.values()], classes };
+  const terms = chain.flatMap(({ content }) => content.terms);
+  return { id, chain, roles: [...roles.values()], patterns: [...patterns.values()], classes, terms };
 }
 
-/** 解開繼承。`generic` 是隱含的根，內建包到 M2 才有，所以隱含的根找不到時不算錯。 */
+/** 解開繼承。`generic` 是隱含的根，隨程式發送，找不到時跟其他父包一樣回報（ADR-0100）。 */
 export function resolvePack(
   home: string,
   location: PackLocation,
+  builtin: string = builtinDir(),
 ): { readonly pack: ResolvedPack | null; readonly findings: readonly Finding[] } {
   const findings: Finding[] = [];
   const chain: LoadedPack[] = [];
@@ -243,16 +261,96 @@ export function resolvePack(
     seen.add(id);
     chain.push({ location: next, content });
     const parent = parentOf(content.manifest);
-    next = parent === null ? null : findPack(home, parent);
-    if (next === null && content.manifest.extends !== undefined) {
-      findings.push(finding('pack.parent_missing', 'fail', { id, parent: content.manifest.extends }));
+    next = parent === null ? null : findPack(home, parent, builtin);
+    if (next === null && parent !== null) {
+      findings.push(finding('pack.parent_missing', 'fail', { id, parent }));
     }
   }
   return { pack: merge(chain), findings };
 }
 
-export function patternInputs(pack: ResolvedPack): PatternInput[] {
-  return pack.patterns.map(({ id, regex, flags }) => ({ id, regex, flags }));
+export function patternInputs(pack: ResolvedPack, use?: PatternDefinition['use']): PatternInput[] {
+  return pack.patterns
+    .filter((pattern) => use === undefined || pattern.use === use)
+    .map(({ id, regex, flags }) => ({ id, regex, flags }));
+}
+
+/** 詞條依繼承鏈由子到父，同一個原文留子包的（白皮書 §5.8）。地區標籤沒有寫法時用主要語言。 */
+export function termsFor(pack: ResolvedPack, lang: string): LocalizedTerm[] {
+  const primary = lang.split('-')[0] ?? lang;
+  const terms = new Map<string, LocalizedTerm>();
+  for (const term of pack.terms) {
+    const text = term.source[lang] ?? term.source[primary];
+    if (text !== undefined && !terms.has(text)) terms.set(text, { text, term });
+  }
+  return [...terms.values()];
+}
+
+export interface PackCandidate {
+  readonly id: string;
+  readonly keywords: readonly string[];
+  readonly patterns: readonly PatternInput[];
+}
+
+export interface SuggestedPack {
+  readonly id: string;
+  readonly keyword_pages: number;
+  readonly pattern_pages: number;
+}
+
+export interface Suggestion {
+  readonly suggested: SuggestedPack | null;
+  readonly findings: readonly Finding[];
+}
+
+/** 有宣告 `suggest` 的規則包。`generic` 本來就一律載入，不參與（ADR-0100）。 */
+export function packCandidates(home: string, builtin: string = builtinDir()): PackCandidate[] {
+  return listPacks(home, builtin).flatMap(({ id }) => {
+    const location = id === ROOT_PACK ? null : findPack(home, id, builtin);
+    if (location === null) return [];
+    const { pack } = resolvePack(home, location, builtin);
+    const suggest = pack?.chain[0]?.content.manifest.suggest;
+    if (pack === null || suggest === undefined) return [];
+    const wanted = new Set(suggest.patterns ?? []);
+    const patterns = patternInputs(pack, 'detect').filter((pattern) => wanted.has(pattern.id));
+    return [{ id, keywords: suggest.keywords ?? [], patterns }];
+  });
+}
+
+function keywordPages(keywords: readonly string[], folded: readonly string[]): number {
+  const wanted = keywords.map(foldCase);
+  return folded.filter((text) => wanted.some((keyword) => findTerm(text, keyword).length > 0)).length;
+}
+
+/**
+ * 依關鍵詞與模式建議一個規則包，只建議，不套用（ADR-0051）。
+ * 分數是有關鍵詞的頁數加有模式命中的頁數。模式逾時只略過那個包，探測還是要完成。
+ */
+export async function suggestPack(
+  candidates: readonly PackCandidate[],
+  pages: readonly string[],
+): Promise<Suggestion> {
+  const folded = pages.map(foldCase);
+  const findings: Finding[] = [];
+  let suggested: SuggestedPack | null = null;
+  let best = MIN_SUGGEST_PAGES - 1;
+  for (const { id, keywords, patterns } of [...candidates].sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    const outcome = await runPatterns(patterns, pages);
+    if (outcome.status !== 'ok') {
+      findings.push(finding('pack.slow_regex', 'warn', { pattern: outcome.pattern }));
+      continue;
+    }
+    const { matches } = outcome;
+    const hit = (index: number): boolean =>
+      patterns.some((pattern) => (matches[pattern.id]?.[index] ?? []).length > 0);
+    const keyword_pages = keywordPages(keywords, folded);
+    const pattern_pages = pages.filter((_page, index) => hit(index)).length;
+    if (keyword_pages + pattern_pages > best) {
+      best = keyword_pages + pattern_pages;
+      suggested = { id, keyword_pages, pattern_pages };
+    }
+  }
+  return { suggested, findings };
 }
 
 /**
