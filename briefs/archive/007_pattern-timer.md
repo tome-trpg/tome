@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-01
 type: defect
 wave: 4
@@ -24,7 +24,16 @@ protectedFiles:
   - package-lock.json
   - package.json
   - schemas/**
+integrity: sha256-f4b7a39eaf45a614fbd7d0c94e3b85c261b4794e4b71e7940d67da79093384ff
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-01.**
+> 修 brief 004 留下的缺陷：規則包正則的限時改算 worker 用掉的 CPU 時間，從第一個訊息起算，機器忙時正常的模式不再被判成超時，失控的模式仍會被終止。
+> Merged in pull request [#9](https://github.com/tome-trpg/tome/pull/9).
+> Recorded at commit `e69ed2b`: 7 files changed, +374 −9.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 007 — 規則包正則的限時不被機器負載影響
 
