@@ -332,6 +332,17 @@ describe('text and ids', () => {
     expect(first).toMatchObject({ text: 'a fine line here.', raw: 'a ﬁne\nline   here.' });
   });
 
+  it('drops what an engine could not read, and keeps it in raw', () => {
+    const [first] = assemble({ blocks: [block('Chapter ���\b 12.', [72, 300, 540, 600])] });
+    expect(first).toMatchObject({ text: 'Chapter 12.', raw: 'Chapter ���\b 12.' });
+  });
+
+  it('cleans table cells the same way', () => {
+    const table: Table = { rows: 1, cols: 1, cells: [{ row: 0, col: 0, text: 'Toll�' }] };
+    const [first] = assemble({ blocks: [block('Toll�', [72, 300, 540, 600], 'table', { table })] });
+    expect(first?.table?.cells[0]).toMatchObject({ text: 'Toll', raw: 'Toll�' });
+  });
+
   it('gives repeated text its own id', () => {
     const blocks = assemble({
       blocks: [block('Same text.', [72, 500, 540, 600]), block('Same text.', [72, 300, 540, 400])],

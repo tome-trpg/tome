@@ -92,9 +92,10 @@ export function joinText(language: SourceLanguage, left: string, right: string):
 }
 
 function cleanText(language: SourceLanguage, text: string): string {
+  // 引擎把讀不出來的字變成 U+FFFD 與控制字元，例如目錄的點線。這些不能進翻譯，raw 留原樣。
   const lines = normalizeText(language, text)
     .split(/\r?\n/u)
-    .map((line) => line.replace(/\s+/gu, ' ').trim())
+    .map((line) => line.replace(/(?!\s)[\p{Cc}�]/gu, '').replace(/\s+/gu, ' ').trim())
     .filter((line) => line.length > 0);
   return lines.reduce((joined, line) => (joined === '' ? line : joinText(language, joined, line)), '');
 }

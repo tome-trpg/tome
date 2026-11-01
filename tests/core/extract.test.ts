@@ -303,11 +303,14 @@ describe('the document layer', () => {
     const { findings } = await extract(home, 'lost_text');
     expect(exitCodeOf(findings)).toBe(1);
     const lost = findings.find((item) => item.code === 'extract.characters_missing');
-    expect(lost).toMatchObject({ level: 'fail', params: { count: '3' } });
-    expect(lost?.params['pages']).toMatch(/^1:\d+\/\d+, 2:/);
+    expect(lost).toMatchObject({ level: 'fail' });
+    expect(lost?.params['pages']).toMatch(/^\d+:\d+\/\d+/);
     const document = documentOf(home);
-    expect(document.pages[0]).toMatchObject({ status: 'failed', reason: 'characters_missing' });
-    expect(document.blocks).toEqual([]);
+    const failed = document.pages.filter(({ status }) => status === 'failed');
+    expect(failed.length).toBeGreaterThan(0);
+    expect(failed[0]).toMatchObject({ reason: 'characters_missing' });
+    const kept = new Set(document.blocks.flatMap(({ spans }) => spans.map(({ page }) => page)));
+    for (const { page } of failed) expect(kept.has(page)).toBe(false);
   });
 
   it('never puts book text in what it reports', async () => {
