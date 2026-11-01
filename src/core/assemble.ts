@@ -20,7 +20,7 @@ import type { PageKind } from './probe.ts';
 /** 規則一改就要重新組裝，document 層的指紋含這個版本。 */
 export const ASSEMBLY_VERSION = 1;
 
-// 下面的比例都是提案，等 H-5 量過才定案（ADR-0092）。
+// 下面的比例已定案（ADR-0098）。
 const MARGIN_SHARE = 0.08;
 const REPEATED_PAGES = 3;
 const BOX_MAX_PAGE_SHARE = 0.6;
