@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-01
 type: feature
 wave: 11
@@ -28,7 +28,16 @@ protectedFiles:
   - languages/**
   - package-lock.json
   - package.json
+integrity: sha256-58f828c4c84d46dd7d605c5d0c294316551207ff848c9a6e3e132d081fa8f559
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-01.**
+> 路線圖 M1 的最後一個回合：tome extract 把 source 層組裝成 document 層，含閱讀順序、邊欄、接段、跨頁表格、規則包角色、章節、字元守恆與 tome-overrides/1。字元守恆的規則與門檻用七份商業 PDF 量過後定案。
+> Merged in pull request [#26](https://github.com/tome-trpg/tome/pull/26).
+> Recorded at commit `9a4d8d6`: 36 files changed, +2741 −81.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 006 — document 層與字元守恆
 
