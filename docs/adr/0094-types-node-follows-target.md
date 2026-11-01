@@ -22,7 +22,7 @@ TOME 的最低版本是 Node 24（ADR-0052）。Dependabot 依 ADR-0077 在 PR #
 ## 驗證
 
 <!-- @assert-count target=".github/dependabot.yml" symbol="dependency-name: '@types/node'" expected="1" reason="第 2 項：@types/node 的 major 不走 Dependabot" -->
-<!-- @assert-count target=".github/dependabot.yml" symbol="- version-update:semver-major" expected="1" reason="第 1 項：只擋 major，minor 與 patch 照常更新" -->
+<!-- @assert-count target=".github/dependabot.yml" symbol="- version-update:semver-major" min="1" reason="第 1 項：只擋 major，minor 與 patch 照常更新" -->
 
 ## 後果
 
