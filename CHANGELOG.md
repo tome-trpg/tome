@@ -33,6 +33,10 @@
 - 譯後自動排版：修正全形標點、引號與中英文之間的空白，不影響骰子等遮蔽內容。
 - 翻譯記憶：相同內容不重複計費，換用其他模型時也會沿用。
 - `tome verify`：以已儲存的回應重新驗證譯文，不消耗 token。翻譯功能完成後才有回應可驗證。
+- 模型資料 `providers/anthropic.yaml`，格式為 `tome-provider/1`。不在清單上的模型無法使用，價目表查證滿 60 天時會警告。
+- `tome estimate`：在本機估算翻譯費用，不連網。可用 `--budget` 設定預算、`--chapters` 限定章節、`--confirm` 確認估價。估算的比例尚未以實際用量校準。
+- `tome translate --dry-run`：組出所有請求但不送出。實際翻譯尚未提供。
+- `tome.yaml` 新增 `translator_model`、`fallback_model` 與個資清單 `pii`。清單是空的時候，`tome doctor` 與 `tome estimate` 會警告。
 
 ### 變更
 

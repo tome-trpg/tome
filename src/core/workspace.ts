@@ -75,6 +75,30 @@ export function workspaceTargetLang(home: string): string {
   return value;
 }
 
+/** `tome.yaml` 裡的模型，用到時才檢查（ADR-0099 第 10 項）。沒設時是 undefined。 */
+export function workspaceModel(home: string, key: 'translator_model' | 'fallback_model'): string | undefined {
+  const value: unknown = readWorkspaceConfig(home)?.[key];
+  if (value !== undefined && value !== null && typeof value !== 'string') {
+    throw new TomeError('config.bad_schema', { path: join(home, CONFIG_FILE), expected: WORKSPACE_SCHEMA });
+  }
+  return value ?? undefined;
+}
+
+/** 個資清單（ADR-0099 第 21 項）。 */
+export function workspacePii(home: string): string[] {
+  const value: unknown = readWorkspaceConfig(home)?.['pii'] ?? [];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    throw new TomeError('config.bad_schema', { path: join(home, CONFIG_FILE), expected: WORKSPACE_SCHEMA });
+  }
+  return value as string[];
+}
+
+/** 清單空的時候要警告，閘門攔不到任何東西（ADR-0099 第 21 項）。 */
+export function piiFindings(home: string): Finding[] {
+  if (readWorkspaceConfig(home) === null) return [];
+  return workspacePii(home).length === 0 ? [finding('pii.empty', 'warn')] : [];
+}
+
 /** 解析引擎的順序，同一種頁面有多個引擎時排前面的優先（白皮書 §5.3）。 */
 export function workspaceEngines(home: string): string[] {
   const value: unknown = readWorkspaceConfig(home)?.['engines'] ?? [];

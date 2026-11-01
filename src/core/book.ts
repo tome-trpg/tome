@@ -51,6 +51,9 @@ export interface BookConfig {
   readonly pdf: { readonly path: string; readonly sha256: string };
   readonly source_lang: string;
   readonly system?: string;
+  readonly budget_usd?: number;
+  readonly chapters?: string;
+  readonly pii_exceptions?: readonly string[];
 }
 
 export interface Book {
@@ -132,6 +135,13 @@ function writeBook(home: string, slug: string, config: BookConfig, flag: 'w' | '
   const path = join(bookDir(home, slug), BOOK_FILE);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, stringify(config), { flag });
+}
+
+/** 把這次指定的設定存進 `book.yaml`，之後沿用（白皮書 §6.1）。 */
+export function updateBook(home: string, book: Book, patch: Partial<BookConfig>): Book {
+  const config = { ...book.config, ...patch };
+  writeBook(home, book.slug, config, 'w');
+  return { ...book, config };
 }
 
 function isRunning(pid: number): boolean {

@@ -9,6 +9,8 @@ import {
   initWorkspace,
   readWorkspaceConfig,
   resolveHome,
+  workspaceModel,
+  workspacePii,
   workspaceTargetLang,
 } from '../../src/core/workspace.ts';
 import { workspaceTemplate } from '../../src/cli/messages.ts';
@@ -63,6 +65,34 @@ describe('initWorkspace', () => {
     expect(workspaceTargetLang(home)).toBe(DEFAULT_TARGET_LANG);
     writeFileSync(join(home, 'tome.yaml'), 'schema: tome-workspace/1\ntarget_lang: fr\n');
     expect(workspaceTargetLang(home)).toBe('fr');
+  });
+
+  it('leaves the model unset, since TOME has no default model (ADR-0041)', () => {
+    const home = join(tempDir(), 'home');
+    initWorkspace({ home, env: {}, template });
+    expect(workspaceModel(home, 'translator_model')).toBeUndefined();
+    expect(workspaceModel(home, 'fallback_model')).toBeUndefined();
+    expect(workspacePii(home)).toEqual([]);
+  });
+
+  it('reads the models and the list of personal data', () => {
+    const home = tempDir();
+    writeFileSync(
+      join(home, 'tome.yaml'),
+      'schema: tome-workspace/1\ntranslator_model: model-a\nfallback_model: model-b\npii: [Forged Buyer]\n',
+    );
+    expect(workspaceModel(home, 'translator_model')).toBe('model-a');
+    expect(workspaceModel(home, 'fallback_model')).toBe('model-b');
+    expect(workspacePii(home)).toEqual(['Forged Buyer']);
+  });
+
+  it.each(['translator_model: [a]', 'pii: nope', 'pii: [1]'])('refuses %s', (line) => {
+    const home = tempDir();
+    writeFileSync(join(home, 'tome.yaml'), `schema: tome-workspace/1\n${line}\n`);
+    expect(() => {
+      workspaceModel(home, 'translator_model');
+      workspacePii(home);
+    }).toThrow(expect.objectContaining({ code: 'config.bad_schema' }));
   });
 
   it('refuses a target language that is not a string', () => {

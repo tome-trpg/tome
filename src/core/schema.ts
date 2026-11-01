@@ -6,6 +6,7 @@ import type { TomeIr } from './ir.ts';
 import type { Language } from './language.ts';
 import type { Overrides } from './overrides.ts';
 import type { Probe } from './probe.ts';
+import type { Provider } from './provider.ts';
 
 const IR_FILE = 'tome-ir-1.schema.json';
 const PACK_FILE = 'tome-pack-1.schema.json';
@@ -14,6 +15,7 @@ const PROBE_FILE = 'tome-probe-1.schema.json';
 const LANGUAGE_FILE = 'tome-lang-1.schema.json';
 const ENGINE_FILE = 'tome-engine-1.schema.json';
 const OVERRIDES_FILE = 'tome-overrides-1.schema.json';
+const PROVIDER_FILE = 'tome-provider-1.schema.json';
 
 export type PackFileKind =
   | 'pack'
@@ -46,6 +48,7 @@ interface Compiled {
   readonly languageId: string;
   readonly engineId: string;
   readonly overridesId: string;
+  readonly providerId: string;
 }
 
 let cached: Compiled | undefined;
@@ -60,7 +63,8 @@ function compiled(): Compiled {
     const language = loadSchema(LANGUAGE_FILE);
     const engine = loadSchema(ENGINE_FILE);
     const overrides = loadSchema(OVERRIDES_FILE);
-    for (const schema of [ir, pack, book, probe, language, engine, overrides]) ajv.addSchema(schema);
+    const provider = loadSchema(PROVIDER_FILE);
+    for (const schema of [ir, pack, book, probe, language, engine, overrides, provider]) ajv.addSchema(schema);
     cached = {
       ajv,
       irId: ir.$id,
@@ -70,6 +74,7 @@ function compiled(): Compiled {
       languageId: language.$id,
       engineId: engine.$id,
       overridesId: overrides.$id,
+      providerId: provider.$id,
     };
   }
   return cached;
@@ -116,6 +121,10 @@ function validateAs<T>(ref: string, data: unknown): Validation<T> {
 
 export function validateBook(data: unknown): Validation<BookConfig> {
   return validateAs(compiled().bookId, data);
+}
+
+export function validateProvider(data: unknown): Validation<Provider> {
+  return validateAs(compiled().providerId, data);
 }
 
 export function validateProbe(data: unknown): Validation<Probe> {

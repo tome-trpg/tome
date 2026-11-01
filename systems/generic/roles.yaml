@@ -1,7 +1,12 @@
 # 最常見的幾種角色（ADR-0023）。不寫 detect：各系統的數值塊長相不同，偵測留給子包（ADR-0100）。
-# style 會進提示，要跟提示一起審，還沒有。
+# style 會進入提示，維護者在 2026-11-02 逐字審過（ADR-0103）。
+# generic 不知道遊戲用主持人還是守密人，子包可以覆寫。
 roles:
-  stat_block: {}
-  handout: {}
-  read_aloud: {}
-  gm_note: {}
+  stat_block:
+    style: 保留所有數字與欄位順序，只翻譯標籤。
+  handout:
+    style: 這是角色實際拿到的文件，保留原本的語氣與格式。
+  read_aloud:
+    style: 這段會被朗讀，句子不要太長，讀起來要順。
+  gm_note:
+    style: 給主持人看的說明，語氣直接、清楚。

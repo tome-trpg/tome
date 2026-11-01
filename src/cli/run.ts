@@ -11,6 +11,7 @@ import { testPack } from '../core/pack-test.ts';
 import { createPack, listPacks, locatePack } from '../core/pack.ts';
 import { detectGpu } from '../core/probe.ts';
 import { runTool, type StreamRunner, type ToolRunner } from '../core/process.ts';
+import { dryRunBook, estimateBook } from '../core/request.ts';
 import {
   isProvider,
   normalizeKey,
@@ -241,6 +242,37 @@ const COMMANDS: readonly Command[] = [
         },
       });
       return { data: { book: slug, ...data }, findings };
+    },
+  },
+  {
+    path: ['estimate'],
+    options: {
+      budget: { type: 'string' },
+      chapters: { type: 'string' },
+      confirm: { type: 'boolean' },
+    },
+    positionals: 1,
+    run: async (parsed, io) => {
+      const slug = parsed.positionals[0];
+      if (slug === undefined) throw missing('book');
+      return estimateBook({
+        home: resolveHome(io.env, io.platform),
+        slug,
+        budget: stringValue(parsed, 'budget'),
+        chapters: stringValue(parsed, 'chapters'),
+        confirm: parsed.values['confirm'] === true,
+      });
+    },
+  },
+  {
+    path: ['translate'],
+    options: { 'dry-run': { type: 'boolean' } },
+    positionals: 1,
+    run: async ({ positionals, values }, io) => {
+      const slug = positionals[0];
+      if (slug === undefined) throw missing('book');
+      if (values['dry-run'] !== true) return { data: { book: slug }, findings: [finding('translate.not_ready', 'fail')] };
+      return dryRunBook(resolveHome(io.env, io.platform), slug);
     },
   },
   {

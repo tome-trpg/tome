@@ -1,11 +1,11 @@
-import { readBook, systemOf, withBookLock } from './book.ts';
+import { readBook, systemOf, withBookLock, type Book } from './book.ts';
 import { TomeError } from './errors.ts';
 import { finding, type Finding } from './findings.ts';
 import { formatSegments } from './format.ts';
 import { loadTargetLanguage, scriptViolations, type TargetLanguage } from './language.ts';
 import { findTerm, restoreSegments, type Placeholder } from './mask.ts';
 import { loadPhraseCheck, type PhraseCheck } from './opencc.ts';
-import { findPack, resolvePack, termsFor, type LocalizedTerm } from './pack.ts';
+import { findPack, resolvePack, termsFor, type LocalizedTerm, type ResolvedPack } from './pack.ts';
 import { failureEvent, nextState, type UnitState } from './state.ts';
 import { openBookStore, type Store } from './store.ts';
 import { parseUnits, unitTag, type ParsedReply, type ParsedUnit, type Segment } from './tags.ts';
@@ -298,25 +298,37 @@ export interface VerifyContextOptions {
   readonly slug: string;
 }
 
+export interface BookPack {
+  /** 規則包讀不全時是 null，理由在 `findings`。 */
+  readonly pack: ResolvedPack | null;
+  readonly terms: readonly LocalizedTerm[];
+  readonly findings: readonly Finding[];
+}
+
+/**
+ * 這本書的規則包與詞條。規則包讀不全時詞條會少掉，譯名驗證就默默不做了，
+ * 所以不給規則包，由呼叫端停下來（ADR-0102）。
+ */
+export function loadBookPack(home: string, book: Book): BookPack {
+  const id = systemOf(book);
+  const location = findPack(home, id);
+  if (location === null) throw new TomeError('pack.not_found', { id });
+  const { pack, findings } = resolvePack(home, location);
+  if (pack === null || findings.some(({ level }) => level === 'fail')) return { pack: null, terms: [], findings };
+  return { pack, terms: termsFor(pack, book.config.source_lang), findings };
+}
+
 export interface BookVerifyContext {
   /** 規則包讀不全時是 null，理由在 `findings`。 */
   readonly context: VerifyContext | null;
   readonly findings: readonly Finding[];
 }
 
-/**
- * 這本書驗證要用的語言、詞條與片語表。規則包讀不全時詞條會少掉，
- * 譯名驗證就默默不做了，所以不給 context，由呼叫端停下來（ADR-0102）。
- */
+/** 這本書驗證要用的語言、詞條與片語表。 */
 export async function bookVerifyContext({ home, slug }: VerifyContextOptions): Promise<BookVerifyContext> {
-  const book = readBook(home, slug);
-  const id = systemOf(book);
-  const location = findPack(home, id);
-  if (location === null) throw new TomeError('pack.not_found', { id });
-  const { pack, findings } = resolvePack(home, location);
-  if (pack === null || findings.some(({ level }) => level === 'fail')) return { context: null, findings };
+  const { pack, terms, findings } = loadBookPack(home, readBook(home, slug));
+  if (pack === null) return { context: null, findings };
   const { profile: language } = loadTargetLanguage(workspaceTargetLang(home));
-  const terms = termsFor(pack, book.config.source_lang);
   return { context: { language, terms, phraseCheck: await loadPhraseCheck(language) }, findings };
 }
 

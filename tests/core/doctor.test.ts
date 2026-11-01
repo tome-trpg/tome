@@ -1,3 +1,4 @@
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runDoctor } from '../../src/core/doctor.ts';
@@ -38,9 +39,39 @@ describe('runDoctor', () => {
       'key.ok',
       'workspace.ok',
       'engine.none',
-      'prices.pending',
+      'pii.empty',
+      'prices.ok',
     ]);
     expect(findings.find((item) => item.code === 'uv.missing')?.level).toBe('info');
+  });
+
+  it('warns about an empty list of personal data, without failing (ADR-0099 item 21)', async () => {
+    const findings = await runDoctor({
+      home: workspace(),
+      env: envWithKey,
+      store: new MemorySecretStore(),
+      tool: noUv,
+    });
+    expect(findings.find((item) => item.code === 'pii.empty')?.level).toBe('warn');
+    expect(exitCodeOf(findings)).toBe(0);
+  });
+
+  it('stays quiet once the list has something in it', async () => {
+    const home = workspace();
+    const path = join(home, 'tome.yaml');
+    writeFileSync(path, readFileSync(path, 'utf8').replace('pii: []', 'pii: [Forged Buyer]'));
+    const findings = await runDoctor({ home, env: envWithKey, store: new MemorySecretStore(), tool: noUv });
+    expect(codes(findings)).not.toContain('pii.empty');
+  });
+
+  it('says nothing about the list when there is no workspace', async () => {
+    const findings = await runDoctor({
+      home: join(tempDir(), 'none'),
+      env: {},
+      store: new MemorySecretStore(),
+      tool: noUv,
+    });
+    expect(codes(findings)).not.toContain('pii.empty');
   });
 
   it('reports a missing workspace and a missing key as findings', async () => {

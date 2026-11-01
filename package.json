@@ -28,6 +28,8 @@
     "dist",
     "engines",
     "languages",
+    "prompts",
+    "providers",
     "schemas",
     "systems"
   ],

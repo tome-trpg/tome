@@ -78,6 +78,25 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
         CREATE INDEX issue_unit ON issue (unit_id);
       `,
     },
+    {
+      // 費用帳本，每個單位一列（ADR-0103）。
+      version: 4,
+      sql: `
+        CREATE TABLE ledger (
+          id INTEGER PRIMARY KEY,
+          request_id TEXT NOT NULL,
+          unit_id TEXT NOT NULL,
+          model TEXT NOT NULL,
+          mode TEXT NOT NULL,
+          input_tokens INTEGER NOT NULL,
+          output_tokens INTEGER NOT NULL,
+          cache_read_tokens INTEGER NOT NULL,
+          cache_write_tokens INTEGER NOT NULL,
+          cost_usd REAL NOT NULL,
+          created_at TEXT NOT NULL
+        ) STRICT;
+      `,
+    },
   ],
   series: [
     { version: 1, sql: metaTable('series') },

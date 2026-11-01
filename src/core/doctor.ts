@@ -1,6 +1,7 @@
 import { checkEngines } from './engine.ts';
 import { finding, type Finding } from './findings.ts';
 import { runTool, type ToolRunner } from './process.ts';
+import { loadProvider, priceFinding } from './provider.ts';
 import {
   keyEnvName,
   PROVIDERS,
@@ -9,7 +10,7 @@ import {
   type ProviderId,
   type SecretStore,
 } from './secrets.ts';
-import { checkWorkspace } from './workspace.ts';
+import { checkWorkspace, piiFindings } from './workspace.ts';
 
 const MINIMUM_NODE_MAJOR = 24;
 
@@ -79,6 +80,7 @@ export async function runDoctor(options: DoctorOptions): Promise<Finding[]> {
     ...keys.flat(),
     ...checkWorkspace(home, env, platform),
     ...(await checkEngines(home, env, tool, platform)),
-    finding('prices.pending', 'info'),
+    ...piiFindings(home),
+    ...PROVIDERS.map((provider) => priceFinding(loadProvider(provider).profile, new Date())),
   ];
 }
