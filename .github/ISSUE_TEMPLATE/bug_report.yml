@@ -1,35 +1,36 @@
-name: 回報問題
+name: 問題回報
 description: 回報 TOME 的錯誤
 body:
   - type: markdown
     attributes:
       value: |
-        **不要貼任何商業書籍的文字、譯文或截圖。** 請用自己寫的合成範例重現。
-        安全問題請依 SECURITY.md 私下回報，不要開 Issue。
+        **請勿貼上任何商業書籍的文字、譯文或截圖**。請使用自行撰寫的合成範例重現問題。
+        安全性問題請依 SECURITY.md 私下回報，請勿建立 Issue。
   - type: checkboxes
     id: no-book-content
     attributes:
-      label: 確認
+      label: 確認事項
       options:
-        - label: 這份回報沒有商業書籍的內容，也沒有 API 金鑰或個資
+        - label: 本回報不含商業書籍的內容、API 金鑰或個人資料
           required: true
   - type: input
     id: version
     attributes:
       label: 版本
-      description: tome --version
+      description: tome --version 的輸出
     validations:
       required: true
   - type: textarea
     id: what-happened
     attributes:
-      label: 發生了什麼
-      description: 指令、預期結果與實際結果，以及 tome doctor 的輸出
+      label: 問題描述
+      description: 請說明執行的指令、預期結果與實際結果，並附上 tome doctor 的輸出（路徑中若含使用者名稱，請先遮蓋）
     validations:
       required: true
   - type: textarea
     id: reproduce
     attributes:
-      label: 用合成範例重現
+      label: 重現步驟
+      description: 請使用合成範例
     validations:
       required: true
