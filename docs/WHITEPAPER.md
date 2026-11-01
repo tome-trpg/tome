@@ -950,7 +950,7 @@ tome/
 | :--- | :--- | :--- |
 | `specs` | push 到 `main` 與 PR | spec-guard、`prove`、`cites`、spec-graph、spec-brief、`premises`，Windows 與 Ubuntu。**已實作**：`.github/workflows/specs.yml` |
 | 測試 | push 到 `main` 與 PR | 測試、`npm audit`、相依授權檢查、效能預算、`tome system lint` 與 `test`、測試素材清單檢查。**已實作**：`.github/workflows/test.yml`，檔名是 `test`，`npm audit` 的門檻是 `moderate`（ADR-0082）。內建規則包到 M2 才有，`tome system lint` 與 `test` 目前查測試用的合成包。測試素材清單是 `tests/fixtures/SOURCES.yaml`，由 `tests/tools/fixtures.test.ts` 檢查 |
-| 引擎 | 改到 `engines/`、`tests/engine/` 或手動 | 安裝 Docling 跑合成 PDF。**已實作**：`.github/workflows/engine.yml`，Ubuntu 與 Windows 都跑，Ubuntu 上把網路拿掉再跑，通過只證明解析不需要網路，不證明沒有嘗試連線。有路徑過濾，不設必要檢查（ADR-0085、ADR-0096） |
+| 引擎 | 改到 `engines/`、`tests/engine/`、引擎核心與 schema，或手動 | 安裝 Docling 跑合成 PDF。**已實作**：`.github/workflows/engine.yml`，Ubuntu 與 Windows 都跑，Ubuntu 上把網路拿掉再跑，通過只證明解析不需要網路，不證明沒有嘗試連線。有路徑過濾，不設必要檢查（ADR-0085、ADR-0096、ADR-0097） |
 | 變異 | 排程 | 六個關鍵模組 |
 | 發佈 | `v*` 標籤或手動演練 | 見下節 |
 
@@ -1193,6 +1193,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0094](adr/0094-types-node-follows-target.md) | @types/node 的 major 跟著最低 Node 版本 | M1 |
 | [ADR-0095](adr/0095-huggingface-hub-waits-for-docling.md) | huggingface-hub 的 major 等 Docling 放寬 | M1 |
 | [ADR-0096](adr/0096-engine-workflow-covers-its-tests.md) | 改到引擎測試也要跑引擎工作流程 | M1 |
+| [ADR-0097](adr/0097-engine-workflow-covers-the-core.md) | 改到引擎核心與 schema 也要跑引擎工作流程 | M1 |
 
 ---
 
