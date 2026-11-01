@@ -58,7 +58,7 @@ protectedFiles:
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run build`、`npm run licenses` 在本機都通過
 - [x] 改到引擎的提交，推送前在本機真的跑過 `tests/engine`
-- [x] `specs`、`test`、`engine` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
+- [ ] `specs`、`test`、`engine` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
 - [x] 紀錄與訊息不含書本文字，`--json` 的 `params` 只有數字與區塊 ID
 - [x] `document` 層能由 `source` 與 `overrides` 重建，相同輸入得到相同結果
 - [x] 核心沒有寫死語言或遊戲概念
@@ -78,6 +78,7 @@ protectedFiles:
 
 2026-11-01，Windows 參考機器，Docling 2.140.0，合成 PDF。數字在 ADR-0092。
 
-- 商業書還沒量。維護者會提供一本，H-5、H-7、H-8 與門檻都等它，結果只寫數字。
+- 商業書：7 個 PDF、1,167 個原生頁，只統計數字，內文與頁面沒有離開本機。字元守恆因此改了規則，門檻由維護者定案，見 ADR-0092。1 個 PDF 加密被拒絕（PC-3）。
+- 真實書籍的閱讀順序沒有驗證，只有間接指標。本機檢視檔已產生，由維護者判斷。
 - `tome extract` 在全部沿用時不再略過授權紀錄的檢查，這是主 session 校對留下的項目，放進這個回合。
 - 轉接器改了，所以 `source` 層會重新解析一次。`blocks` 的錄製輸出沒有跨框的項目，內容不變，沒有重錄。
