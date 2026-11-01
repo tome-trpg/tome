@@ -62,7 +62,7 @@ protectedFiles:
 ## Invariants
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
-- [ ] `specs`、`test`、`engine` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
+- [x] `specs`、`test`、`engine` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
 - [x] 重鎖只動這三個套件，其他版本都不變
 - [x] 鎖定檔裡沒有任何套件還有 PyPI 列出的通報
 
@@ -76,7 +76,7 @@ protectedFiles:
 
 ## Measured
 
-- CPU 版與 CUDA 版只在 Windows 參考機器實裝，Ubuntu 看 `engine.yml`。
+- CUDA 版只在 Windows 參考機器實裝。CPU 版另外在 `engine.yml` 的 Windows 與 Ubuntu 跑過，`7a6d2ff` 的 attempt 1 全綠，Ubuntu 是拿掉網路跑的。
 - Pillow 13 與 Docling 2.140.0 的組合只有合成 PDF 驗過，ADR-0085 的量測沒有重做。
 - 那 39 份通報在 PDF 流程碰不碰得到，沒有驗證。
 
