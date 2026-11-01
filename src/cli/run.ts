@@ -20,6 +20,7 @@ import {
   keyEnvName,
   type SecretStore,
 } from '../core/secrets.ts';
+import { verifyBook } from '../core/verify.ts';
 import {
   initWorkspace,
   readWorkspaceConfig,
@@ -239,6 +240,17 @@ const COMMANDS: readonly Command[] = [
           }
         },
       });
+      return { data: { book: slug, ...data }, findings };
+    },
+  },
+  {
+    path: ['verify'],
+    options: {},
+    positionals: 1,
+    run: async ({ positionals }, io) => {
+      const slug = positionals[0];
+      if (slug === undefined) throw missing('book');
+      const { data, findings } = await verifyBook(resolveHome(io.env, io.platform), slug);
       return { data: { book: slug, ...data }, findings };
     },
   },

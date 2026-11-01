@@ -50,6 +50,7 @@
   "dependencies": {
     "@napi-rs/keyring": "2.1.2",
     "ajv": "8.20.0",
+    "opencc-js": "1.4.2",
     "unpdf": "1.9.1",
     "yaml": "2.9.1"
   },

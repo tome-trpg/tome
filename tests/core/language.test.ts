@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { TomeError } from '../../src/core/errors.ts';
-import { loadSourceLanguage, loadTargetLanguage } from '../../src/core/language.ts';
+import { loadSourceLanguage, loadTargetLanguage, scriptViolations } from '../../src/core/language.ts';
 import { validateLanguage } from '../../src/core/schema.ts';
 import { parse } from 'yaml';
 
@@ -26,6 +26,23 @@ describe('the language profiles', () => {
     const { profile } = loadTargetLanguage('zh-TW');
     expect(profile.pronouns).toEqual(['他', '她', '牠', '它', '祂']);
     expect(profile.punctuation.quotes.open).toBe('「');
+  });
+
+  describe('finding another script (ADR-0102)', () => {
+    // 樣本用碼位寫，受版控的文字檔才不用開例外（ADR-0086）。
+    const SHARED = String.fromCodePoint(0x7136, 0x540e);
+    const check = loadTargetLanguage('zh-TW').profile.script_check;
+
+    it('goes by the data alone', () => {
+      expect(scriptViolations(check, SHARED)).toHaveLength(1);
+      expect(scriptViolations({ ...check, shared_forms: '' }, SHARED)).toEqual([]);
+      expect(scriptViolations({ ...check, allowed_words: [SHARED] }, SHARED)).toEqual([]);
+      expect(scriptViolations({ ...check, misused_words: ['渡口'] }, '渡口')).toEqual(['渡口']);
+    });
+
+    it('counts a repeated finding once', () => {
+      expect(scriptViolations(check, `${SHARED}${SHARED}`)).toHaveLength(1);
+    });
   });
 
   it('leaves pronouns to the entity cards, not to a game concept', () => {

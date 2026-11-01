@@ -52,8 +52,22 @@ export interface TargetLanguage {
   };
   readonly pronouns: readonly string[];
   readonly min_length_ratio: number;
+  readonly max_length_ratio: number;
   readonly style_guide: readonly string[];
+  readonly script_check: ScriptCheck;
+  readonly opencc?: { readonly from: string; readonly to: string };
   readonly term_checks: readonly { readonly avoid: string; readonly prefer: string }[];
+  readonly term_exceptions: readonly string[];
+}
+
+/** 混入其他文字系統的判定資料（ADR-0102）。 */
+export interface ScriptCheck {
+  readonly encoding: string;
+  readonly lead_ranges: readonly (readonly [number, number])[];
+  readonly trail_ranges: readonly (readonly [number, number])[];
+  readonly shared_forms: string;
+  readonly allowed_words: readonly string[];
+  readonly misused_words: readonly string[];
 }
 
 export type Language = SourceLanguage | TargetLanguage;
@@ -101,6 +115,46 @@ export function loadSourceLanguage(tag: string): LoadedLanguage<SourceLanguage> 
 
 export function loadTargetLanguage(tag: string): LoadedLanguage<TargetLanguage> {
   return load<TargetLanguage>('target', tag);
+}
+
+const HAN = /\p{Script=Han}/gu;
+const SINGLE_HAN = /^\p{Script=Han}$/u;
+
+const encodingCache = new WeakMap<ScriptCheck, ReadonlySet<string>>();
+
+function expand(ranges: ScriptCheck['lead_ranges']): number[] {
+  return ranges.flatMap(([from, to]) => Array.from({ length: to - from + 1 }, (_, index) => from + index));
+}
+
+/** 編碼的標準字集裡的漢字。要解碼一萬多次，所以一份設定只算一次。 */
+function encodingHan(check: ScriptCheck): ReadonlySet<string> {
+  const cached = encodingCache.get(check);
+  if (cached !== undefined) return cached;
+  const decoder = new TextDecoder(check.encoding);
+  const trails = expand(check.trail_ranges);
+  const characters = new Set<string>();
+  for (const lead of expand(check.lead_ranges)) {
+    for (const trail of trails) {
+      const character = decoder.decode(new Uint8Array([lead, trail]));
+      if (SINGLE_HAN.test(character)) characters.add(character);
+    }
+  }
+  encodingCache.set(check, characters);
+  return characters;
+}
+
+/**
+ * 混入其他文字系統的字與詞（ADR-0102）。算到就重送，所以這裡寧可漏，字表以外的不判定。
+ * `tests/tools/traditional-chinese.test.ts` 用同一個函式檢查 repo 的文字。
+ */
+export function scriptViolations(check: ScriptCheck, text: string): string[] {
+  const allowed = encodingHan(check);
+  const outside = [...text.matchAll(HAN)].map(([character]) => character).filter((character) => !allowed.has(character));
+  let rest = text;
+  for (const word of check.allowed_words) rest = rest.replaceAll(word, '');
+  const shared = [...rest].filter((character) => check.shared_forms.includes(character));
+  const misused = check.misused_words.filter((word) => text.includes(word));
+  return [...new Set([...outside, ...shared, ...misused])];
 }
 
 /** 語言設定檔的字元正規化。連字與軟連字號的差異在這裡消掉（ADR-0009）。 */

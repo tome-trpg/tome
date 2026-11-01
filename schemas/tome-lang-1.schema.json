@@ -22,6 +22,16 @@
       "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
     },
     "ratio": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+    "byteRanges": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+      }
+    },
     "replacements": {
       "type": "object",
       "additionalProperties": { "type": "string" }
@@ -112,8 +122,11 @@
         "punctuation",
         "pronouns",
         "min_length_ratio",
+        "max_length_ratio",
         "style_guide",
-        "term_checks"
+        "script_check",
+        "term_checks",
+        "term_exceptions"
       ],
       "additionalProperties": false,
       "properties": {
@@ -153,9 +166,60 @@
           "description": "A translation shorter than this share of the source looks like a summary.",
           "$ref": "#/$defs/ratio"
         },
+        "max_length_ratio": {
+          "description": "A translation longer than this share of the source is reported, never resent.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
         "style_guide": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
+        },
+        "script_check": {
+          "description": "Characters of another script. Finding one sends the unit again, so a false alarm costs money. The characters of a legacy encoding are the ones allowed.",
+          "type": "object",
+          "required": [
+            "encoding",
+            "lead_ranges",
+            "trail_ranges",
+            "shared_forms",
+            "allowed_words",
+            "misused_words"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "encoding": {
+              "description": "A TextDecoder label.",
+              "type": "string",
+              "minLength": 1
+            },
+            "lead_ranges": { "$ref": "#/$defs/byteRanges" },
+            "trail_ranges": { "$ref": "#/$defs/byteRanges" },
+            "shared_forms": {
+              "description": "Characters of the other script that the encoding holds too.",
+              "type": "string"
+            },
+            "allowed_words": {
+              "description": "Words where a shared form is correct.",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "misused_words": {
+              "description": "Words that are wrong though each character is fine.",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "opencc": {
+          "description": "The OpenCC phrase table for the wording check, which only reports: the phrases that `to` adds on top of `from`.",
+          "type": "object",
+          "required": ["from", "to"],
+          "additionalProperties": false,
+          "properties": {
+            "from": { "type": "string", "minLength": 1 },
+            "to": { "type": "string", "minLength": 1 }
+          }
         },
         "term_checks": {
           "description": "Wording to report, never to resend.",
@@ -169,6 +233,11 @@
               "prefer": { "type": "string", "minLength": 1 }
             }
           }
+        },
+        "term_exceptions": {
+          "description": "Words the wording check must not report.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
         }
       }
     }
