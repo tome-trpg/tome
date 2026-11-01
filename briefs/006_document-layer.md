@@ -58,7 +58,7 @@ protectedFiles:
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run build`、`npm run licenses` 在本機都通過
 - [x] 改到引擎的提交，推送前在本機真的跑過 `tests/engine`
-- [ ] `specs`、`test`、`engine` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
+- [x] `specs`、`test`、`engine` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
 - [x] 紀錄與訊息不含書本文字，`--json` 的 `params` 只有數字與區塊 ID
 - [x] `document` 層能由 `source` 與 `overrides` 重建，相同輸入得到相同結果
 - [x] 核心沒有寫死語言或遊戲概念
