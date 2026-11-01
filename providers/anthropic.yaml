@@ -2,6 +2,9 @@
 schema: tome-provider/1
 id: anthropic
 
+# 只能連這個端點，其他主機一律擋下（ADR-0039、ADR-0104）。
+endpoint: https://api.anthropic.com
+
 # 讀官方價目頁的日子，滿 60 天會警告。頁面沒有生效日，所以 effective 也填這天（ADR-0103）。
 verified: 2026-11-02
 

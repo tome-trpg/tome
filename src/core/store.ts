@@ -97,6 +97,20 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
         ) STRICT;
       `,
     },
+    {
+      // 外送紀錄，只有雜湊與大小，不放請求內容（ADR-0039、ADR-0104）。
+      version: 5,
+      sql: `
+        CREATE TABLE egress (
+          id INTEGER PRIMARY KEY,
+          content_hash TEXT NOT NULL,
+          provider TEXT NOT NULL,
+          model TEXT NOT NULL,
+          bytes INTEGER NOT NULL,
+          created_at TEXT NOT NULL
+        ) STRICT;
+      `,
+    },
   ],
   series: [
     { version: 1, sql: metaTable('series') },

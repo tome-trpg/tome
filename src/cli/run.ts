@@ -11,6 +11,7 @@ import { testPack } from '../core/pack-test.ts';
 import { createPack, listPacks, locatePack } from '../core/pack.ts';
 import { detectGpu } from '../core/probe.ts';
 import { runTool, type StreamRunner, type ToolRunner } from '../core/process.ts';
+import type { RequestMode } from '../core/provider.ts';
 import { dryRunBook, estimateBook } from '../core/request.ts';
 import {
   isProvider,
@@ -95,6 +96,10 @@ function missing(key: ArgumentKey): TomeError {
 function stringValue(parsed: Parsed, name: string): string | undefined {
   const value = parsed.values[name];
   return typeof value === 'string' ? value : undefined;
+}
+
+function requestMode(values: Parsed['values']): RequestMode {
+  return values['realtime'] === true ? 'realtime' : 'batch';
 }
 
 /** 機器要讀的值放 `data`（ADR-0091）。 */
@@ -250,6 +255,7 @@ const COMMANDS: readonly Command[] = [
       budget: { type: 'string' },
       chapters: { type: 'string' },
       confirm: { type: 'boolean' },
+      realtime: { type: 'boolean' },
     },
     positionals: 1,
     run: async (parsed, io) => {
@@ -261,18 +267,19 @@ const COMMANDS: readonly Command[] = [
         budget: stringValue(parsed, 'budget'),
         chapters: stringValue(parsed, 'chapters'),
         confirm: parsed.values['confirm'] === true,
+        mode: requestMode(parsed.values),
       });
     },
   },
   {
     path: ['translate'],
-    options: { 'dry-run': { type: 'boolean' } },
+    options: { 'dry-run': { type: 'boolean' }, realtime: { type: 'boolean' } },
     positionals: 1,
     run: async ({ positionals, values }, io) => {
       const slug = positionals[0];
       if (slug === undefined) throw missing('book');
       if (values['dry-run'] !== true) return { data: { book: slug }, findings: [finding('translate.not_ready', 'fail')] };
-      return dryRunBook(resolveHome(io.env, io.platform), slug);
+      return dryRunBook(resolveHome(io.env, io.platform), slug, requestMode(values));
     },
   },
   {

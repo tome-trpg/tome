@@ -687,9 +687,11 @@ interface RequestResult {
 **拒答**是獨立狀態 `REFUSED`，不算 QA 失敗（ADR-0038）。轉接層 MUST 檢查各家的拒答訊號，Anthropic Batch 回 `succeeded` 時也要看 `stop_reason`。
 
 1. 請求被拒時對半拆，用原模型重送，找出有問題的單位，其他單位照常完成。
-2. 被拒的單位有設 `fallback_model` 就改送。即時請求可用伺服器端回退，Batch 自己重送。
+2. 被拒的單位有設 `fallback_model` 就改送。即時與 Batch 都由 TOME 自己重送，不用伺服器端回退：Batches API 不支援，兩條路用同一套程式，帳本也算得準（ADR-0104）。
 3. 跨供應商回退只在設定檔明列時才做，因為會多一家看到內容。
 4. 都沒有路或都失敗，就維持 `REFUSED`，列入交付報告，輸出時保留原文。
+
+拒答也要記帳。依 Anthropic 官方文件（2026 年 9 月），輸出前被拒時 `bio`、`frontier_llm`、`reasoning_extraction` 三類要付費，`cyber`、`general_harms` 與沒有類別的拒答不付費。TOME 一律寫進帳本，費用由回應的 `usage` 決定，每次重送都過預算檢查（ADR-0104）。
 
 ### 5.8 System Pack 規格
 
@@ -1220,6 +1222,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0101](adr/0101-engine-exit-status.md) | 回報引擎的結束狀態 | M2 |
 | [ADR-0102](adr/0102-verify-and-memory-decisions.md) | 驗證與翻譯記憶的細節 | M2 |
 | [ADR-0103](adr/0103-cost-and-requests-decisions.md) | 成本與請求的細節 | M2 |
+| [ADR-0104](adr/0104-egress-and-realtime-decisions.md) | 對外出口與即時模式的細節 | M2 |
 | [ADR-0105](adr/0105-legal-review-before-release.md) | 0.1.0 發佈前請著作權律師審查 | M2 |
 
 ---

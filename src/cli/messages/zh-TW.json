@@ -127,6 +127,7 @@
     "probe.unchanged": "PDF 沒有變動，沿用上次的探測結果。",
     "sqlite.ok": "SQLite 版本 {version}。",
     "sqlite.unavailable": "此 Node 環境無法使用 node:sqlite。請確認 Node 版本符合 TOME 的需求。",
+    "translate.blocked": "請求含有個資清單的項目，命中 {count} 次，沒有送出。確實是個資時，請在 overrides 用 redact 遮掉；是誤判時，請加進 book.yaml 的 pii_exceptions。",
     "translate.not_ready": "翻譯功能尚未完成。目前僅能加上 --dry-run 組出請求，不會送出任何資料。",
     "uv.missing": "找不到 uv。只有安裝解析引擎時才需要 uv，需要時再安裝即可。",
     "uv.ok": "uv 版本 {version}。",
@@ -160,6 +161,7 @@
     "config.bad_schema": "{path} 不符合 {expected} 格式。請檢查檔案內容後再試一次。",
     "config.invalid_yaml": "{path} 不是有效的 YAML。請修正語法後再試一次。",
     "document.missing": "找不到 {name} 的解析結果。請先執行 tome extract {name}。",
+    "egress.denied": "請求沒有送出：{host} 不是允許的端點，或請求本文無法檢查。",
     "engine.not_found": "找不到引擎 {name}。請提供隨附引擎的名稱，或含有 engine.yaml 的資料夾路徑。",
     "file.corrupt": "{path} 已損毀，無法讀取。此檔案可重新產生，請刪除後再次執行。",
     "language.unknown": "不支援語言 {lang}：找不到對應的語言設定檔。請以 --source-lang 指定支援的語言，例如 en。",
@@ -176,6 +178,7 @@
     "store.busy": "資料庫 {path} 正由其他程式使用，無法取得鎖定。請等該程式結束後再試一次，不需要變更此檔案。",
     "store.corrupt": "無法開啟資料庫 {path}，檔案可能已損毀。",
     "store.too_new": "{path} 的版本為 {found}，此版 TOME 僅支援至 {supported}。請升級 TOME。",
-    "store.wrong_kind": "{path} 不是 {expected} 資料庫。"
+    "store.wrong_kind": "{path} 不是 {expected} 資料庫。",
+    "translate.blocked": "請求含有個資清單的項目，命中 {count} 次，沒有送出。"
   }
 }

@@ -88,6 +88,7 @@ export const FINDING_CODES = [
   'probe.unchanged',
   'sqlite.ok',
   'sqlite.unavailable',
+  'translate.blocked',
   'translate.not_ready',
   'uv.missing',
   'uv.ok',

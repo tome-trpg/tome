@@ -15,6 +15,7 @@ export const ERROR_CODES = [
   'config.bad_schema',
   'config.invalid_yaml',
   'document.missing',
+  'egress.denied',
   'engine.not_found',
   'file.corrupt',
   'language.unknown',
@@ -32,6 +33,7 @@ export const ERROR_CODES = [
   'store.corrupt',
   'store.too_new',
   'store.wrong_kind',
+  'translate.blocked',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

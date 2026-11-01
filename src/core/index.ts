@@ -4,6 +4,8 @@ export * from './book.ts';
 export * from './budget.ts';
 export * from './conservation.ts';
 export * from './doctor.ts';
+export * from './egress/client.ts';
+export * from './egress/gate.ts';
 export * from './engine.ts';
 export * from './errors.ts';
 export * from './estimate.ts';

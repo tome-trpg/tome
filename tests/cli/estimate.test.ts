@@ -207,6 +207,31 @@ describe('--confirm (ADR-0103)', () => {
   });
 });
 
+describe('tome estimate --realtime (ADR-0104)', () => {
+  it('prices the requests at the realtime rate', async () => {
+    const lib = await library();
+    const batch = (await estimate(lib)).output.data;
+    const realtime = (await estimate(lib, '--realtime')).output.data;
+    expect(batch['mode']).toBe('batch');
+    expect(realtime['mode']).toBe('realtime');
+    expect(realtime['high_usd']).toBeGreaterThan(batch['high_usd'] as number);
+  });
+
+  it('is not kept in book.yaml', async () => {
+    const lib = await library();
+    await estimate(lib, '--realtime', '--budget', '100');
+    expect(Object.values(bookYaml(lib.home))).not.toContain('realtime');
+    expect((await estimate(lib)).output.data['mode']).toBe('batch');
+  });
+
+  it('asks again when the mode changes', async () => {
+    const lib = await library();
+    await estimate(lib, '--realtime', '--budget', '100', '--confirm');
+    expect((await estimate(lib, '--realtime')).output.data['confirmed']).toBe(true);
+    expect((await estimate(lib)).output.data['confirmed']).toBe(false);
+  });
+});
+
 describe('--chapters (ADR-0103)', () => {
   it('keeps the range in book.yaml and uses it from then on', async () => {
     const lib = await library();
@@ -284,6 +309,44 @@ describe('tome translate --dry-run (ADR-0103)', () => {
     const planned = (await dryRun(lib)).output.data;
     const estimated = (await estimate(lib)).output.data;
     expect(planned['high_usd']).toBe(estimated['high_usd']);
+  });
+
+  it('agrees with the estimate in realtime too', async () => {
+    const lib = await library();
+    const { io, stdout } = lib.session();
+    await run(['translate', 'book', '--dry-run', '--realtime', '--json'], io);
+    const planned = envelope(stdout()).data;
+    expect(planned['mode']).toBe('realtime');
+    expect(planned['high_usd']).toBe((await estimate(lib, '--realtime')).output.data['high_usd']);
+  });
+
+  it('checks the gate, and repeats neither the entry nor the text (ADR-0099 item 21)', async () => {
+    const lib = await library({ config: `translator_model: ${MODEL}\npii: [warden]\n` });
+    const { io, stdout } = lib.session();
+    expect(await run(['translate', 'book', '--dry-run', '--json'], io)).toBe(1);
+    const blocked = envelope(stdout()).findings.find((item) => item.code === 'translate.blocked');
+    expect(blocked?.level).toBe('fail');
+    expect(Number(blocked?.params['count'])).toBeGreaterThan(0);
+    expect(stdout()).not.toContain('warden');
+  });
+
+  it('leaves the units alone when the gate finds something, as it sends nothing', async () => {
+    const lib = await library({ config: `translator_model: ${MODEL}\npii: [warden]\n` });
+    await dryRun(lib);
+    const { openBookStore } = await import('../../src/core/store.ts');
+    const store = openBookStore(lib.home, 'book');
+    const states = store.all<{ state: string }>("SELECT state FROM unit WHERE state <> 'PENDING'");
+    store.close();
+    expect(states).toEqual([]);
+  });
+
+  it('honors the exceptions of the book', async () => {
+    const lib = await library({ config: `translator_model: ${MODEL}\npii: [warden]\n` });
+    const path = join(lib.home, 'books', 'book', 'book.yaml');
+    writeFileSync(path, `${readFileSync(path, 'utf8')}pii_exceptions: [warden]\n`);
+    const { exit, output } = await dryRun(lib);
+    expect(exit).toBe(0);
+    expect(codes(output)).not.toContain('translate.blocked');
   });
 
   it('skips units that are done', async () => {

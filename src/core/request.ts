@@ -9,6 +9,7 @@ import {
   type BookConfig,
 } from './book.ts';
 import { checkBudget } from './budget.ts';
+import { hitCount, scanBody, type PiiRules } from './egress/gate.ts';
 import { TomeError } from './errors.ts';
 import { estimateRequest, outputTokens, sumEstimates, type Estimate } from './estimate.ts';
 import { readDocument } from './extract.ts';
@@ -26,13 +27,14 @@ import {
   type LoadedProvider,
   type Provider,
   type ProviderModel,
+  type RequestMode,
   type ThinkingParams,
 } from './provider.ts';
 import { openBookStore, type Store } from './store.ts';
 import { escapeAttribute, escapeText, unitTag } from './tags.ts';
 import { buildUnits, syncUnits, type TranslationUnit } from './units.ts';
 import { hitTerms, loadBookPack, visibleText } from './verify.ts';
-import { piiFindings, workspaceModel, workspaceTargetLang } from './workspace.ts';
+import { piiFindings, workspaceModel, workspacePii, workspaceTargetLang } from './workspace.ts';
 
 // 把單位組成請求（白皮書 §5.7、ADR-0103）。這裡只組資料與估價，不連網。
 
@@ -227,6 +229,7 @@ const PROVIDER_ID = 'anthropic';
 const ESTIMATE_STAGE = 'estimate';
 
 export interface BookPlan {
+  readonly mode: RequestMode;
   readonly model: ProviderModel;
   readonly provider: LoadedProvider;
   readonly requests: readonly PlannedRequest[];
@@ -234,7 +237,7 @@ export interface BookPlan {
   readonly unitCount: number;
   readonly chars: number;
   readonly estimate: Estimate;
-  /** 單位、模型、價格、範圍、預算、提示的內容指紋（ADR-0103）。 */
+  /** 單位、模型、價格、範圍、預算、提示與模式的內容指紋（ADR-0103、ADR-0104）。 */
   readonly fingerprint: string;
 }
 
@@ -253,7 +256,7 @@ function pendingUnits(store: Store): ReadonlySet<string> {
 }
 
 /** 組出這本書還要送的請求。單位寫進 `book.db`，其他什麼都不動。 */
-async function planBook(home: string, book: Book, store: Store): Promise<PlanResult> {
+async function planBook(home: string, book: Book, store: Store, mode: RequestMode): Promise<PlanResult> {
   const modelId = workspaceModel(home, 'translator_model');
   if (modelId === undefined) throw new TomeError('model.missing');
   const provider = loadProvider(PROVIDER_ID);
@@ -285,7 +288,7 @@ async function planBook(home: string, book: Book, store: Store): Promise<PlanRes
         provider.profile,
         model,
         { promptChars: prefix.length + user.length, sourceChars },
-        'batch',
+        mode,
       ),
     };
   });
@@ -301,11 +304,13 @@ async function planBook(home: string, book: Book, store: Store): Promise<PlanRes
         spec ?? null,
         book.config.budget_usd ?? null,
         prefix,
+        mode,
       ]),
     )
     .digest('hex');
   return {
     plan: {
+      mode,
       model,
       provider,
       requests,
@@ -326,6 +331,7 @@ function usd(amount: number): string {
 
 function planData(plan: BookPlan): Readonly<Record<string, unknown>> {
   return {
+    mode: plan.mode,
     model: plan.model.id,
     requests: plan.requests.length,
     units: plan.unitCount,
@@ -355,6 +361,8 @@ export interface EstimateOptions {
   readonly budget?: string | undefined;
   readonly chapters?: string | undefined;
   readonly confirm: boolean;
+  /** 不存進 `book.yaml`，只隨確認記在指紋裡（ADR-0104）。 */
+  readonly mode: RequestMode;
   readonly today?: Date;
 }
 
@@ -412,12 +420,12 @@ function confirmation(
 }
 
 async function estimateLocked(options: EstimateOptions): Promise<PlanOutcome> {
-  const { home, slug, confirm, today = new Date() } = options;
+  const { home, slug, confirm, mode, today = new Date() } = options;
   const before = readBook(home, slug);
   const book = updateIfChosen(home, before, chosenSettings(home, before, options));
   const store = openBookStore(home, slug);
   try {
-    const { plan, findings } = await planBook(home, book, store);
+    const { plan, findings } = await planBook(home, book, store, mode);
     const warnings = [...findings, ...piiFindings(home)];
     if (plan === null) return { data: { book: slug, confirmed: false }, findings: warnings };
     const stale = priceFinding(plan.provider.profile, today);
@@ -447,10 +455,22 @@ export function estimateBook(options: EstimateOptions): Promise<PlanOutcome> {
   return withBookLock(options.home, options.slug, () => estimateLocked(options));
 }
 
-async function dryRunLocked(home: string, slug: string): Promise<PlanOutcome> {
+/** 這本書送出前要比對的清單。 */
+export function piiRulesOf(home: string, book: Book): PiiRules {
+  return { pii: workspacePii(home), exceptions: book.config.pii_exceptions ?? [] };
+}
+
+/** 跟真的送出時掃描同樣的內容：序列化後的完整請求。 */
+function gateFindings(bodies: readonly MessagesBody[], rules: PiiRules): readonly Finding[] {
+  const count = bodies.reduce((total, body) => total + hitCount(scanBody(JSON.stringify(body), rules)), 0);
+  return count === 0 ? [] : [finding('translate.blocked', 'fail', { count: String(count) })];
+}
+
+async function dryRunLocked(home: string, slug: string, mode: RequestMode): Promise<PlanOutcome> {
+  const book = readBook(home, slug);
   const store = openBookStore(home, slug);
   try {
-    const { plan, findings } = await planBook(home, readBook(home, slug), store);
+    const { plan, findings } = await planBook(home, book, store, mode);
     if (plan === null) return { data: { book: slug }, findings };
     const prefixes = new Set(plan.bodies.map(({ system }) => system));
     return {
@@ -458,6 +478,7 @@ async function dryRunLocked(home: string, slug: string): Promise<PlanOutcome> {
       findings: [
         finding('dry_run.done', 'info', planParams(plan)),
         ...(prefixes.size > 1 ? [finding('dry_run.prefix_unstable', 'fail')] : []),
+        ...gateFindings(plan.bodies, piiRulesOf(home, book)),
         ...findings,
       ],
     };
@@ -466,7 +487,7 @@ async function dryRunLocked(home: string, slug: string): Promise<PlanOutcome> {
   }
 }
 
-/** `tome translate --dry-run`：組出所有請求但不送出（ADR-0040）。 */
-export function dryRunBook(home: string, slug: string): Promise<PlanOutcome> {
-  return withBookLock(home, slug, () => dryRunLocked(home, slug));
+/** `tome translate --dry-run`：組出所有請求但不送出，閘門照樣檢查（ADR-0040、白皮書 §8.1）。 */
+export function dryRunBook(home: string, slug: string, mode: RequestMode): Promise<PlanOutcome> {
+  return withBookLock(home, slug, () => dryRunLocked(home, slug, mode));
 }
