@@ -1144,6 +1144,8 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0084](adr/0084-m1-parsing-decisions.md) | M1 解析的選型與範圍 | M1 |
 | [ADR-0085](adr/0085-engine-protocol-decisions.md) | 引擎協定與 Docling 的選型 | M1 |
 | [ADR-0086](adr/0086-user-document-style.md) | 使用者文件的文字規範 | M1 |
+| [ADR-0087](adr/0087-proprietary-notice-and-uv-cooldown.md) | 引擎的專有元件提示與 uv 的冷卻期 | M1 |
+| [ADR-0088](adr/0088-pillow-security-override.md) | Docling 環境的安全更新 | M1 |
 
 ---
 

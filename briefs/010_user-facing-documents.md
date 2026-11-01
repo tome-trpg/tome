@@ -2,7 +2,7 @@
 status: active
 date: 2026-11-01
 type: feature
-wave: 7
+wave: 8
 affectedFiles:
   - .github/ISSUE_TEMPLATE/**
   - .github/pull_request_template.md
@@ -40,7 +40,7 @@ protectedFiles:
 ## Negative Scope
 
 - 不改 `src/`，CLI 訊息 `src/cli/messages/zh-TW.json` 的語氣不在這個回合。
-- 不改白皮書與既有 ADR 的內文，白皮書只加 ADR 索引的一列。
+- 不改白皮書與既有 ADR 的內文，白皮書只加 ADR 索引的列：ADR-0086，以及同時合併的 ADR-0087、0088。
 - 不新增功能宣稱：README 只寫 `main` 上真的有的狀態，設計目標要標明是目標。
 - 不加相依。檢查用 Node 內建的 `TextDecoder`，不加 OpenCC。
 
@@ -53,7 +53,9 @@ protectedFiles:
 ## Invariants
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
-- [ ] `specs` 與 `test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
+- [x] `specs` 與 `test` 兩條工作流程在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
+
+**Accepted debt**：`4d75912` 的 `test` 在 attempt 1 失敗過一次，檢查抓到 brief 自己引用的簡體字。沒有重跑，改掉後 `c7e3781` 的 attempt 1 全綠，rebase 到最新的 `main` 後的 head 也以 attempt 1 為準。
 - [x] 檢查先在壞樣本上失敗過：放進簡體字與繁簡同形的誤用字，測試真的會擋
 
 ## Acceptance Criteria
