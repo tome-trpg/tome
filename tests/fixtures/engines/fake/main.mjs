@@ -15,8 +15,18 @@ function fileOf(page) {
   return `p${String(page).padStart(4, '0')}.json`;
 }
 
+/** FAKE_ENGINE_TEXT_FILE 是鍛造時的標準答案，有它才過得了字元守恆。 */
+function textOf(page) {
+  const file = process.env.FAKE_ENGINE_TEXT_FILE;
+  if (!file) return `Synthetic text of page ${page}.`;
+  const pages = JSON.parse(readFileSync(file, 'utf8'));
+  const text = (pages[page] ?? []).join(' ');
+  if (process.env.FAKE_ENGINE_SCENARIO === 'lost_text') return text.slice(0, Math.floor(text.length / 2));
+  return text;
+}
+
 function block(manifest, page) {
-  const text = `Synthetic text of page ${page}.`;
+  const text = textOf(page);
   const hash = sha256(text);
   return {
     id: `p${String(page).padStart(4, '0')}-${hash.slice(0, 6)}`,

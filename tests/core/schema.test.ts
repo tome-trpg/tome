@@ -49,6 +49,7 @@ function document(overrides: Partial<IrDocument> = {}): IrDocument {
     schema: 'tome-ir/1',
     layer: 'document',
     pdf_sha256: hash,
+    pages: [{ page: 12, status: 'ok' }],
     page_map: [{ page: 12, label: 'iv' }],
     sections: [
       { title: 'Chapter', block_id: 'p0012-3f9a1c', children: [{ title: 'Part', children: [] }] },

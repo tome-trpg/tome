@@ -40,7 +40,7 @@ The following features are design goals. See [Development status](#development-s
 | Book registration and PDF probing | `tome add`, `tome probe` | Implemented |
 | Rule pack management | `tome system new`, `list`, `lint`, `test` | Implemented |
 | Parsing engine management | `tome engine add`, `list`, `remove` | Implemented |
-| Page parsing | `tome extract` | In development: only native text pages are handed to a parsing engine, and they are not yet assembled into a document |
+| Page parsing | `tome extract` | Implemented: native text pages are handed to a parsing engine, assembled into a document, and checked for lost characters |
 | Translation and output | Not available | Planned |
 
 ## Out of scope

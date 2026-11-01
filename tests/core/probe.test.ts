@@ -27,6 +27,7 @@ function facts(overrides: Partial<PageFacts> = {}): PageFacts {
     imageLargest: 0,
     imageTotal: 0,
     vectorPaths: 0,
+    boxes: [],
     links: [],
     ...overrides,
   };

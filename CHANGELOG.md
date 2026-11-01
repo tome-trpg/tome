@@ -20,7 +20,10 @@
 - `tome system new`、`list`、`lint`、`test`。規則包的正規表示式在 worker thread 中限時執行。
 - 解析引擎協定 `tome-engine/1`，以及 `tome engine add`、`list`、`remove`。`tome engine add docling` 以 uv 建立環境，預設安裝 CPU 版，加上 `--gpu` 則安裝 CUDA 版。安裝 CUDA 版後會提示 CUDA 元件屬於 NVIDIA 專有授權，不隨 TOME 提供。
 - 解析引擎可在 `engine.yaml` 的 `license.proprietary` 宣告環境內的專有元件，安裝完成後會提示。Docling 宣告了 Intel oneMKL。
-- `tome extract`：將原生文字頁交給解析引擎，結果存為 `source` 層，中斷後可從未完成的頁面繼續。組裝與字元守恆尚未實作。
+- `tome extract`：將原生文字頁交給解析引擎，結果存為 `source` 層，中斷後可從未完成的頁面繼續。
+- `tome extract` 接著組裝 `document` 層（`ir/document.json`）：還原閱讀順序、區分邊欄、接回跨欄與跨頁的段落、合併跨頁表格，並判定規則包宣告的角色。
+- 字元守恆檢查：缺字超過門檻的頁面標示為失敗，不會進入翻譯。
+- `overrides.yaml`（`tome-overrides/1`）：可手動修改區塊角色、順序，以及合併、拆分、略過區塊與遮蔽文字，重新解析後仍然有效。
 - `tome doctor` 檢查解析引擎能否啟動。
 
 ### 變更

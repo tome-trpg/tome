@@ -13,6 +13,22 @@ assets:
     source: recorded from Docling 2.140.0 on the forged case blocks
     license: Apache-2.0
     sha256: b508d1d22af764c0d5924289ba339a63e0d7ed8eab0b7cfe5de50e2405172977
+  - path: tests/fixtures/engine-outputs/docling/layout/engine.json
+    source: recorded from Docling 2.140.0 on the forged case layout
+    license: Apache-2.0
+    sha256: 2f05930d76707c8691bfb45b4710bdf8624d71581237fbf0c8e32998e5e9f629
+  - path: tests/fixtures/engine-outputs/docling/layout/p0000.json
+    source: recorded from Docling 2.140.0 on the forged case layout
+    license: Apache-2.0
+    sha256: f36b7e2c8bf1077d8488c9276aad5be4585b320cd7f25e9298a17958aadce457
+  - path: tests/fixtures/engine-outputs/docling/layout/p0001.json
+    source: recorded from Docling 2.140.0 on the forged case layout
+    license: Apache-2.0
+    sha256: 1ed356a05afbdd80f255c4c35ae0b86906c9e2e3f23db9d79155f43ba87e4b55
+  - path: tests/fixtures/engine-outputs/docling/layout/p0002.json
+    source: recorded from Docling 2.140.0 on the forged case layout
+    license: Apache-2.0
+    sha256: 1da902f964abc967c9685e9a5138977a0a01734dd1ec61e6208f0ac28b4fc498
   - path: tests/fixtures/engines/fake/engine.yaml
     source: written for this repository
     license: Apache-2.0
@@ -20,7 +36,7 @@ assets:
   - path: tests/fixtures/engines/fake/main.mjs
     source: written for this repository
     license: Apache-2.0
-    sha256: de7add3ae12595260c558a9a186610c4830f90e8896ab483621a6d3df0df0b6f
+    sha256: 7630f9675ecbdfc699f9838dea1c1f55e842210caea4fd2404d00a03c99dbe39
   - path: tests/fixtures/packs/sample-pack/LICENSE
     source: written for this repository
     license: Apache-2.0

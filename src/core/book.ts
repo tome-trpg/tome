@@ -173,7 +173,7 @@ export function recordStage(store: Store, name: string, fingerprint: string): vo
   );
 }
 
-function stageFingerprint(store: Store, name: string): string | null {
+export function stageFingerprint(store: Store, name: string): string | null {
   const row = store.get<{ fingerprint: string }>(
     'SELECT fingerprint FROM stage WHERE name = ?',
     name,
