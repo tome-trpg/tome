@@ -32,7 +32,7 @@
 
 ## 文字規範
 
-下列規範適用於使用者會閱讀的文件，包括 README、本文件、安全政策、變更紀錄，以及 Issue 與 Pull Request 範本（[ADR-0086](docs/adr/0086-user-document-style.md)）。
+下列規範適用於使用者會閱讀的文字，包括 README、本文件、安全政策、變更紀錄、Issue 與 Pull Request 範本，以及 CLI 訊息（[ADR-0086](docs/adr/0086-user-document-style.md)、[ADR-0089](docs/adr/0089-cli-message-style.md)）。
 
 * 語氣專業、內容明確，同時讓初次接觸的讀者也能理解。不使用口語與俚語。
 * 使用完整的陳述句說明內容，操作步驟使用「請」開頭的句子。稱呼讀者時使用「使用者」，不使用「你」。
