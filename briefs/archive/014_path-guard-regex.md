@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-01
 type: defect
 wave: 12
@@ -21,7 +21,16 @@ protectedFiles:
   - package-lock.json
   - package.json
   - schemas/**
+integrity: sha256-1ce782c45ae8b2b89b261e62389f0700c9743c18c6ce81ffed57a49b361cac51
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-01.**
+> 路徑檢查去掉結尾斜線改成線性掃描，判定結果不變，解決 CodeQL 的 js/polynomial-redos 警示。
+> Merged in pull request [#37](https://github.com/tome-trpg/tome/pull/37).
+> Recorded at commit `07bd814`: 4 files changed, +93 −1.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 014 — 路徑檢查的斜線處理改成線性
 
