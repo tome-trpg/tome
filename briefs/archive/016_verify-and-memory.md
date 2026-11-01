@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-02
 type: feature
 wave: 15
@@ -26,7 +26,16 @@ protectedFiles:
   - docs/research/**
   - engines/**
   - systems/**
+integrity: sha256-b7d33447e35b4252587e788ccee45ccc3f43dc63f697ff97e93d27b33b87b3b1
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-02.**
+> M2 的第二個回合：零 token 驗證、譯後排版、翻譯記憶、單位狀態機與 tome verify。混入簡體字沿用 repo 的判定，字表移成語言資料，OpenCC 只用在只報告的用語檢查。
+> Merged in pull request [#44](https://github.com/tome-trpg/tome/pull/44).
+> Recorded at commit `eead5e2`: 33 files changed, +2515 −61.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 016 — 驗證與翻譯記憶
 
