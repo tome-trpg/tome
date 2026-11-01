@@ -27,6 +27,7 @@ describe('tome add', () => {
     expect(stdout()).toContain('已加入 structure');
     expect(stdout()).toContain('共 5 頁');
     expect(stdout()).toContain('頁碼標籤 5 頁');
+    expect(stdout()).toContain('標記結構 有');
     expect(stdout()).toContain('未偵測到 NVIDIA GPU');
   });
 

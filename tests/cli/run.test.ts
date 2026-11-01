@@ -53,6 +53,12 @@ describe('the command line', () => {
     expect(envelope(json.stdout()).ok).toBe(false);
   });
 
+  it('names a missing argument the way --help does', async () => {
+    const { io, stderr } = capture();
+    await run(['provider', 'auth', 'set'], io);
+    expect(stderr()).toContain('<供應商>');
+  });
+
   it('takes --json before the command too', async () => {
     const { io, stdout } = capture({ env: { TOME_HOME: join(tempDir(), 'home') } });
     expect(await run(['--json', 'init'], io)).toBe(0);

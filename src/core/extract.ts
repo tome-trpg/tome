@@ -213,7 +213,8 @@ async function runEngine(
 }
 
 function failedParams(failed: EngineResult['failed']): Readonly<Record<string, string>> {
-  const shown = failed.slice(0, LISTED_PAGES).map(({ page, reason }) => `${page}:${reason}`);
+  // 內部的頁索引從 0 起算，給人看的是 PDF 閱讀器顯示的頁次（ADR-0091）。
+  const shown = failed.slice(0, LISTED_PAGES).map(({ page, reason }) => `${page + 1}:${reason}`);
   return {
     count: String(failed.length),
     pages: `${shown.join(', ')}${failed.length > LISTED_PAGES ? ', …' : ''}`,

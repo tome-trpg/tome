@@ -135,7 +135,7 @@ describe('tome extract', () => {
     expect(exitCodeOf(first.findings)).toBe(1);
     expect(first.findings.find((item) => item.code === 'extract.pages_failed')?.params).toEqual({
       count: '1',
-      pages: '1:conversion_failed',
+      pages: '2:conversion_failed',
     });
     expect(existsSync(join(pagesDir(home), sourcePageFile(2)))).toBe(true);
 
@@ -162,7 +162,7 @@ describe('tome extract', () => {
     expect(exitCodeOf(findings)).toBe(1);
     expect(findings.find((item) => item.code === 'extract.pages_failed')?.params).toEqual({
       count: '2',
-      pages: '1:engine_crashed, 2:engine_crashed',
+      pages: '2:engine_crashed, 3:engine_crashed',
     });
     expect(existsSync(join(pagesDir(home), sourcePageFile(0)))).toBe(true);
   });
@@ -175,7 +175,7 @@ describe('tome extract', () => {
     const home = await library();
     const { findings } = await extract(home, scenario);
     expect(findings.find((item) => item.code === 'extract.pages_failed')?.params['pages']).toContain(
-      '0:invalid_output',
+      '1:invalid_output',
     );
     expect(existsSync(join(pagesDir(home), sourcePageFile(0)))).toBe(false);
   });
@@ -184,7 +184,7 @@ describe('tome extract', () => {
     const home = await library();
     const { findings } = await extract(home, 'silent');
     expect(findings.find((item) => item.code === 'extract.pages_failed')?.params['pages']).toContain(
-      '0:no_output',
+      '1:no_output',
     );
   });
 
@@ -203,11 +203,11 @@ describe('tome extract', () => {
       extractBook({ home, slug: 'book', env: process.env, tool: NO_GPU, stream: async () => outcome });
     const quiet = await run({ status: 'timeout' });
     expect(quiet.findings.find((item) => item.code === 'extract.pages_failed')?.params['pages']).toContain(
-      '0:timeout',
+      '1:timeout',
     );
     const gone = await run({ status: 'not_found' });
     expect(gone.findings.find((item) => item.code === 'extract.pages_failed')?.params['pages']).toContain(
-      '0:engine_not_found',
+      '1:engine_not_found',
     );
   });
 

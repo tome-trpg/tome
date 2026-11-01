@@ -28,6 +28,17 @@ export function levelText(level: FindingLevel): string {
   return catalog.level[level];
 }
 
+export type ArgumentKey = keyof typeof catalog.argument;
+
+/** 參數在 `--help` 裡的寫法，缺少參數時用同一個名稱。 */
+export function argumentText(key: ArgumentKey): string {
+  return catalog.argument[key];
+}
+
+export function flagText(value: boolean): string {
+  return catalog.flag[value ? 'yes' : 'no'];
+}
+
 export function findingText(code: FindingCode, params: Params): string {
   return fill(catalog.finding[code], params);
 }

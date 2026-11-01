@@ -183,7 +183,7 @@ function lintReferences(content: PackContent, resolved: ResolvedPack): Finding[]
   }
   content.terms.forEach((term, index) => {
     if (term.class !== undefined && !resolved.classes.has(term.class)) {
-      findings.push(finding('pack.unknown_class', 'fail', { index: String(index), class: term.class }));
+      findings.push(finding('pack.unknown_class', 'fail', { index: String(index + 1), class: term.class }));
     }
   });
   const { pronouns } = loadTargetLanguage(TARGET_LANGUAGE).profile;
