@@ -954,7 +954,7 @@ tome/
 | 變異 | 排程 | 六個關鍵模組 |
 | 發佈 | `v*` 標籤或手動演練 | 見下節 |
 
-Action 全部釘在 commit，簽出不保留 token，安裝用 `--ignore-scripts`。Dependabot 更新相依與 Action，有冷卻期：npm 的 patch 一週、minor 兩週、major 一個月，uv 的 patch 與 minor 都是兩週、major 一個月，Action 一律一週，安全更新不等。`@spec-family/*` 是維護者自己的工具，不受冷卻期限制（ADR-0082）。`@types/node` 的 major 跟著最低 Node 版本，不走 Dependabot（ADR-0094）。`engines/docling/` 另外用 `exclude-newer = "14 days"`，重鎖時只看上架滿 14 天的版本，安全更新用 `exclude-newer-package` 開例外（ADR-0085）。**已驗證**：Dependabot 第一次跑就重鎖得動這份鎖定檔，但安全更新過不了 `exclude-newer`，要手動開例外（ADR-0087）。
+Action 全部釘在 commit，簽出不保留 token，安裝用 `--ignore-scripts`。Dependabot 更新相依與 Action，有冷卻期：npm 的 patch 一週、minor 兩週、major 一個月，uv 的 patch 與 minor 都是兩週、major 一個月，Action 一律一週，安全更新不等。`@spec-family/*` 是維護者自己的工具，不受冷卻期限制（ADR-0082）。`@types/node` 的 major 跟著最低 Node 版本，不走 Dependabot（ADR-0094）。`huggingface-hub` 的 major 等 Docling 放寬限制，也不走 Dependabot（ADR-0095）。`engines/docling/` 另外用 `exclude-newer = "14 days"`，重鎖時只看上架滿 14 天的版本，安全更新用 `exclude-newer-package` 開例外（ADR-0085）。**已驗證**：Dependabot 第一次跑就重鎖得動這份鎖定檔，但安全更新過不了 `exclude-newer`，要手動開例外（ADR-0087）。
 
 ### 7.4 發佈
 
@@ -1191,6 +1191,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0092](adr/0092-document-layer-decisions.md) | document 層與字元守恆的選型 | M1 |
 | [ADR-0093](adr/0093-setup-uv-follows-dependabot.md) | setup-uv 的版本跟著 Dependabot 更新 | M1 |
 | [ADR-0094](adr/0094-types-node-follows-target.md) | @types/node 的 major 跟著最低 Node 版本 | M1 |
+| [ADR-0095](adr/0095-huggingface-hub-waits-for-docling.md) | huggingface-hub 的 major 等 Docling 放寬 | M1 |
 
 ---
 

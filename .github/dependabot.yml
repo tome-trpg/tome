@@ -9,6 +9,9 @@
 # 一致。等得比它短，提出來的版本在鎖定檔裡解析不出來，更新會失敗（ADR-0087）。
 #
 # 例外：@types/node 的 major 跟著 TOME 的最低 Node 版本，不走 Dependabot（ADR-0094）。
+#
+# 例外：huggingface-hub 的 major 等 Docling 放寬 <2 的限制。升到允許 2 的 Docling 時，
+# 這條要拿掉（ADR-0095）。
 version: 2
 updates:
   - package-ecosystem: npm
@@ -39,6 +42,10 @@ updates:
       semver-patch-days: 14
       semver-minor-days: 14
       semver-major-days: 30
+    ignore:
+      - dependency-name: huggingface-hub
+        update-types:
+          - version-update:semver-major
     open-pull-requests-limit: 5
     commit-message:
       prefix: chore
