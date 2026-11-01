@@ -18,6 +18,8 @@ import { runPatterns, type PatternInput } from './patterns.ts';
 const TARGET_LANGUAGE = 'zh-TW';
 const DATA_EXTENSIONS = new Set(['.yaml', '.yml', '.md']);
 const NOTICE_FILES = new Set(['LICENSE', 'NOTICE']);
+// 一樣算 CPU 時間，但比實際執行嚴一倍：規則包作者的機器可能比使用者快，
+// 同一個限時的話，剛好過關的模式到了較慢的機器就會被終止。
 const ATTACK_TIMEOUT_MS = 500;
 const ATTACK_LENGTHS = [32, 5000];
 const ATTACK_ALPHABET = ['a', 'A', '0', ' ', '-', '.'];
