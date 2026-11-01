@@ -52,6 +52,12 @@ describe('overrides', () => {
     expect(ids(apply({ op: 'move', block: C, after: null }).blocks)).toEqual([C, A, B]);
   });
 
+  it('reports a block told to follow itself, and leaves it where it was', () => {
+    const { blocks, findings } = apply({ op: 'move', block: B, after: B });
+    expect(ids(blocks)).toEqual([A, B, C]);
+    expect(findings.map(({ code }) => code)).toEqual(['overrides.no_block']);
+  });
+
   it('merges blocks in the order given and keeps the first id', () => {
     const { blocks } = apply({ op: 'merge', blocks: [A, B] });
     expect(ids(blocks)).toEqual([A, C]);
@@ -170,8 +176,13 @@ operations:
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it('refuses a file that is not YAML, or not the format', () => {
-    expect(() => readOverrides(bookWith('a: [unclosed'), 'book')).toThrow(TomeError);
+  it('asks the person to fix a syntax error, because the file cannot be made again', () => {
+    expect(() => readOverrides(bookWith('a: [unclosed'), 'book')).toThrow(
+      expect.objectContaining({ code: 'config.invalid_yaml' }),
+    );
+  });
+
+  it('refuses a file that is not the format', () => {
     expect(() => readOverrides(bookWith('schema: tome-overrides/1\noperations:\n  - op: burn\n'), 'book')).toThrow(TomeError);
     expect(() => readOverrides(bookWith(`schema: tome-overrides/1\noperations:\n  - op: role\n    block: ${A}\n    role: table\n`), 'book')).toThrow(TomeError);
   });

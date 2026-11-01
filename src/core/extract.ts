@@ -358,9 +358,16 @@ function documentData(document: IrDocument, reused: boolean): Readonly<Record<st
   };
 }
 
+/** document 層隨時可以重建，檔案壞了就當作沒有。 */
 function reusableDocument(path: string, fingerprint: string, previous: string | null): IrDocument | null {
   if (previous !== fingerprint || !existsSync(path)) return null;
-  const checked = validateIr(JSON.parse(readFileSync(path, 'utf8')));
+  let value: unknown;
+  try {
+    value = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
+  const checked = validateIr(value);
   return checked.ok && checked.value.layer === 'document' ? checked.value : null;
 }
 

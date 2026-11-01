@@ -39,7 +39,8 @@ export function readOverrides(home: string, slug: string): Overrides {
   try {
     value = parse(text);
   } catch {
-    throw new TomeError('file.corrupt', { path });
+    // 這個檔案是人手寫的，不能重新產生，所以不用 file.corrupt：那則訊息會叫人刪掉它。
+    throw new TomeError('config.invalid_yaml', { path });
   }
   const checked = validateOverrides(value);
   if (!checked.ok) throw new TomeError('config.bad_schema', { path, expected: OVERRIDES_SCHEMA });
@@ -155,6 +156,8 @@ function applyOperation(
       return null;
     }
     case 'move': {
+      // 指向自己時，移除之後就找不到了，區塊會被靜默移到最前面。
+      if (operation.after === operation.block) return 'no_block';
       if (operation.after !== null && indexOf(operation.after) < 0) return 'no_block';
       list.splice(index, 1);
       const target = operation.after === null ? 0 : indexOf(operation.after) + 1;

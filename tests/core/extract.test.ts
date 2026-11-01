@@ -359,6 +359,17 @@ describe('the document layer', () => {
     expect(readFileSync(join(bookDir(home, 'book'), 'ir', 'document.json'), 'utf8')).toBe(before);
   });
 
+  it('builds a damaged document again instead of failing', async () => {
+    const home = await library();
+    await extract(home);
+    const first = documentOf(home);
+    writeFileSync(join(bookDir(home, 'book'), 'ir', 'document.json'), '{ not json');
+    const { data, findings } = await extract(home);
+    expect(exitCodeOf(findings)).toBe(0);
+    expect(data['document']).toMatchObject({ reused: false });
+    expect(documentOf(home)).toEqual(first);
+  });
+
   it('builds the same document again from the same layers', async () => {
     const home = await library();
     await extract(home);
