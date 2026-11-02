@@ -51,6 +51,59 @@ describe('scanText (DC-1)', () => {
     expect(scanText('AGENT  SMITH', rules(['Smith'], ['agent smith']))).toEqual([]);
   });
 
+  // 購買者跟 NPC 同名時，使用者會把名字加進例外，浮水印上的全名不能跟著過關（ADR-0104 第 6 項）。
+  it('does not let a shorter exception hide a longer entry', () => {
+    expect(scanText('Licensed to Forged Buyer.', rules(['Forged Buyer'], ['Forged']))).toEqual([
+      { entry: 0, count: 1 },
+    ]);
+  });
+
+  it('spares the entry the exception covers, and still finds the longer one', () => {
+    expect(scanText('Licensed to Forged Buyer.', rules(['Forged', 'Forged Buyer'], ['Forged']))).toEqual([
+      { entry: 1, count: 1 },
+    ]);
+  });
+
+  it('counts what an exception leaves uncovered, next to what it covers', () => {
+    const text = 'Forged Hall. Forged Buyer. Forged Hall. Forged Buyer.';
+    expect(scanText(text, rules(['Forged Buyer', 'Forged Hall'], ['Forged Hall']))).toEqual([{ entry: 0, count: 2 }]);
+    expect(scanText(text, rules(['Forged', 'Forged Buyer'], ['Forged Hall']))).toEqual([
+      { entry: 0, count: 2 },
+      { entry: 1, count: 2 },
+    ]);
+    expect(scanText(text, rules(['Forged', 'Forged Buyer'], ['Forged']))).toEqual([{ entry: 1, count: 2 }]);
+  });
+
+  it('wants the whole hit covered, not just a part of it', () => {
+    expect(scanText('Old Forged Buyer', rules(['Forged Buyer'], ['Old Forged']))).toEqual([{ entry: 0, count: 1 }]);
+    expect(scanText('Forged Buyer Hall', rules(['Forged Buyer'], ['Buyer Hall']))).toEqual([{ entry: 0, count: 1 }]);
+  });
+
+  it('spares an entry the same as the exception', () => {
+    expect(scanText('Forged Buyer', rules(['Forged Buyer'], ['Forged Buyer']))).toEqual([]);
+  });
+
+  it('takes any of several exceptions', () => {
+    const text = 'Agent Smith and Smith Hall.';
+    expect(scanText(text, rules(['Smith'], ['Agent Smith', 'Smith Hall']))).toEqual([]);
+  });
+
+  it('finds a hit that overlaps a covered one', () => {
+    expect(scanText('xababab', rules(['abab'], ['xabab']))).toEqual([{ entry: 0, count: 1 }]);
+  });
+
+  it('holds for a whole request, too', () => {
+    const body = JSON.stringify({ messages: [{ role: 'user', content: 'Licensed to Forged\nBuyer.' }] });
+    expect(scanBody(body, rules(['Forged Buyer'], ['Forged']))).toEqual([{ entry: 0, count: 1 }]);
+  });
+
+  it('stays linear when entries and exceptions match everywhere', () => {
+    const started = performance.now();
+    expect(scanText('a'.repeat(300_000), rules(['aaa'], ['aaa']))).toEqual([]);
+    expect(scanText('a'.repeat(300_000), rules(['aaaa'], ['aaa']))).toHaveLength(1);
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
   it('ignores an empty entry, which would match everywhere', () => {
     expect(scanText('anything', rules(['', '   ']))).toEqual([]);
   });

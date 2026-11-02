@@ -16,23 +16,40 @@ export interface PiiHit {
   readonly count: number;
 }
 
-/** 例外不用空字串蓋掉，否則前後的字會接起來，變成原文沒有的詞。 */
-const BLANK = '\u0000';
-
 function normalize(text: string): string {
   return text.normalize('NFKC').toLowerCase().replace(/\s+/gu, ' ').trim();
 }
 
+/** 每個出現的位置，重疊的也算：漏掉一次就可能漏掉例外沒蓋住的那一次。 */
+function occurrences(text: string, wanted: string): number[] {
+  const found: number[] = [];
+  for (let at = text.indexOf(wanted); at >= 0; at = text.indexOf(wanted, at + 1)) found.push(at);
+  return found;
+}
+
+/** 從每個位置算起，例外最遠蓋到哪裡。 */
+function coverage(text: string, exceptions: readonly string[]): Int32Array {
+  const reach = new Int32Array(text.length);
+  for (const exception of exceptions) {
+    for (const at of occurrences(text, exception)) reach[at] = Math.max(reach[at] ?? 0, at + exception.length);
+  }
+  for (let at = 1; at < reach.length; at += 1) reach[at] = Math.max(reach[at] ?? 0, reach[at - 1] ?? 0);
+  return reach;
+}
+
+/**
+ * 例外只免除它完整蓋住的命中，比例外長的項目照樣命中。購買者跟 NPC 同名時，
+ * 使用者會把名字加進例外，浮水印上的全名不能跟著過關（ADR-0104 第 6 項）。
+ */
 export function scanText(text: string, rules: PiiRules): PiiHit[] {
-  const exceptions = rules.exceptions
-    .map(normalize)
-    .filter((exception) => exception !== '')
-    .sort((a, b) => b.length - a.length);
-  const rest = exceptions.reduce((value, exception) => value.replaceAll(exception, BLANK), normalize(text));
+  const normalized = normalize(text);
+  const exceptions = rules.exceptions.map(normalize).filter((exception) => exception !== '');
+  const reach = coverage(normalized, exceptions);
   return rules.pii.flatMap((item, entry) => {
     const wanted = normalize(item);
-    const count = wanted === '' ? 0 : rest.split(wanted).length - 1;
-    return count === 0 ? [] : [{ entry, count }];
+    if (wanted === '') return [];
+    const hits = occurrences(normalized, wanted).filter((at) => (reach[at] ?? 0) < at + wanted.length);
+    return hits.length === 0 ? [] : [{ entry, count: hits.length }];
   });
 }
 

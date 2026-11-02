@@ -187,6 +187,44 @@ describe('--confirm (ADR-0103)', () => {
     setWorkspace(lib.home, 'translator_model: claude-opus-5-5\npii: [Forged Buyer]\n');
     expect((await estimate(lib)).output.data['confirmed']).toBe(false);
   });
+
+  // 譯名與角色風格會改變送出的內容，卻不在靜態前綴裡（ADR-0104 第 41 項）。
+  describe('with a rule pack of its own', () => {
+    function setPackFile(home: string, file: string, text: string): void {
+      const dir = join(home, 'systems', 'child');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, file), text);
+    }
+
+    async function withPack(): Promise<Library> {
+      const lib = await library();
+      setPackFile(lib.home, 'pack.yaml', 'schema: tome-pack/1\nid: child\nversion: 0.1.0\nlicense: UNLICENSED\nsource_langs: [en]\n');
+      setPackFile(lib.home, 'glossary.yaml', 'terms:\n  - source: { en: warden }\n    target: 看守人\n');
+      setPackFile(lib.home, 'roles.yaml', 'roles:\n  gm_note:\n    style: 語氣直接。\n');
+      const path = join(lib.home, 'books', 'book', 'book.yaml');
+      writeFileSync(path, `${readFileSync(path, 'utf8')}system: child\n`);
+      await estimate(lib, '--budget', '100', '--confirm');
+      expect((await estimate(lib)).output.data['confirmed']).toBe(true);
+      return lib;
+    }
+
+    it('asks again when only the target of a term changes', async () => {
+      const lib = await withPack();
+      setPackFile(lib.home, 'glossary.yaml', 'terms:\n  - source: { en: warden }\n    target: 守衛\n');
+      expect((await estimate(lib)).output.data['confirmed']).toBe(false);
+    });
+
+    it('asks again when only the style of a role changes', async () => {
+      const lib = await withPack();
+      setPackFile(lib.home, 'roles.yaml', 'roles:\n  gm_note:\n    style: 語氣溫和。\n');
+      expect((await estimate(lib)).output.data['confirmed']).toBe(false);
+    });
+
+    it('stays confirmed when nothing in the pack changed', async () => {
+      const lib = await withPack();
+      expect((await estimate(lib)).output.data['confirmed']).toBe(true);
+    });
+  });
 });
 
 describe('tome estimate --realtime (ADR-0104)', () => {

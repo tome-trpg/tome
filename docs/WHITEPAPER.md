@@ -1030,7 +1030,7 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 
 **估價**在本機完成，不連網：依字元數與各家比例估算，顯示成區間。`tome trial` 先翻一小段，用實際 `usage` 校準比例，人工改動也回饋成風格範例。試翻用小批次執行，才量得到 Batch 的快取命中率。估價同時顯示資料保留時間（DC-3）。
 
-**已實作**：`tome estimate`、`--confirm`、`--budget`、`--chapters`、`--realtime`、`tome translate --dry-run`、預算檢查與費用帳本（`src/core/request.ts`、`src/core/estimate.ts`、`src/core/budget.ts`、`src/core/ledger.ts`；`tests/cli/estimate.test.ts`、`tests/core/estimate.test.ts`、`tests/core/budget.test.ts`、`tests/core/ledger.test.ts`）。估價的比例與思考的倍數都是**提案**，沒有量過，要等 `tome trial`（ADR-0103）。估價模式不存進 `book.yaml`，確認時隨內容指紋記下，`fallback_model` 與重送的句子也進指紋，對不上就回報 `translate.not_confirmed`（ADR-0104）。即時模式每個請求送出前都檢查預算（`tests/cli/translate.test.ts`）。第一次真實請求由維護者在 019 之後跑。
+**已實作**：`tome estimate`、`--confirm`、`--budget`、`--chapters`、`--realtime`、`tome translate --dry-run`、預算檢查與費用帳本（`src/core/request.ts`、`src/core/estimate.ts`、`src/core/budget.ts`、`src/core/ledger.ts`；`tests/cli/estimate.test.ts`、`tests/core/estimate.test.ts`、`tests/core/budget.test.ts`、`tests/core/ledger.test.ts`）。估價的比例與思考的倍數都是**提案**，沒有量過，要等 `tome trial`（ADR-0103）。估價模式不存進 `book.yaml`，確認時隨內容指紋記下，`fallback_model`、重送的句子與規則包也進指紋，對不上就回報 `translate.not_confirmed`（ADR-0104）。即時模式每個請求送出前都檢查預算（`tests/cli/translate.test.ts`）。第一次真實請求由維護者在 019 之後跑。
 
 **快取**依實測決定。靜態前綴一律保持位元組一致，但不為了門檻灌水，詞庫只送命中的詞條與活躍實體。試翻量到的命中率高於損益兩平點，才開 1 小時快取與預熱。Gemini 預設走隱式快取。
 
@@ -1049,7 +1049,7 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 
 主程式所有對外網路請求 MUST 走單一模組，其他程式不得自己連網，由 spec-guard 斷言把關。唯一的例外是安裝解析引擎時由 uv 與引擎工具做的下載，那是獨立行程，使用者主動執行（ADR-0081）。個資閘門（DC-1）與端點白名單（DC-2）都在這裡。
 
-**已實作**：ADR-0039 的兩條斷言擋下 `src/core/egress/` 以外的連網模組、供應商 SDK 與全域連網 API，`spec-guard prove` 看過它們失敗。對外只有 `guardedFetch`（`src/core/egress/client.ts`；`tests/core/egress.test.ts`），依序檢查主機、掃描序列化後的完整請求、寫外送紀錄，都過了才送，轉址當成失敗。白名單是 `providers/anthropic.yaml` 的 `endpoint`，規則包碰不到。個資閘門在 `src/core/egress/gate.ts`，比對字串，解開 JSON 與標籤跳脫後才比，清單項目少於 3 個字元時警告，命中時回報次數，不列出命中的文字（ADR-0104）。
+**已實作**：ADR-0039 的兩條斷言擋下 `src/core/egress/` 以外的連網模組、供應商 SDK 與全域連網 API，`spec-guard prove` 看過它們失敗。對外只有 `guardedFetch`（`src/core/egress/client.ts`；`tests/core/egress.test.ts`），依序檢查主機、掃描序列化後的完整請求、寫外送紀錄，都過了才送，轉址當成失敗。白名單是 `providers/anthropic.yaml` 的 `endpoint`，規則包碰不到。個資閘門在 `src/core/egress/gate.ts`，比對字串，解開 JSON 與標籤跳脫後才比，例外只免除它完整蓋住的命中，比例外長的項目照樣命中，清單項目少於 3 個字元時警告，命中時回報次數，不列出命中的文字（ADR-0104）。
 
 本機留外送紀錄，只記內容雜湊、供應商、模型、大小與時間，不記內容。OpenRouter 一律送 `data_collection: deny`，因為它的預設是 `allow`。
 

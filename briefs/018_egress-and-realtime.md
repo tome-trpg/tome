@@ -92,5 +92,7 @@ protectedFiles:
 | `tome preview`、`pii.too_short`、`fallback_model` 進指紋 | 測試在實作之後才寫，故意改壞程式後 6 個失敗，再改回來 |
 | `prompts/feedback.yaml` 進指紋、`tome preview` 只刪自己的檔案 | 改程式之前 2 個失敗 |
 | 截斷的回應算進預算、截斷的單位不留在 `RECEIVED` | 程式本來就符合，故意改壞後失敗，再改回來 |
+| 個資例外只免除完整蓋住的命中（審查時抓到） | 舊程式上 7 個失敗。例外 `Forged`、清單 `Forged Buyer` 時 `scanText` 回 `[]`，全名會送出去 |
+| 規則包進指紋（審查時抓到） | 舊程式上 2 個失敗。只改詞條譯名或角色風格時 `confirmed` 還是 `true` |
 
 護欄測試在舊行為上本來就會過：閘門命中不動單位狀態、尊重 `pii_exceptions`、同組單位不重複出現、`--retry-failed` 只動選定的章節、沒有存回應的 `RECEIVED` 會重送。它們擋的是之後的退化。

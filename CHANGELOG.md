@@ -37,8 +37,8 @@
 - `tome estimate`：在本機估算翻譯費用，不連網。可用 `--budget` 設定預算、`--chapters` 限定章節、`--confirm` 確認估價。估算的比例尚未以實際用量校準。
 - `tome translate --dry-run`：組出所有請求但不送出。實際翻譯尚未提供。
 - `tome.yaml` 新增 `translator_model`、`fallback_model` 與個資清單 `pii`。清單是空的時候，`tome doctor` 與 `tome estimate` 會警告。
-- `tome estimate --realtime` 與 `tome translate --dry-run --realtime`：以即時模式的價格估算。模式與 `fallback_model` 變更後需要重新確認估價。
-- 個資閘門：請求送出前掃描完整內容，符合 `pii` 清單時不會送出，也不會在訊息中列出符合的文字。`tome translate --dry-run` 使用相同的檢查。清單項目少於 3 個字元時，`tome doctor` 與 `tome estimate` 會警告。
+- `tome estimate --realtime` 與 `tome translate --dry-run --realtime`：以即時模式的價格估算。模式、`fallback_model` 或規則包變更後需要重新確認估價。
+- 個資閘門：請求送出前掃描完整內容，符合 `pii` 清單時不會送出，也不會在訊息中列出符合的文字。`book.yaml` 的 `pii_exceptions` 只免除例外完整涵蓋的文字，比例外長的清單項目仍會攔截。`tome translate --dry-run` 使用相同的檢查。清單項目少於 3 個字元時，`tome doctor` 與 `tome estimate` 會警告。
 - 對外請求一律經過單一模組，只能連往供應商設定檔的端點，並在 `book.db` 留下外送紀錄，內容僅有雜湊、供應商、模型、大小與時間。
 - `tome preview`：在 `books/<名稱>/review/` 產生原文與譯文對照，每章一個檔案，只存放於本機。翻譯功能完成後才有譯文可對照。
 

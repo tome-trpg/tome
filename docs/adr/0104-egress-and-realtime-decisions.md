@@ -31,7 +31,7 @@ brief 018 開工前比對 ADR-0099、ADR-0017、ADR-0038、ADR-0039 與白皮書
 
 **個資閘門**
 
-6. 比對前兩邊都做 NFKC、不分大小寫、連續空白視為一個。比對字串，不用正規表示式。`pii_exceptions` 做同樣的正規化，命中例外的那一段不算。
+6. 比對前兩邊都做 NFKC、不分大小寫、連續空白視為一個。比對字串，不用正規表示式。`pii_exceptions` 做同樣的正規化。例外只免除它完整蓋住的命中：比對位置，命中落在某個例外的範圍內才不算，比例外長的項目照樣命中。購買者跟 NPC 同名時，把名字加進例外不會放過浮水印上的全名。
 7. 比對的是解開 JSON 與標籤跳脫之後的文字，否則換行與 `&amp;` 會讓比對落空。
 8. 清單項目少於 3 個字元時，`tome estimate` 與 `tome doctor` 警告，太短會誤判。
 9. 命中時整個請求的單位標成 `BLOCKED`，流程停下，回報命中幾次，不列出命中的文字，因為那就是個資。`issue` 記下命中位置，只留在工作區（DC-1）。
@@ -122,7 +122,7 @@ brief 018 開工前比對 ADR-0099、ADR-0017、ADR-0038、ADR-0039 與白皮書
 **翻譯記憶**
 
 40. 輪到一個請求時才查那個請求的 `PENDING` 單位，不在開頭一次查完。同一本書後面重複的段落，才吃得到前面剛翻好的記憶。命中的從請求拿掉，整個請求都命中就不送。估價不因此改變，它本來就是上限。
-41. `prompt_hash` 是靜態前綴加上 `prompts/feedback.yaml` 全文的 SHA-256，`pack_hash` 是規則包繼承鏈解析後內容的 SHA-256，不含路徑，`sdk_version` 由轉接層提供。內容指紋用同一個 `prompt_hash`，所以 `prompts/feedback.yaml` 改了要重新確認估價。
+41. `prompt_hash` 是靜態前綴加上 `prompts/feedback.yaml` 全文的 SHA-256，`pack_hash` 是規則包繼承鏈解析後內容的 SHA-256，不含路徑，`sdk_version` 由轉接層提供。內容指紋用同樣的 `prompt_hash` 與 `pack_hash`，所以 `prompts/feedback.yaml` 或規則包改了都要重新確認估價：詞條與角色風格不在靜態前綴裡，卻會改變實際送出的內容。
 42. 翻譯記憶命中時寫一列 `response`，`attempt` 是 0，`model` 取記憶裡的模型，文字是記憶裡的片段，`tome verify` 才驗得到。續跑時重跑驗證的 `RECEIVED` 單位用當下的雜湊寫進記憶，不為了它在 `response` 加欄位：提示或規則包在中斷期間變了的話，指紋會變，要重新確認。
 
 **對半拆與截斷**
@@ -154,6 +154,8 @@ brief 018 開工前比對 ADR-0099、ADR-0017、ADR-0038、ADR-0039 與白皮書
 <!-- @assert-count target="src/core/translate.ts" symbol="UPDATE unit SET attempts = 0" expected="1" reason="第 34 項：--retry-failed 放回佇列時 attempts 歸零" -->
 <!-- @assert-count target="src/core/request.ts" symbol="fallback?.id ?? null" expected="1" reason="第 37 項：fallback_model 進內容指紋" -->
 <!-- @assert-count target="src/core/request.ts" symbol="promptHash(prefix)," expected="1" reason="第 41 項：prompts/feedback.yaml 進內容指紋" -->
+<!-- @assert-count target="src/core/request.ts" symbol="packHash(pack)," expected="1" reason="第 41 項：規則包進內容指紋" -->
+<!-- @assert-absence target="src/core/egress/gate.ts" symbol="replaceAll" reason="第 6 項：例外比對位置，不把文字蓋掉" -->
 <!-- @assert-count target="src/core/translate.ts" symbol="'receive', 'fail'" expected="1" reason="第 44 項：截斷的單位不留在 RECEIVED" -->
 <!-- @assert-count target="src/core/translate.ts" symbol="'receive', 'give_up'" expected="1" reason="第 44 項：截斷的單位不留在 RECEIVED" -->
 <!-- @assert-absence target="src/core/preview.ts" symbol="recursive: true, force: true" reason="第 48 項：不刪整個資料夾" -->
@@ -164,7 +166,7 @@ brief 018 開工前比對 ADR-0099、ADR-0017、ADR-0038、ADR-0039 與白皮書
 
 ## 替代方案
 
-**整個 018 等到 11-03**：M2 要停約兩天；**閘門用正規表示式**：使用者寫的清單不該被當成模式，還多一種逾時要處理；**先換模型再對半拆**：一個問題段落會讓整個請求改用別的模型；**用伺服器端回退**：Batch 不支援，要維護兩條路；**重送不附原因**：模型不知道哪裡錯，容易犯同樣的錯；**開頭一次查完翻譯記憶**：同一本書後面重複的段落吃不到；**`prompts/feedback.yaml` 不進指紋**：句子改了也不用重新確認，估價確認過的內容就不是實際送出的內容；**整個 `review/` 刪掉重建**：使用者放在裡面的檔案會不見。
+**整個 018 等到 11-03**：M2 要停約兩天；**閘門用正規表示式**：使用者寫的清單不該被當成模式，還多一種逾時要處理；**先換模型再對半拆**：一個問題段落會讓整個請求改用別的模型；**用伺服器端回退**：Batch 不支援，要維護兩條路；**重送不附原因**：模型不知道哪裡錯，容易犯同樣的錯；**開頭一次查完翻譯記憶**：同一本書後面重複的段落吃不到；**`prompts/feedback.yaml` 不進指紋**：句子改了也不用重新確認，估價確認過的內容就不是實際送出的內容；**整個 `review/` 刪掉重建**：使用者放在裡面的檔案會不見；**先把例外從文字蓋掉再比對**：短的例外會連比它長的個資一起蓋掉，全名就送出去了。
 
 ## Open Questions
 

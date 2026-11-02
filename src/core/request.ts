@@ -17,7 +17,7 @@ import { finding, type Finding } from './findings.ts';
 import type { IrDocument } from './ir.ts';
 import { loadTargetLanguage } from './language.ts';
 import { spentUsd } from './ledger.ts';
-import type { LocalizedTerm, ResolvedPack } from './pack.ts';
+import { packHash, type LocalizedTerm, type ResolvedPack } from './pack.ts';
 import { feedbackSentences, fillSentence, promptHash, staticPrefix } from './prompt.ts';
 import {
   findModel,
@@ -322,7 +322,7 @@ export interface BookPlan {
   readonly unitCount: number;
   readonly chars: number;
   readonly estimate: Estimate;
-  /** 單位、模型、價格、範圍、預算、提示與模式的內容指紋（ADR-0103、ADR-0104）。 */
+  /** 單位、模型、回退模型、價格、範圍、預算、提示、規則包與模式的內容指紋（ADR-0103、ADR-0104）。 */
   readonly fingerprint: string;
   /** 全書依閱讀順序的單位，上文要用。 */
   readonly units: readonly TranslationUnit[];
@@ -388,6 +388,7 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
         spec ?? null,
         book.config.budget_usd ?? null,
         promptHash(prefix),
+        packHash(pack),
         mode,
       ]),
     )

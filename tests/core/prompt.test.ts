@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { loadTargetLanguage } from '../../src/core/language.ts';
-import { findPack, resolvePack, type ResolvedPack } from '../../src/core/pack.ts';
+import { findPack, packHash, resolvePack, type ResolvedPack } from '../../src/core/pack.ts';
 import { feedbackSentences, fillSentence, promptHash, readInstructions, staticPrefix } from '../../src/core/prompt.ts';
 import { tempDir } from '../helpers.ts';
 
@@ -107,6 +107,20 @@ describe('the sentences of a resend (ADR-0104)', () => {
     expect(promptHash('a')).not.toBe(promptHash('b'));
     expect(promptHash('a')).toBe(promptHash('a'));
     expect(promptHash('a')).not.toBe(createHash('sha256').update('a').digest('hex'));
+  });
+});
+
+describe('packHash (ADR-0104 item 41)', () => {
+  const glossary = (target: string): Readonly<Record<string, string>> => ({
+    'glossary.yaml': `terms:\n  - source: { en: warden }\n    target: ${target}\n`,
+  });
+
+  it('changes with the content', () => {
+    expect(packHash(childPack(glossary('看守人')))).not.toBe(packHash(childPack(glossary('守衛'))));
+  });
+
+  it('does not change with where the pack lives', () => {
+    expect(packHash(childPack(glossary('看守人')))).toBe(packHash(childPack(glossary('看守人'))));
   });
 });
 
