@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-02
 type: feature
 wave: 17
@@ -28,7 +28,15 @@ protectedFiles:
   - package-lock.json
   - package.json
   - systems/**
+integrity: sha256-061613ab6a2b50950dc94a1917af8396ac6d8387f3145aa9d66fe26277bb777f
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-02.**
+> Merged in pull request [#49](https://github.com/tome-trpg/tome/pull/49).
+> Recorded at commit `23da938`: 40 files changed, +3501 −109.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 018 — 對外出口與即時模式
 
