@@ -1,5 +1,6 @@
 // 函式庫入口。CLI 只是外面一層（ADR-0028）。
 export * from './assemble.ts';
+export * from './batch.ts';
 export * from './book.ts';
 export * from './budget.ts';
 export * from './conservation.ts';
@@ -35,6 +36,7 @@ export * from './request.ts';
 export * from './schema.ts';
 export * from './secrets.ts';
 export * from './state.ts';
+export * from './status.ts';
 export * from './store.ts';
 export * from './tags.ts';
 export * from './translate.ts';

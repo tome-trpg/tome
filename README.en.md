@@ -45,6 +45,7 @@ The following features are design goals. See [Development status](#development-s
 | Translation re-verification | `tome verify` | Implemented; there is nothing to verify until translation is available |
 | Cost estimate | `tome estimate`, `tome translate --dry-run` | Implemented: runs locally with no network; the ratios are not calibrated yet |
 | Side-by-side review | `tome preview` | Implemented; there is nothing to compare until translation is available |
+| Progress and spending | `tome status` | Implemented: reads local data only, with no network |
 | Translation and output | Not available | Planned |
 
 ## Out of scope

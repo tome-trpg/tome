@@ -111,6 +111,35 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
         ) STRICT;
       `,
     },
+    {
+      // 批次的意圖紀錄、遠端 ID 與對應的單位（ADR-0054、ADR-0107）。先寫意圖再送出，當機後才認得回來。
+      version: 6,
+      sql: `
+        CREATE TABLE batch (
+          id INTEGER PRIMARY KEY,
+          nonce TEXT NOT NULL UNIQUE,
+          remote_id TEXT UNIQUE,
+          state TEXT NOT NULL,
+          requests INTEGER NOT NULL,
+          high_usd REAL NOT NULL,
+          created_at TEXT NOT NULL,
+          submitted_at TEXT,
+          expires_at TEXT,
+          ended_at TEXT,
+          collected_at TEXT,
+          deleted_at TEXT
+        ) STRICT;
+        CREATE TABLE batch_unit (
+          batch_id INTEGER NOT NULL,
+          custom_id TEXT NOT NULL,
+          position INTEGER NOT NULL,
+          unit_id TEXT NOT NULL,
+          model TEXT NOT NULL,
+          PRIMARY KEY (batch_id, custom_id, position)
+        ) STRICT;
+        CREATE INDEX batch_unit_unit ON batch_unit (unit_id);
+      `,
+    },
   ],
   series: [
     { version: 1, sql: metaTable('series') },

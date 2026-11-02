@@ -1,5 +1,5 @@
 {
-  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   將 API 金鑰存入作業系統憑證庫\n  provider list                列出 TOME 知道怎麼呼叫的模型與價格\n  add <pdf>                    加入書籍並執行探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <名稱>                 探測文件結構與頁面類型\n  extract <名稱>               以解析引擎解析書籍頁面\n  estimate <名稱>              在本機估算翻譯費用，不連網\n    [--budget <美元>] [--chapters <範圍>] [--realtime] [--confirm]\n  translate <名稱> --dry-run   組出所有請求但不送出\n  verify <名稱>                以已儲存的回應重新驗證譯文，不消耗 token\n  preview <名稱>               在本機產生原文與譯文對照\n  engine add <名稱或路徑>      安裝解析引擎，加上 --gpu 則安裝 CUDA 版\n  engine list                  列出已安裝的解析引擎\n  engine remove <名稱>         移除解析引擎\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加上 --public 則一併檢查公開規則包的要求\n  system test <ID 或路徑>      執行規則包的測試案例，不消耗 token\n\n選項：\n  --json     以 JSON 格式輸出\n  --help     顯示本說明\n  --version  顯示版本\n",
+  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   將 API 金鑰存入作業系統憑證庫\n  provider list                列出 TOME 知道怎麼呼叫的模型與價格\n  add <pdf>                    加入書籍並執行探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <名稱>                 探測文件結構與頁面類型\n  extract <名稱>               以解析引擎解析書籍頁面\n  estimate <名稱>              在本機估算翻譯費用，不連網\n    [--budget <美元>] [--chapters <範圍>] [--realtime] [--confirm]\n  translate <名稱> --dry-run   組出所有請求但不送出\n  verify <名稱>                以已儲存的回應重新驗證譯文，不消耗 token\n  preview <名稱>               在本機產生原文與譯文對照\n  status <名稱>                顯示翻譯進度與花費，不連網\n  engine add <名稱或路徑>      安裝解析引擎，加上 --gpu 則安裝 CUDA 版\n  engine list                  列出已安裝的解析引擎\n  engine remove <名稱>         移除解析引擎\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加上 --public 則一併檢查公開規則包的要求\n  system test <ID 或路徑>      執行規則包的測試案例，不消耗 token\n\n選項：\n  --json     以 JSON 格式輸出\n  --help     顯示本說明\n  --version  顯示版本\n",
   "prompt": {
     "secret": "請輸入 {provider} 的 API 金鑰（輸入內容不會顯示）："
   },
@@ -7,7 +7,9 @@
     "sync": "正在建立環境並下載相依套件，可能需要數分鐘……\n",
     "prepare": "正在下載模型權重……\n",
     "page": "已解析 {done}/{total} 頁。\n",
-    "unit": "已完成 {done} 個翻譯單位，共 {total} 個。\n"
+    "unit": "已完成 {done} 個翻譯單位，共 {total} 個。\n",
+    "batch_sent": "已送出第 {batch} 批，含 {requests} 個請求。\n",
+    "batch_wait": "第 {batch} 批處理中，已等待 {minutes} 分鐘。\n"
   },
   "level": {
     "fail": "問題",
@@ -41,7 +43,19 @@
     }
   },
   "finding": {
-    "book.added": "已加入 {name}，工作資料位於 {path}。PDF 保留在原位置，不會複製。",
+    "batch.archived": "批次 {id} 的結果已超過供應商的保留期限，無法收回。單位已放回佇列，重新送出會再付一次費用。",
+    "batch.budget_exceeded": "下一批的估價上限 ${next} 美元加上已花費的 ${spent} 美元，超過預算 ${budget} 美元，已停止並保留進度。請以 tome estimate {book} --budget <美元> --confirm 提高預算後續跑。",
+    "batch.canceling": "批次 {id} 正在取消。已處理完的請求仍會有結果，請稍後以 tome batch collect {book} 收回。",
+    "batch.delete_failed": "批次 {id} 的資料沒有從供應商端刪除，下次執行 tome translate 或 tome batch collect 時會再試。",
+    "batch.ended": "批次 {id} 已處理完：成功 {succeeded} 個，錯誤 {errored} 個，取消 {canceled} 個，過期 {expired} 個。請以 tome batch collect {book} 收回。",
+    "batch.errored": "有 {count} 個請求沒有完成，供應商回報：{type}。單位已放回佇列並保留進度，確認原因後再執行一次即可續跑。",
+    "batch.none": "這本書沒有送出後尚未收回的批次。",
+    "batch.not_sent": "上次中斷時有一批 {requests} 個請求沒有送到供應商，已放回佇列，會重新送出。",
+    "batch.pending": "這本書還有送出後尚未收回的批次。請先以 tome batch collect {book} 收回，或以 tome batch cancel {book} 取消，再改用即時模式，否則同一段會付兩次費用。",
+    "batch.processing": "批次 {id} 還在處理。",
+    "batch.recovered": "已找回上次中斷前送出的批次 {id}，接著收回結果。",
+    "batch.unconfirmed": "有一批 {requests} 個請求在送出時中斷，還不確定供應商是否收到。執行 tome translate 或 tome batch collect 時會確認。",
+    "book.added":"已加入 {name}，工作資料位於 {path}。PDF 保留在原位置，不會複製。",
     "book.already_added": "這本書已加入過，名稱為 {name}。未變更任何檔案。",
     "book.name_taken": "名稱 {name} 已被其他書籍使用。請以 --as <名稱> 指定其他名稱。",
     "book.unreadable": "無法讀取書籍 {name} 的資料，已略過。請檢查其 book.yaml。",
@@ -133,6 +147,12 @@
     "probe.unchanged": "PDF 沒有變動，沿用上次的探測結果。",
     "sqlite.ok": "SQLite 版本 {version}。",
     "sqlite.unavailable": "此 Node 環境無法使用 node:sqlite。請確認 Node 版本符合 TOME 的需求。",
+    "status.batch": "批次 {id} 於 {submitted}（{submitted_zone}）送出，含 {requests} 個請求，{expires}（{expires_zone}）前未處理完的請求會過期。",
+    "status.no_budget": "已花費 ${spent} 美元，尚未設定預算。",
+    "status.no_units": "這本書還沒有翻譯單位。請先執行 tome estimate {book}。",
+    "status.not_deleted": "{count} 個批次的資料還沒從供應商端刪除，下次執行 tome translate 或 tome batch collect 時會再試。",
+    "status.spent": "已花費 ${spent} 美元，預算 ${budget} 美元。",
+    "status.units": "共 {total} 個翻譯單位：完成 {done} 個，送出未收回 {in_flight} 個，個資閘門擋下 {blocked} 個，未通過驗證 {failed} 個，遭拒答 {refused} 個，尚未完成 {left} 個。",
     "translate.blocked": "請求含有個資清單的項目，命中 {count} 次，沒有送出。確實是個資時，請在 overrides 用 redact 遮掉；是誤判時，請加進 book.yaml 的 pii_exceptions。處理後再執行一次，翻譯時被擋下的單位要加上 --retry-failed。",
     "translate.budget_exceeded": "下一個請求的估價上限 ${next} 美元加上已花費的 ${spent} 美元，超過預算 ${budget} 美元，已停止並保留進度。請以 tome estimate {book} --realtime --budget <美元> --confirm 提高預算後續跑。",
     "translate.done": "共 {total} 個翻譯單位：完成 {done} 個，個資閘門擋下 {blocked} 個，未通過驗證 {failed} 個，遭拒答 {refused} 個，尚未完成 {left} 個。已花費 ${spent} 美元。未通過驗證與遭拒答的單位可加上 --retry-failed 重試。",

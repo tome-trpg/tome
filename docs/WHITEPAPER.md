@@ -635,27 +635,28 @@ flowchart LR
 
 ```ts
 interface LLMProvider {
-  readonly id: ProviderId;
+  readonly id: string;
   readonly sdkVersion: string;                 // 存進翻譯記憶
-  readonly capabilities: ProviderCapabilities; // 是否有 Batch、顯式快取、遠端刪除
 
-  send(request: TranslationRequest): Promise<RequestResult>;
+  send(body: MessagesBody): Promise<RequestResult>;
 
-  submitBatch(requests: TranslationRequest[], intent: BatchIntent): Promise<RemoteBatch>;
-  pollBatch(batch: RemoteBatch): Promise<BatchStatus>;
-  collectBatch(batch: RemoteBatch): AsyncIterable<RequestResult>;
-  deleteRemote(batch: RemoteBatch): Promise<void>;
+  submitBatch(requests: readonly BatchRequest[]): Promise<RemoteBatch | ApiError>;
+  pollBatch(id: string): Promise<RemoteBatch | ApiError>;
+  collectBatch(id: string): Promise<readonly BatchItem[] | ApiError>;
+  cancelBatch(id: string): Promise<RemoteBatch | ApiError>;
+  deleteRemote(id: string): Promise<ApiError | null>;
+  listBatches(after: string | null): Promise<BatchPage | ApiError>;
 }
 
 type RequestResult =
-  | { outcome: 'ok' | 'truncated'; requestId: RequestId; text: string; usage: Usage }
-  | { outcome: 'refused'; requestId: RequestId; category: string | null; usage: Usage }
+  | { outcome: 'ok' | 'truncated'; requestId: string; text: string; usage: Usage }
+  | { outcome: 'refused'; requestId: string; category: string | null; usage: Usage }
   | { outcome: 'error'; status: number | null; retryAfter: number | null };
 ```
 
-轉接層不自己連網，一律透過對外出口模組（[§8.2](#82-對外出口)）。回應的解析與拒答判斷放在核心，每個協定不用各寫一次，供應商以請求計費，帳本依字元數分攤到單位。
+轉接層不自己連網，一律透過對外出口模組（[§8.2](#82-對外出口)）。回應與批次結果的解析、拒答與截斷的判斷都放在核心，每個協定不用各寫一次，供應商以請求計費，帳本依字元數分攤到單位。`capabilities` 等第二家供應商進來時再加，M2 只有 Anthropic（ADR-0107）。
 
-**已實作**：介面的 `send`、重試與判斷回應的函式（`src/core/llm.ts`；`tests/core/llm.test.ts`），`capabilities` 與 Batch 的方法到 019 才有。真的轉接層要等 brief 022，現在由呼叫端注入，只有測試會注入，`tome translate --realtime` 對使用者維持 `translate.not_ready`（ADR-0104）。
+**已實作**：介面、重試與判斷回應、批次結果的函式（`src/core/llm.ts`；`tests/core/llm.test.ts`）。真的轉接層要等 brief 022，現在由呼叫端注入，只有測試會注入，`tome translate` 與 `tome batch` 對使用者維持 `translate.not_ready`（ADR-0104、ADR-0107）。
 
 | 供應商 | 快取 | Batch |
 | :--- | :--- | :--- |
@@ -675,14 +676,16 @@ type RequestResult =
 
 | 模式 | 用途 |
 | :--- | :--- |
-| `batch` | 預設。相鄰章節併到字元上限，過大才拆，省 50%。上限是提案（ADR-0099） |
+| `batch` | 預設。相鄰章節併到 100,000 字元原文，單一章超過才在請求的邊界拆開，省 50%。上限是提案（ADR-0099、ADR-0107）。M2 一次只有一批在跑 |
 | `realtime` | 沒有 Batch 的供應商，或用 `--realtime` 想馬上看到結果。M2 一次一個請求，只有指數退避，不另外做 RPM／TPM 限流。429、5xx 與網路錯誤最多重試 5 次，次數與秒數是提案（ADR-0104）。每個請求完成就寫入狀態庫 |
 
 一個請求約 6,000 字元（約 2,000 token），帶約 800 字元上文。用字元數是因為各家 token 計法不同（TC-5）。同組單位不拆開（ADR-0029）。
 
-三個層級要分清楚：**單位**是一段譯文，**請求**是一次 LLM 呼叫，含多個單位，**批次**是供應商的 Batch 工作，通常一章一個，含多個請求。
+三個層級要分清楚：**單位**是一段譯文，**請求**是一次 LLM 呼叫，含多個單位，**批次**是供應商的 Batch 工作，含多個請求，相鄰的章節併在一起。
 
-**Batch 流程**：送出、輪詢、收結果、驗證、刪除遠端資料。每批送出前檢查預算（[§8.1](#81-成本控制)）。收回結果後，有刪除 API 的供應商 MUST 呼叫，縮短保留窗口。狀態機與續跑見 [§6](#6-執行期視圖)。
+**Batch 流程**：送出、輪詢、收結果、驗證、刪除遠端資料。每批送出前檢查預算（[§8.1](#81-成本控制)）與個資閘門，命中就整批不送。收回結果後，有刪除 API 的供應商 MUST 呼叫，縮短保留窗口。被拒、截斷、驗證失敗與可以重送的錯誤排進下一批，過期與取消的請求不收費，也放回佇列。狀態機與續跑見 [§6](#6-執行期視圖)。
+
+**已實作**：批次流程與分批（`src/core/batch.ts`、`src/core/request.ts`；`tests/cli/batch.test.ts`、`tests/core/request.test.ts`）：每批的預算與閘門、意圖紀錄、送出、每 60 秒輪詢、結果不依順序也對得回去、刪除遠端資料、刪除失敗下次再試。假供應商模擬處理中、部分成功、單筆錯誤、被拒、截斷、過期、取消與結果亂序，行為照 2026-11-02 讀的官方文件。這些都只用假供應商跑過，沒有對真的 Batches API 發過請求，字元上限與輪詢間隔是**提案**（ADR-0107）。
 
 **拒答**是獨立狀態 `REFUSED`，不算 QA 失敗（ADR-0038）。轉接層 MUST 檢查各家的拒答訊號，Anthropic Batch 回 `succeeded` 時也要看 `stop_reason`。
 
@@ -825,6 +828,10 @@ flowchart TD
 
 **批次提交**先寫入意圖紀錄，再呼叫 API，取得遠端 ID 後才更新。當機時靠這份紀錄比對遠端批次，避免重複付費（H-17）。
 
+**已實作**：續跑、`tome batch status|collect|cancel` 與 `tome status`（`src/core/batch.ts`、`src/core/status.ts`；`tests/cli/batch.test.ts`）。批次模式開頭先收回上次留下的批次，即時模式遇到沒收回的批次就停下，同一段不付兩次。建立批次時沒收到回應或收到 5xx 都不重送，留著意圖紀錄，下次執行去認，只有 429 這類 4xx 原地重試（ADR-0108）。收回到一半中斷時再下載一次結果，跳過已經套用的請求，帳本同一個請求只記一次。`tome status` 只讀本機的資料，不連網，不拿書的鎖（ADR-0107）。
+
+**認回批次**的程式已寫好：沒有遠端 ID 的意圖，從最新的批次往回列到意圖時間減 10 分鐘，取這本書沒記錄過、請求數相同的最早一批，收回時用 `custom_id` 裡的隨機碼確認，對不上的不採用也不刪除，沒有候選就重送。只對假供應商測過，依賴 H-17，真實請求驗證之前不算已實作。10 分鐘的時鐘差是**提案**（ADR-0107）。
+
 ### 6.2 翻譯單位的狀態
 
 ```mermaid
@@ -852,7 +859,7 @@ stateDiagram-v2
 
 **已實作**：`src/core/state.ts`（`tests/core/state.test.ts`），用 fast-check 做 model-based 測試，重試上限是常數 3。`tome verify` 重跑驗證時一律先進 `STALE`，不動 `attempts`（ADR-0102）。
 
-`attempts` 只算模型回了譯文的次數，含截斷與漏掉的單位，拒答、429、5xx 與網路錯誤不算。即時模式開始時先收尾：`RECEIVED` 與存下來的 `STALE` 用已存的回應重跑驗證，`IN_FLIGHT` 回到 `QUEUED` 重送。`--retry-failed` 放回佇列時 `attempts` 歸零（ADR-0104）。
+`attempts` 只算模型回了譯文的次數，含截斷與漏掉的單位，拒答、429、5xx 與網路錯誤不算。開始時先收尾：`RECEIVED` 與存下來的 `STALE` 用已存的回應重跑驗證，不在任何沒收回批次裡的 `IN_FLIGHT` 回到 `QUEUED` 重送，批次裡的等收回。`--retry-failed` 放回佇列時 `attempts` 歸零（ADR-0104、ADR-0107）。批次的 `errored`、`expired`、`canceled` 不收費，也不算 `attempts`。
 
 不需要 LLM 的單位包括遮蔽後不含字母的單位，以及整塊對上的數值塊。
 
@@ -862,7 +869,7 @@ stateDiagram-v2
 
 ### 6.3 工作區
 
-**已實作**：`tome init` 與路徑檢查（`src/core/workspace.ts`、`src/core/path-guard.ts`；`tests/core/workspace.test.ts`、`tests/core/path-guard.test.ts`），資料存取層與遷移（`src/core/store.ts`；`tests/core/store.test.ts`）。檢查會解開 junction 與 symlink。`tome.yaml` 第一行是 `schema: tome-workspace/1`（ADR-0082），選填的 `target_lang` 是目標語言，預設 `zh-TW`（ADR-0100）。`book.yaml` 的格式是 `tome-book/1`（`schemas/tome-book-1.schema.json`），欄位是提案。`book.db` 目前有 `tome_meta`、`stage`、`unit`、`response`、`issue`、`ledger`、`egress`，`series.db` 有 `tome_meta` 與翻譯記憶的 `memory`，下面其他的表到各階段才加（ADR-0102、ADR-0103）。`engines/` 底下每個引擎一個資料夾，放轉接器、環境與權重；`ir/source/` 依 PDF 雜湊、引擎、版本、設定雜湊分資料夾，雜湊取前 16 個字元，路徑才不會超過 Windows 的 260 字元（ADR-0085）。
+**已實作**：`tome init` 與路徑檢查（`src/core/workspace.ts`、`src/core/path-guard.ts`；`tests/core/workspace.test.ts`、`tests/core/path-guard.test.ts`），資料存取層與遷移（`src/core/store.ts`；`tests/core/store.test.ts`）。檢查會解開 junction 與 symlink。`tome.yaml` 第一行是 `schema: tome-workspace/1`（ADR-0082），選填的 `target_lang` 是目標語言，預設 `zh-TW`（ADR-0100）。`book.yaml` 的格式是 `tome-book/1`（`schemas/tome-book-1.schema.json`），欄位是提案。`book.db` 目前有 `tome_meta`、`stage`、`unit`、`response`、`issue`、`ledger`、`egress`、`batch`、`batch_unit`（ADR-0107），`series.db` 有 `tome_meta` 與翻譯記憶的 `memory`，下面其他的表到各階段才加（ADR-0102、ADR-0103）。`engines/` 底下每個引擎一個資料夾，放轉接器、環境與權重；`ir/source/` 依 PDF 雜湊、引擎、版本、設定雜湊分資料夾，雜湊取前 16 個字元，路徑才不會超過 Windows 的 260 字元（ADR-0085）。
 
 正式支援 Windows 與 Linux，macOS 盡力而為，不測試（ADR-0081）。預設位置是機器本地目錄：Windows 是 `%LOCALAPPDATA%\tome`，Linux 是 `~/.local/share/tome`，macOS 是 `~/Library/Application Support/tome`，可以用 `TOME_HOME` 改。`tome init` MUST 拒絕 git repo 內的路徑，偵測到 OneDrive、Dropbox 這類同步資料夾時要警告，否則譯文與書的片段會被傳上雲端（G-5）。這讓 G-5 成為結構，而不只靠 `.gitignore`。Obsidian vault 用 `tome.yaml` 的 `vault_path` 指定，同樣要過這項檢查。
 
@@ -931,7 +938,7 @@ tome backup|purge <book>               備份與刪除
 
 `tome assemble` 偵測到未回收的 vault 修改就拒絕輸出，列出檔案，要求先跑 `tome sync`，人工譯文不會被覆蓋。
 
-**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。`tome verify <書>` 也已實作（`tests/cli/verify.test.ts`），全部通過回 0，有失敗回 1（ADR-0102）。`tome estimate <書> [--budget <美元>] [--chapters <範圍>] [--realtime] [--confirm]`、`tome translate <書> --dry-run [--realtime]` 也已實作（`tests/cli/estimate.test.ts`），`--confirm` 沒有預算或超過預算時回 1，不在表上的模型回 2（ADR-0103）。`tome preview <書>` 也已實作（`tests/cli/preview.test.ts`），在 `books/<slug>/review/` 產生原文與譯文對照（ADR-0104）。`tome translate <書> --realtime [--retry-failed]` 的流程寫好了，但轉接層要等 brief 022，對使用者維持 `translate.not_ready`。`tome provider list` 也已實作（`tests/cli/provider.test.ts`），不連網，不讀金鑰與 `tome.yaml`，還沒 `tome init` 也能用，價目表過期時警告，結束碼仍是 0（ADR-0106）。其他指令還沒有。
+**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。`tome verify <書>` 也已實作（`tests/cli/verify.test.ts`），全部通過回 0，有失敗回 1（ADR-0102）。`tome estimate <書> [--budget <美元>] [--chapters <範圍>] [--realtime] [--confirm]`、`tome translate <書> --dry-run [--realtime]` 也已實作（`tests/cli/estimate.test.ts`），`--confirm` 沒有預算或超過預算時回 1，不在表上的模型回 2（ADR-0103）。`tome preview <書>` 也已實作（`tests/cli/preview.test.ts`），在 `books/<slug>/review/` 產生原文與譯文對照（ADR-0104）。`tome translate <書> [--realtime] [--retry-failed]` 的即時與批次流程、`tome batch status|collect|cancel <書>` 寫好了，但轉接層要等 brief 022，對使用者維持 `translate.not_ready`（ADR-0107）。`tome status <書>` 也已實作（`tests/cli/batch.test.ts`），只讀本機資料，不連網。`tome provider list` 也已實作（`tests/cli/provider.test.ts`），不連網，不讀金鑰與 `tome.yaml`，還沒 `tome init` 也能用，價目表過期時警告，結束碼仍是 0（ADR-0106）。其他指令還沒有。
 
 ---
 
@@ -1030,7 +1037,7 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 
 **估價**在本機完成，不連網：依字元數與各家比例估算，顯示成區間。`tome trial` 先翻一小段，用實際 `usage` 校準比例，人工改動也回饋成風格範例。試翻用小批次執行，才量得到 Batch 的快取命中率。估價同時顯示資料保留時間（DC-3）。
 
-**已實作**：`tome estimate`、`--confirm`、`--budget`、`--chapters`、`--realtime`、`tome translate --dry-run`、預算檢查與費用帳本（`src/core/request.ts`、`src/core/estimate.ts`、`src/core/budget.ts`、`src/core/ledger.ts`；`tests/cli/estimate.test.ts`、`tests/core/estimate.test.ts`、`tests/core/budget.test.ts`、`tests/core/ledger.test.ts`）。估價的比例與思考的倍數都是**提案**，沒有量過，要等 `tome trial`（ADR-0103）。估價模式不存進 `book.yaml`，確認時隨內容指紋記下，`fallback_model`、重送的句子、規則包與 `source_lang` 也進指紋，對不上就回報 `translate.not_confirmed`（ADR-0104、ADR-0106）。即時模式每個請求送出前都檢查預算（`tests/cli/translate.test.ts`）。第一次真實請求由維護者在 019 之後跑。
+**已實作**：`tome estimate`、`--confirm`、`--budget`、`--chapters`、`--realtime`、`tome translate --dry-run`、預算檢查與費用帳本（`src/core/request.ts`、`src/core/estimate.ts`、`src/core/budget.ts`、`src/core/ledger.ts`；`tests/cli/estimate.test.ts`、`tests/core/estimate.test.ts`、`tests/core/budget.test.ts`、`tests/core/ledger.test.ts`）。估價的比例與思考的倍數都是**提案**，沒有量過，要等 `tome trial`（ADR-0103）。估價模式不存進 `book.yaml`，確認時隨內容指紋記下，`fallback_model`、重送的句子、規則包與 `source_lang` 也進指紋，對不上就回報 `translate.not_confirmed`（ADR-0104、ADR-0106）。即時模式每個請求送出前都檢查預算（`tests/cli/translate.test.ts`），批次模式每批送出前檢查，「進行中」是還沒收回的批次的估價上限，M2 一次一批，通常是 0（`tests/cli/batch.test.ts`、ADR-0107）。第一次真實請求由維護者在 brief 022 接上轉接層之後跑。
 
 **快取**依實測決定。靜態前綴一律保持位元組一致，但不為了門檻灌水，詞庫只送命中的詞條與活躍實體。試翻量到的命中率高於損益兩平點，才開 1 小時快取與預熱。Gemini 預設走隱式快取。
 
@@ -1070,7 +1077,7 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 | 層級 | 內容 | 執行時機 |
 | :--- | :--- | :--- |
 | 單元與性質 | vitest；fast-check 驗證遮蔽再還原一定回到原樣，狀態機用 model-based 測試 | 每次 CI |
-| 整合 | 假供應商：本機伺服器說三種協定，腳本化拒答、漏佔位符、批次過期、429。M2 只說 Anthropic Messages（`tests/helpers/fake-provider.ts`、ADR-0104） | 每次 CI |
+| 整合 | 假供應商：本機伺服器說三種協定，腳本化拒答、漏佔位符、批次過期、429。M2 只說 Anthropic Messages 與 Message Batches（`tests/helpers/fake-provider.ts`、ADR-0104、ADR-0107） | 每次 CI |
 | 端到端 | 合成 PDF 配錄好的引擎輸出，從解析跑到 vault | 每次 CI |
 | 當機注入 | 在狀態機每一步強制中斷再續跑，驗證沒有單位重付 | 每次 CI |
 | 引擎 | 安裝 Docling 跑合成 PDF | 改到 `engines/` 或手動觸發 |
@@ -1079,7 +1086,7 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 
 CI 跑 Windows 與 Ubuntu。公開 repo 的 CI MUST NOT 放任何 API 金鑰。變異分數的門檻等第一次實測後再定。
 
-**已實作**：單元與性質測試在 `tests/`，用 vitest 與 fast-check，`.github/workflows/test.yml` 在兩個平台都跑。Q-9 的效能預算是 `tests/perf/probe-budget.test.ts`，CI 門檻 120 秒。其他層級等對應的功能完成才加。
+**已實作**：單元與性質測試在 `tests/`，用 vitest 與 fast-check，`.github/workflows/test.yml` 在兩個平台都跑。Q-9 的效能預算是 `tests/perf/probe-budget.test.ts`，CI 門檻 120 秒。當機注入在 `tests/cli/crash.test.ts`：`book.db` 的第 N 次寫入時丟出錯誤，交易整個回滾，N 從 1 跑到流程的寫入次數，每次中斷後重跑到完成，檢查已驗證或已付費存下的單位沒有再送出，同一筆費用沒有記兩次。合成書上即時模式有 39 個中斷點，批次模式有 58 個，只用假供應商（ADR-0107）。其他層級等對應的功能完成才加。
 
 ### 8.5 測試語料
 
@@ -1229,6 +1236,8 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0104](adr/0104-egress-and-realtime-decisions.md) | 對外出口與即時模式的細節 | M2 |
 | [ADR-0105](adr/0105-legal-review-before-release.md) | 0.1.0 發佈前請著作權律師審查 | M2 |
 | [ADR-0106](adr/0106-work-before-the-sdk-cooldown.md) | SDK 冷卻期先做的部分 | M2 |
+| [ADR-0107](adr/0107-batch-and-resume-decisions.md) | Batch 與續跑的細節 | M2 |
+| [ADR-0108](adr/0108-batch-create-server-errors.md) | 建立批次時收到 5xx | M2 |
 
 ---
 
@@ -1249,6 +1258,8 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | Q-9 | 400 頁 `tome probe` | 參考機器 30 秒內 | 在參考機器實測。CI 另設較寬的門檻防止變慢 | ADR-0068 |
 
 **Q-9 的第一次量測**（2026-11-01，參考機器，Node 24.22.1）：`tome add` 含探測與行程啟動，合成的 400 頁雙欄文字書 0.6 MB，三次都約 2.2 秒；合成的 1,200 頁書，其中 400 頁帶滿版圖，313 MB，約 14 秒。合成書的字型與圖片都比商業書單純，真實書籍還沒量過，所以 Q-9 仍是目標。建議規則包（ADR-0100）的額外耗時在 2026-11-02 量過：同一本 400 頁、約 150 萬字元的書，3 個規則包、各 3 個關鍵詞與 2 個模式，三次分別多花 0.5、0.3、0.8 秒，由 `tests/perf/probe-budget.test.ts` 把關。
+
+**Q-7 的當機注入**（2026-11-02，合成書，假供應商）：即時模式 39 個中斷點、批次模式 58 個，每一點中斷後續跑，已驗證的單位都沒有重付，由 `tests/cli/crash.test.ts` 在每次 CI 把關。真的 API 還沒跑過，「送出後、記下遠端 ID 前」那一點依賴 H-17，所以 Q-7 仍是目標。
 
 **第一版的完成條件**：公開的 ORC 文件一章，加本機商業書一章，全流程跑完，Q-1 到 Q-8 達標。
 
@@ -1397,6 +1408,12 @@ M2 已實作的項目：
 | 重試、判斷回應 | `src/core/llm.ts` | `tests/core/llm.test.ts` |
 | 即時模式的翻譯流程、`--retry-failed` | `src/core/translate.ts` | `tests/cli/translate.test.ts` |
 | `tome preview` | `src/core/preview.ts` | `tests/cli/preview.test.ts` |
+| 批次流程、分批、續跑，只跑過假供應商 | `src/core/batch.ts`、`src/core/request.ts` | `tests/cli/batch.test.ts`、`tests/core/request.test.ts` |
+| `tome batch status`、`collect`、`cancel` | `src/core/batch.ts` | `tests/cli/batch.test.ts` |
+| `tome status` | `src/core/status.ts` | `tests/cli/batch.test.ts` |
+| 當機注入 | `tests/cli/crash.test.ts` | `npm test` |
+
+批次流程、`tome translate` 與 `tome batch` 要等 brief 022 的轉接層才對使用者開放。認回批次的做法依賴 H-17，還沒驗證（ADR-0107）。
 
 M1 已實作的項目：
 

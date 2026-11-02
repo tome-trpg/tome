@@ -44,7 +44,12 @@ function split(total: number, weights: readonly number[], sum: number): number[]
   });
 }
 
+/**
+ * 同一個 `request_id` 只記一次。批次收回到一半中斷時會再下載一次結果，
+ * 同一筆費用不能記兩次（ADR-0107）。即時模式每次送出的 ID 都不同。
+ */
 export function recordUsage(store: Store, { request_id, model, mode, usage, units }: UsageRecord): void {
+  if (store.get('SELECT 1 FROM ledger WHERE request_id = ? LIMIT 1', request_id) !== undefined) return;
   const weights = units.map(({ chars }) => chars);
   const sum = weights.reduce((total, weight) => total + weight, 0);
   const inputs = split(usage.input_tokens, weights, sum);

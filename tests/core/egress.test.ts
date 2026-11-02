@@ -200,6 +200,31 @@ describe('guardedFetch (ADR-0039)', () => {
     expect(entries).toEqual([]);
   });
 
+  it('names the models of a batch, and records a poll with no body (ADR-0107 item 20)', async () => {
+    const server = await startFakeProvider(() => ({ text: 'ok' }));
+    const { entries, record } = recorder();
+    const client = guardedFetch({ endpoint: server.url, provider: 'anthropic', rules: NONE, record });
+    const requests = ['a', 'b', 'a'].map((model, index) => ({ custom_id: `c${index}`, params: { model } }));
+    await client(`${server.url}/v1/messages/batches`, post(JSON.stringify({ requests })));
+    await client(`${server.url}/v1/messages/batches/msgbatch_1`, { method: 'GET' });
+    expect(entries.map(({ model, bytes }) => ({ model, bytes: bytes > 0 }))).toEqual([
+      { model: 'a,b', bytes: true },
+      { model: '', bytes: false },
+    ]);
+  });
+
+  it('scans the whole batch before it goes out', async () => {
+    const server = await startFakeProvider(() => ({ text: 'ok' }));
+    const { entries, record } = recorder();
+    const client = guardedFetch({ endpoint: server.url, provider: 'anthropic', rules: rules(['Forged Buyer']), record });
+    const requests = [{ custom_id: 'c1', params: { model: 'a' } }, { custom_id: 'c2', params: { system: 'Forged Buyer' } }];
+    await expect(client(`${server.url}/v1/messages/batches`, post(JSON.stringify({ requests })))).rejects.toBeInstanceOf(
+      EgressBlocked,
+    );
+    expect(server.batches).toHaveLength(0);
+    expect(entries).toEqual([]);
+  });
+
   it('refuses a body it cannot read, since it cannot scan it', async () => {
     const server = await startFakeProvider(() => ({ text: 'ok' }));
     const { record } = recorder();

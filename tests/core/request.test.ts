@@ -6,9 +6,11 @@ import { findPack, resolvePack, type LocalizedTerm, type ResolvedPack } from '..
 import { staticPrefix } from '../../src/core/prompt.ts';
 import { findModel, loadProvider } from '../../src/core/provider.ts';
 import {
+  BATCH_CHARS,
   chapterMap,
   CONTEXT_CHARS,
   parseChapters,
+  planBatches,
   planRequests,
   REQUEST_CHARS,
   requestBody,
@@ -48,6 +50,66 @@ const ONE_CHAPTER = (): number => 1;
 function ids(requests: readonly PlannedRequest[]): string[][] {
   return requests.map(({ units }) => units.map(({ unit_id }) => unit_id));
 }
+
+describe('planBatches (ADR-0107 item 3)', () => {
+  /** 每個請求一個單位，`[章, 字元數]`。 */
+  function plan(...shape: readonly (readonly [number, number])[]): {
+    requests: PlannedRequest[];
+    chapterOf: (item: TranslationUnit) => number;
+  } {
+    const chapters = new Map<string, number>();
+    const requests = shape.map(([chapter, size], index) => {
+      const id = `r${index + 1}`;
+      chapters.set(id, chapter);
+      return { id, units: [unit(id, text(size))], context: '' };
+    });
+    return { requests, chapterOf: (item) => chapters.get(item.unit_id) ?? 0 };
+  }
+
+  function batchIds(batches: readonly PlannedRequest[][]): string[][] {
+    return batches.map((batch) => batch.map(({ id }) => id));
+  }
+
+  it('is 100,000 characters, a proposal', () => {
+    expect(BATCH_CHARS).toBe(100_000);
+  });
+
+  it('puts adjacent chapters together up to the limit', () => {
+    const { requests, chapterOf } = plan([1, 30], [1, 30], [2, 30], [3, 30], [4, 50]);
+    expect(batchIds(planBatches(requests, chapterOf, 100))).toEqual([['r1', 'r2', 'r3'], ['r4', 'r5']]);
+  });
+
+  it('keeps a chapter whole when the next one does not fit', () => {
+    const { requests, chapterOf } = plan([1, 60], [2, 30], [2, 30]);
+    expect(batchIds(planBatches(requests, chapterOf, 100))).toEqual([['r1'], ['r2', 'r3']]);
+  });
+
+  it('splits only a chapter over the limit, at the boundary of a request', () => {
+    const { requests, chapterOf } = plan([1, 20], [2, 60], [2, 60], [2, 30], [3, 10]);
+    expect(batchIds(planBatches(requests, chapterOf, 100))).toEqual([['r1'], ['r2'], ['r3', 'r4'], ['r5']]);
+  });
+
+  it('gives a request over the limit a batch of its own', () => {
+    const { requests, chapterOf } = plan([1, 150], [1, 10]);
+    expect(batchIds(planBatches(requests, chapterOf, 100))).toEqual([['r1'], ['r2']]);
+  });
+
+  it('counts what the resent requests already took (ADR-0107 item 5)', () => {
+    const { requests, chapterOf } = plan([1, 40], [2, 40]);
+    expect(batchIds(planBatches(requests, chapterOf, 100, 50))).toEqual([['r1'], ['r2']]);
+    expect(batchIds(planBatches(requests, chapterOf, 100, 90))).toEqual([[], ['r1', 'r2']]);
+  });
+
+  it('counts the characters of the source, as a request does', () => {
+    const units = [unit('a', text(REQUEST_CHARS)), unit('b', text(REQUEST_CHARS))];
+    const requests = planRequests(units, ONE_CHAPTER);
+    expect(batchIds(planBatches(requests, ONE_CHAPTER, REQUEST_CHARS * 2))).toEqual([['r1', 'r2']]);
+  });
+
+  it('has no batch for no request', () => {
+    expect(planBatches([], ONE_CHAPTER)).toEqual([]);
+  });
+});
 
 describe('planRequests (ADR-0103)', () => {
   it('fills a request up to the limit, then starts another', () => {
