@@ -7,7 +7,7 @@ import { sendWithRetry, type LLMHost, type LLMProvider, type RequestResult, type
 import { memoryKey, recall, remember } from './memory.ts';
 import { packHash } from './pack.ts';
 import { promptHash } from './prompt.ts';
-import type { ProviderModel, RequestMode } from './provider.ts';
+import { usd, type ProviderModel, type RequestMode } from './provider.ts';
 import {
   ESTIMATE_STAGE,
   partOfRequest,
@@ -16,7 +16,6 @@ import {
   planRequests,
   sizeRequest,
   splitRequest,
-  usd,
   type BookPlan,
   type Feedback,
   type MessagesBody,

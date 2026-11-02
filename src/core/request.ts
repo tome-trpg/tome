@@ -24,6 +24,7 @@ import {
   loadProvider,
   priceFinding,
   thinkingParams,
+  usd,
   type LoadedProvider,
   type Provider,
   type ProviderModel,
@@ -322,7 +323,7 @@ export interface BookPlan {
   readonly unitCount: number;
   readonly chars: number;
   readonly estimate: Estimate;
-  /** 單位、模型、回退模型、價格、範圍、預算、提示、規則包與模式的內容指紋（ADR-0103、ADR-0104）。 */
+  /** 單位、模型、回退模型、價格、範圍、預算、提示、規則包、來源語言與模式的內容指紋（ADR-0103、ADR-0104、ADR-0106）。 */
   readonly fingerprint: string;
   /** 全書依閱讀順序的單位，上文要用。 */
   readonly units: readonly TranslationUnit[];
@@ -389,6 +390,7 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
         book.config.budget_usd ?? null,
         promptHash(prefix),
         packHash(pack),
+        book.config.source_lang,
         mode,
       ]),
     )
@@ -414,11 +416,6 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
     },
     findings: packFindings,
   };
-}
-
-/** 小數位數跟著金額走：便宜的模型一本書可能不到一美元。 */
-export function usd(amount: number): string {
-  return amount.toFixed(amount >= 0.01 || amount === 0 ? 2 : 6);
 }
 
 function planData(plan: BookPlan): Readonly<Record<string, unknown>> {

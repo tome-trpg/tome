@@ -667,7 +667,7 @@ type RequestResult =
 
 **模型**：TOME 不內建預設模型，因為便宜模型的品質還沒驗證（H-2），不該替使用者選，也不該在沒注意時花到貴的模型。`scanner_model`（Pass 0 用）與 `translator_model`（主翻譯用）在 `tome.yaml` 必填，用到時才檢查，依區塊角色覆寫排到 M4（ADR-0103），例如規則文字用便宜模型、敘事文字用好模型。同一個群組用第一個單位的角色決定模型。`fallback_model` 選填，拒答時改送。範本會列出建議組合，並註明還沒有盲評。
 
-**已實作**：`providers/anthropic.yaml`，格式是 `tome-provider/1`（`schemas/tome-provider-1.schema.json`、`src/core/provider.ts`；`tests/core/provider.test.ts`）。這是 TOME 知道怎麼呼叫的模型清單，不是預設模型，不在表上的模型拒絕執行，查證滿 60 天時警告（ADR-0099）。
+**已實作**：`providers/anthropic.yaml`，格式是 `tome-provider/1`（`schemas/tome-provider-1.schema.json`、`src/core/provider.ts`；`tests/core/provider.test.ts`）。這是 TOME 知道怎麼呼叫的模型清單，不是預設模型，不在表上的模型拒絕執行，查證滿 60 天時警告（ADR-0099）。`tome provider list` 列出這份清單的模型與即時、批次價格（ADR-0106）。
 
 **思考**：主翻譯預設關閉。能關的模型就關，不能關的用低 effort，估價要計入思考成本。實測後再決定哪些角色值得開（H-13）。思考也吃 `max_tokens`，所以 `max_tokens` 取含思考的預估輸出的 2 倍，下限 1,024（ADR-0103）。
 
@@ -931,7 +931,7 @@ tome backup|purge <book>               備份與刪除
 
 `tome assemble` 偵測到未回收的 vault 修改就拒絕輸出，列出檔案，要求先跑 `tome sync`，人工譯文不會被覆蓋。
 
-**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。`tome verify <書>` 也已實作（`tests/cli/verify.test.ts`），全部通過回 0，有失敗回 1（ADR-0102）。`tome estimate <書> [--budget <美元>] [--chapters <範圍>] [--realtime] [--confirm]`、`tome translate <書> --dry-run [--realtime]` 也已實作（`tests/cli/estimate.test.ts`），`--confirm` 沒有預算或超過預算時回 1，不在表上的模型回 2（ADR-0103）。`tome preview <書>` 也已實作（`tests/cli/preview.test.ts`），在 `books/<slug>/review/` 產生原文與譯文對照（ADR-0104）。`tome translate <書> --realtime [--retry-failed]` 的流程寫好了，但轉接層要等 brief 022，對使用者維持 `translate.not_ready`。其他指令還沒有。
+**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。`tome verify <書>` 也已實作（`tests/cli/verify.test.ts`），全部通過回 0，有失敗回 1（ADR-0102）。`tome estimate <書> [--budget <美元>] [--chapters <範圍>] [--realtime] [--confirm]`、`tome translate <書> --dry-run [--realtime]` 也已實作（`tests/cli/estimate.test.ts`），`--confirm` 沒有預算或超過預算時回 1，不在表上的模型回 2（ADR-0103）。`tome preview <書>` 也已實作（`tests/cli/preview.test.ts`），在 `books/<slug>/review/` 產生原文與譯文對照（ADR-0104）。`tome translate <書> --realtime [--retry-failed]` 的流程寫好了，但轉接層要等 brief 022，對使用者維持 `translate.not_ready`。`tome provider list` 也已實作（`tests/cli/provider.test.ts`），不連網，不讀金鑰與 `tome.yaml`，還沒 `tome init` 也能用，價目表過期時警告，結束碼仍是 0（ADR-0106）。其他指令還沒有。
 
 ---
 
@@ -1030,7 +1030,7 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 
 **估價**在本機完成，不連網：依字元數與各家比例估算，顯示成區間。`tome trial` 先翻一小段，用實際 `usage` 校準比例，人工改動也回饋成風格範例。試翻用小批次執行，才量得到 Batch 的快取命中率。估價同時顯示資料保留時間（DC-3）。
 
-**已實作**：`tome estimate`、`--confirm`、`--budget`、`--chapters`、`--realtime`、`tome translate --dry-run`、預算檢查與費用帳本（`src/core/request.ts`、`src/core/estimate.ts`、`src/core/budget.ts`、`src/core/ledger.ts`；`tests/cli/estimate.test.ts`、`tests/core/estimate.test.ts`、`tests/core/budget.test.ts`、`tests/core/ledger.test.ts`）。估價的比例與思考的倍數都是**提案**，沒有量過，要等 `tome trial`（ADR-0103）。估價模式不存進 `book.yaml`，確認時隨內容指紋記下，`fallback_model`、重送的句子與規則包也進指紋，對不上就回報 `translate.not_confirmed`（ADR-0104）。即時模式每個請求送出前都檢查預算（`tests/cli/translate.test.ts`）。第一次真實請求由維護者在 019 之後跑。
+**已實作**：`tome estimate`、`--confirm`、`--budget`、`--chapters`、`--realtime`、`tome translate --dry-run`、預算檢查與費用帳本（`src/core/request.ts`、`src/core/estimate.ts`、`src/core/budget.ts`、`src/core/ledger.ts`；`tests/cli/estimate.test.ts`、`tests/core/estimate.test.ts`、`tests/core/budget.test.ts`、`tests/core/ledger.test.ts`）。估價的比例與思考的倍數都是**提案**，沒有量過，要等 `tome trial`（ADR-0103）。估價模式不存進 `book.yaml`，確認時隨內容指紋記下，`fallback_model`、重送的句子、規則包與 `source_lang` 也進指紋，對不上就回報 `translate.not_confirmed`（ADR-0104、ADR-0106）。即時模式每個請求送出前都檢查預算（`tests/cli/translate.test.ts`）。第一次真實請求由維護者在 019 之後跑。
 
 **快取**依實測決定。靜態前綴一律保持位元組一致，但不為了門檻灌水，詞庫只送命中的詞條與活躍實體。試翻量到的命中率高於損益兩平點，才開 1 小時快取與預熱。Gemini 預設走隱式快取。
 
@@ -1228,6 +1228,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0103](adr/0103-cost-and-requests-decisions.md) | 成本與請求的細節 | M2 |
 | [ADR-0104](adr/0104-egress-and-realtime-decisions.md) | 對外出口與即時模式的細節 | M2 |
 | [ADR-0105](adr/0105-legal-review-before-release.md) | 0.1.0 發佈前請著作權律師審查 | M2 |
+| [ADR-0106](adr/0106-work-before-the-sdk-cooldown.md) | SDK 冷卻期先做的部分 | M2 |
 
 ---
 
@@ -1387,6 +1388,7 @@ M2 已實作的項目：
 | 翻譯記憶 | `src/core/memory.ts` | `tests/core/memory.test.ts` |
 | 單位狀態機 | `src/core/state.ts`、`src/core/units.ts` | `tests/core/state.test.ts`、`tests/core/units.test.ts` |
 | 模型資料 | `providers/anthropic.yaml`、`src/core/provider.ts` | `tests/core/provider.test.ts` |
+| `tome provider list` | `src/core/provider.ts` | `tests/cli/provider.test.ts` |
 | 提示與請求組成 | `prompts/translate.md`、`src/core/prompt.ts`、`src/core/request.ts` | `tests/core/prompt.test.ts`、`tests/core/request.test.ts` |
 | 估價、預算、費用帳本 | `src/core/estimate.ts`、`src/core/budget.ts`、`src/core/ledger.ts` | `tests/core/estimate.test.ts`、`tests/core/budget.test.ts`、`tests/core/ledger.test.ts` |
 | `tome estimate`、`--dry-run` | `src/core/request.ts` | `tests/cli/estimate.test.ts` |

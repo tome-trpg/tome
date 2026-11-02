@@ -188,6 +188,17 @@ describe('--confirm (ADR-0103)', () => {
     expect((await estimate(lib)).output.data['confirmed']).toBe(false);
   });
 
+  // 來源語言決定 `<glossary>` 列哪些詞條，只有 `keep_source` 的詞條會讓單位的文字變（ADR-0106）。
+  it('asks again when only the source language changes', async () => {
+    const lib = await library();
+    await estimate(lib, '--budget', '100', '--confirm');
+    expect((await estimate(lib)).output.data['confirmed']).toBe(true);
+    const path = join(lib.home, 'books', 'book', 'book.yaml');
+    writeFileSync(path, readFileSync(path, 'utf8').replace('source_lang: en', 'source_lang: ja'));
+    expect(bookYaml(lib.home)['source_lang']).toBe('ja');
+    expect((await estimate(lib)).output.data['confirmed']).toBe(false);
+  });
+
   // 譯名與角色風格會改變送出的內容，卻不在靜態前綴裡（ADR-0104 第 41 項）。
   describe('with a rule pack of its own', () => {
     function setPackFile(home: string, file: string, text: string): void {
