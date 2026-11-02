@@ -41,6 +41,8 @@ export interface ProviderModel {
 export interface Provider {
   readonly schema: typeof PROVIDER_SCHEMA;
   readonly id: string;
+  /** 對外出口的白名單（ADR-0039）。 */
+  readonly endpoint: string;
   readonly verified: string;
   readonly retention_days: number;
   readonly estimate: {

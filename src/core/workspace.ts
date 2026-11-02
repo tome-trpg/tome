@@ -12,6 +12,7 @@ export const DEFAULT_TARGET_LANG = 'zh-TW';
 const CONFIG_FILE = 'tome.yaml';
 const SUBDIRECTORIES = ['systems', 'engines', 'series', 'books'] as const;
 const SECRET_KEY_NAME = /api[_-]?key|secret|token|password/i;
+const MIN_PII_CHARS = 3;
 
 export interface WorkspaceConfig {
   readonly schema: typeof WORKSPACE_SCHEMA;
@@ -93,10 +94,16 @@ export function workspacePii(home: string): string[] {
   return value as string[];
 }
 
-/** 清單空的時候要警告，閘門攔不到任何東西（ADR-0099 第 21 項）。 */
+/**
+ * 清單空的時候要警告，閘門攔不到任何東西（ADR-0099 第 21 項）。太短的項目會誤判，
+ * 回報第幾項，不列內容：清單本身就是個資（ADR-0104 第 8 項）。
+ */
 export function piiFindings(home: string): Finding[] {
   if (readWorkspaceConfig(home) === null) return [];
-  return workspacePii(home).length === 0 ? [finding('pii.empty', 'warn')] : [];
+  const list = workspacePii(home);
+  if (list.length === 0) return [finding('pii.empty', 'warn')];
+  const short = list.flatMap((item, index) => ([...item.trim()].length < MIN_PII_CHARS ? [index + 1] : []));
+  return short.length === 0 ? [] : [finding('pii.too_short', 'warn', { entries: short.join(', ') })];
 }
 
 /** 解析引擎的順序，同一種頁面有多個引擎時排前面的優先（白皮書 §5.3）。 */

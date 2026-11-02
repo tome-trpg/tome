@@ -1,7 +1,14 @@
 import { createHash } from 'node:crypto';
 import type { LocalizedTerm } from './pack.ts';
 import type { Store } from './store.ts';
-import { hitTerms, verifyFragment, visibleText, type VerifiableUnit, type VerifyContext } from './verify.ts';
+import {
+  hitTerms,
+  verifyFragment,
+  visibleText,
+  type Problem,
+  type VerifiableUnit,
+  type VerifyContext,
+} from './verify.ts';
 
 // 翻譯記憶（白皮書 §5.6、ADR-0026、ADR-0102）。存在 series.db，每本書預設自成一個系列。
 // 模型不在鍵裡，換模型不會重翻，存成中繼資料（ADR-0067）。
@@ -30,6 +37,8 @@ export interface MemoryEntry {
 export interface Recalled {
   readonly entry: MemoryEntry;
   readonly translation: string;
+  /** 只報告的問題，交付報告要看得到。 */
+  readonly problems: readonly Problem[];
 }
 
 function sha256(text: string): string {
@@ -96,6 +105,6 @@ export function recall(
     key,
   );
   if (entry === undefined) return null;
-  const { translation } = verifyFragment(unit, entry.fragment, context);
-  return translation === null ? null : { entry, translation };
+  const { translation, problems } = verifyFragment(unit, entry.fragment, context);
+  return translation === null ? null : { entry, translation, problems };
 }

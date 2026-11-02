@@ -34,7 +34,10 @@ export type IssueCode =
   | 'too_long'
   | 'term_suspect'
   | 'new_term'
-  | 'untranslatable';
+  | 'untranslatable'
+  | 'pii_hit'
+  | 'refused'
+  | 'truncated';
 
 export interface Problem {
   readonly code: IssueCode;
@@ -261,7 +264,7 @@ interface VerifyRow {
   readonly text: string;
 }
 
-function recordProblems(store: Store, unitId: string, problems: readonly Problem[]): void {
+export function recordProblems(store: Store, unitId: string, problems: readonly Problem[]): void {
   store.run('DELETE FROM issue WHERE unit_id = ?', unitId);
   const now = new Date().toISOString();
   for (const { code, level, detail } of problems) {
@@ -277,8 +280,12 @@ function recordProblems(store: Store, unitId: string, problems: readonly Problem
 }
 
 /** 重跑一律先進 `STALE`（ADR-0102）。`attempts` 不動：重跑不花錢，不該吃掉重試額度。 */
-function settle(store: Store, row: VerifyRow, verdict: Verdict): UnitState {
-  const start = row.state === 'RECEIVED' ? row.state : nextState(row.state, 'stale');
+export function settle(
+  store: Store,
+  row: Pick<VerifyRow, 'unit_id' | 'state' | 'attempts'>,
+  verdict: Verdict,
+): UnitState {
+  const start = row.state === 'RECEIVED' || row.state === 'STALE' ? row.state : nextState(row.state, 'stale');
   const state = nextState(start, verdict.passed ? 'pass' : failureEvent(row.attempts));
   store.run('UPDATE unit SET state = ?, translation = ? WHERE unit_id = ?', state, verdict.translation, row.unit_id);
   recordProblems(store, row.unit_id, verdict.problems);

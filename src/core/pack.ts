@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -108,6 +109,13 @@ export interface ResolvedPack {
 
 export function isPackId(value: string): boolean {
   return PACK_ID.test(value);
+}
+
+/** 存進翻譯記憶，記下這段譯文是用哪一版規則包翻的。只算內容，換個資料夾放不會變。 */
+export function packHash({ chain }: ResolvedPack): string {
+  return createHash('sha256')
+    .update(JSON.stringify(chain.map(({ content }) => content)))
+    .digest('hex');
 }
 
 function builtinDir(): string {

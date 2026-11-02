@@ -1,43 +1,15 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import type { Envelope } from '../../src/cli/output.ts';
 import { run } from '../../src/cli/run.ts';
-import { forge, forgeFile } from '../forge/index.ts';
-import { capture, tempDir, type Captured } from '../helpers.ts';
+import { library, MODEL, setWorkspace, type Library } from '../helpers/library.ts';
 
 // 文字都是合成 PDF 的假文字。這一輪不連網，所以每個流程都盯著 fetch。
 
-const FAKE_ENGINE = resolve('tests/fixtures/engines/fake');
-const MODEL = 'claude-sonnet-5-5';
-
 function envelope(text: string): Envelope {
   return JSON.parse(text) as Envelope;
-}
-
-interface Library {
-  readonly env: NodeJS.ProcessEnv;
-  readonly home: string;
-  session(): Captured;
-}
-
-function setWorkspace(home: string, extra: string): void {
-  writeFileSync(join(home, 'tome.yaml'), `schema: tome-workspace/1\nengines: [fake]\n${extra}`);
-}
-
-async function library(options: { extract?: boolean; config?: string } = {}): Promise<Library> {
-  const home = join(tempDir(), 'home');
-  const textFile = join(tempDir(), 'forged-text.json');
-  writeFileSync(textFile, JSON.stringify((await forge('plain')).truth.text));
-  const env = { ...process.env, TOME_HOME: home, FAKE_ENGINE_TEXT_FILE: textFile };
-  const session = (): Captured => capture({ env, tool: async () => null });
-  await run(['init'], session().io);
-  await run(['engine', 'add', FAKE_ENGINE], session().io);
-  await run(['add', await forgeFile('plain', tempDir()), '--as', 'book'], session().io);
-  if (options.extract !== false) await run(['extract', 'book'], session().io);
-  setWorkspace(home, options.config ?? `translator_model: ${MODEL}\npii: [Forged Buyer]\n`);
-  return { env, home, session };
 }
 
 async function estimate(lib: Library, ...args: string[]): Promise<{ exit: number; output: Envelope; text: string }> {
@@ -96,6 +68,16 @@ describe('tome estimate (ADR-0103)', () => {
     expect((await estimate(lib)).output.findings.find((item) => item.code === 'pii.empty')?.level).toBe('warn');
     setWorkspace(lib.home, `translator_model: ${MODEL}\npii: [Forged Buyer]\n`);
     expect(codes((await estimate(lib)).output)).not.toContain('pii.empty');
+  });
+
+  it('warns about an entry too short to match safely (ADR-0104 item 8)', async () => {
+    const lib = await library({ config: `translator_model: ${MODEL}\npii: [Forged Buyer, Al]\n` });
+    const { output, text } = await estimate(lib);
+    expect(output.findings.find((item) => item.code === 'pii.too_short')).toMatchObject({
+      level: 'warn',
+      params: { entries: '2' },
+    });
+    expect(text).not.toContain('Forged Buyer');
   });
 
   it('keeps the budget in book.yaml, and says how much is left', async () => {
@@ -205,6 +187,69 @@ describe('--confirm (ADR-0103)', () => {
     setWorkspace(lib.home, 'translator_model: claude-opus-5-5\npii: [Forged Buyer]\n');
     expect((await estimate(lib)).output.data['confirmed']).toBe(false);
   });
+
+  // 譯名與角色風格會改變送出的內容，卻不在靜態前綴裡（ADR-0104 第 41 項）。
+  describe('with a rule pack of its own', () => {
+    function setPackFile(home: string, file: string, text: string): void {
+      const dir = join(home, 'systems', 'child');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, file), text);
+    }
+
+    async function withPack(): Promise<Library> {
+      const lib = await library();
+      setPackFile(lib.home, 'pack.yaml', 'schema: tome-pack/1\nid: child\nversion: 0.1.0\nlicense: UNLICENSED\nsource_langs: [en]\n');
+      setPackFile(lib.home, 'glossary.yaml', 'terms:\n  - source: { en: warden }\n    target: 看守人\n');
+      setPackFile(lib.home, 'roles.yaml', 'roles:\n  gm_note:\n    style: 語氣直接。\n');
+      const path = join(lib.home, 'books', 'book', 'book.yaml');
+      writeFileSync(path, `${readFileSync(path, 'utf8')}system: child\n`);
+      await estimate(lib, '--budget', '100', '--confirm');
+      expect((await estimate(lib)).output.data['confirmed']).toBe(true);
+      return lib;
+    }
+
+    it('asks again when only the target of a term changes', async () => {
+      const lib = await withPack();
+      setPackFile(lib.home, 'glossary.yaml', 'terms:\n  - source: { en: warden }\n    target: 守衛\n');
+      expect((await estimate(lib)).output.data['confirmed']).toBe(false);
+    });
+
+    it('asks again when only the style of a role changes', async () => {
+      const lib = await withPack();
+      setPackFile(lib.home, 'roles.yaml', 'roles:\n  gm_note:\n    style: 語氣溫和。\n');
+      expect((await estimate(lib)).output.data['confirmed']).toBe(false);
+    });
+
+    it('stays confirmed when nothing in the pack changed', async () => {
+      const lib = await withPack();
+      expect((await estimate(lib)).output.data['confirmed']).toBe(true);
+    });
+  });
+});
+
+describe('tome estimate --realtime (ADR-0104)', () => {
+  it('prices the requests at the realtime rate', async () => {
+    const lib = await library();
+    const batch = (await estimate(lib)).output.data;
+    const realtime = (await estimate(lib, '--realtime')).output.data;
+    expect(batch['mode']).toBe('batch');
+    expect(realtime['mode']).toBe('realtime');
+    expect(realtime['high_usd']).toBeGreaterThan(batch['high_usd'] as number);
+  });
+
+  it('is not kept in book.yaml', async () => {
+    const lib = await library();
+    await estimate(lib, '--realtime', '--budget', '100');
+    expect(Object.values(bookYaml(lib.home))).not.toContain('realtime');
+    expect((await estimate(lib)).output.data['mode']).toBe('batch');
+  });
+
+  it('asks again when the mode changes', async () => {
+    const lib = await library();
+    await estimate(lib, '--realtime', '--budget', '100', '--confirm');
+    expect((await estimate(lib, '--realtime')).output.data['confirmed']).toBe(true);
+    expect((await estimate(lib)).output.data['confirmed']).toBe(false);
+  });
 });
 
 describe('--chapters (ADR-0103)', () => {
@@ -284,6 +329,44 @@ describe('tome translate --dry-run (ADR-0103)', () => {
     const planned = (await dryRun(lib)).output.data;
     const estimated = (await estimate(lib)).output.data;
     expect(planned['high_usd']).toBe(estimated['high_usd']);
+  });
+
+  it('agrees with the estimate in realtime too', async () => {
+    const lib = await library();
+    const { io, stdout } = lib.session();
+    await run(['translate', 'book', '--dry-run', '--realtime', '--json'], io);
+    const planned = envelope(stdout()).data;
+    expect(planned['mode']).toBe('realtime');
+    expect(planned['high_usd']).toBe((await estimate(lib, '--realtime')).output.data['high_usd']);
+  });
+
+  it('checks the gate, and repeats neither the entry nor the text (ADR-0099 item 21)', async () => {
+    const lib = await library({ config: `translator_model: ${MODEL}\npii: [warden]\n` });
+    const { io, stdout } = lib.session();
+    expect(await run(['translate', 'book', '--dry-run', '--json'], io)).toBe(1);
+    const blocked = envelope(stdout()).findings.find((item) => item.code === 'translate.blocked');
+    expect(blocked?.level).toBe('fail');
+    expect(Number(blocked?.params['count'])).toBeGreaterThan(0);
+    expect(stdout()).not.toContain('warden');
+  });
+
+  it('leaves the units alone when the gate finds something, as it sends nothing', async () => {
+    const lib = await library({ config: `translator_model: ${MODEL}\npii: [warden]\n` });
+    await dryRun(lib);
+    const { openBookStore } = await import('../../src/core/store.ts');
+    const store = openBookStore(lib.home, 'book');
+    const states = store.all<{ state: string }>("SELECT state FROM unit WHERE state <> 'PENDING'");
+    store.close();
+    expect(states).toEqual([]);
+  });
+
+  it('honors the exceptions of the book', async () => {
+    const lib = await library({ config: `translator_model: ${MODEL}\npii: [warden]\n` });
+    const path = join(lib.home, 'books', 'book', 'book.yaml');
+    writeFileSync(path, `${readFileSync(path, 'utf8')}pii_exceptions: [warden]\n`);
+    const { exit, output } = await dryRun(lib);
+    expect(exit).toBe(0);
+    expect(codes(output)).not.toContain('translate.blocked');
   });
 
   it('skips units that are done', async () => {

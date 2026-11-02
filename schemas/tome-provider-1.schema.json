@@ -4,11 +4,16 @@
   "title": "tome-provider/1",
   "description": "The models TOME knows how to call, with their prices and the parameters that differ between them. It is not a default model. Ships with the program.",
   "type": "object",
-  "required": ["schema", "id", "verified", "retention_days", "estimate", "models"],
+  "required": ["schema", "id", "endpoint", "verified", "retention_days", "estimate", "models"],
   "additionalProperties": false,
   "properties": {
     "schema": { "const": "tome-provider/1" },
     "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+    "endpoint": {
+      "description": "The only origin requests may go to.",
+      "type": "string",
+      "pattern": "^https://[a-z0-9.-]+$"
+    },
     "verified": {
       "description": "When the prices were read from the official page.",
       "$ref": "#/$defs/date"

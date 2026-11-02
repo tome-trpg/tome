@@ -3,8 +3,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { loadTargetLanguage } from '../../src/core/language.ts';
-import { findPack, resolvePack, type ResolvedPack } from '../../src/core/pack.ts';
-import { readInstructions, staticPrefix } from '../../src/core/prompt.ts';
+import { findPack, packHash, resolvePack, type ResolvedPack } from '../../src/core/pack.ts';
+import { feedbackSentences, fillSentence, promptHash, readInstructions, staticPrefix } from '../../src/core/prompt.ts';
 import { tempDir } from '../helpers.ts';
 
 // 提示由維護者逐字審過（ADR-0103）。雜湊釘住，改動要是刻意的，也要再審一次。
@@ -12,7 +12,8 @@ import { tempDir } from '../helpers.ts';
 const { profile } = loadTargetLanguage('zh-TW');
 
 const REVIEWED: readonly (readonly [string, string])[] = [
-  ['prompts/translate.md', 'ef136a303257babb1df0f0f5b994209ab258b032bce0c6a74b693a53400cb350'],
+  ['prompts/translate.md', '14ae6b1e8bc5ace671478366d9a94bb21963ef601df77f8a5c0c1ce6b9ca7a2f'],
+  ['prompts/feedback.yaml', '6bc9c49dc67a813dff3af3b2993be625aa4cf4830126445ffc3fcb2944b0beaf'],
   ['systems/generic/persona_and_tone.md', 'd375cdc1988aee946e55bf32f279764111e54a93cf263f936ce0909f2905fe7f'],
   ['systems/generic/few_shots.md', '2bfd9b1169791b0d0a29276cecd5e30992d25d75617da9e584fe50bb352808f4'],
 ];
@@ -78,6 +79,48 @@ describe('the reviewed text (ADR-0103)', () => {
 
   it('asks to keep Arabic numerals, or a good translation fails the number check', () => {
     expect(readInstructions()).toContain('Keep every Arabic numeral as an Arabic numeral.');
+  });
+
+  it('explains the reasons a resend carries (ADR-0104 item 31)', () => {
+    expect(readInstructions()).toContain('<feedback> lists what was wrong with your last attempt at a unit, by id.');
+  });
+});
+
+describe('the sentences of a resend (ADR-0104)', () => {
+  it('has the words the maintainer read', () => {
+    expect(feedbackSentences()).toEqual({
+      number_missing: 'A number from the source is missing: {numbers}',
+      placeholder_mismatch: 'A placeholder is missing or repeated.',
+      tag_error: 'The tags in this unit are not valid.',
+      unit_missing: 'This unit was missing from your reply.',
+      term_missing: 'Use the locked translation of {term}: {target}',
+      script_mixed: 'Simplified Chinese was found: {found}',
+      too_short: 'The translation is too short. Translate everything.',
+    });
+  });
+
+  it('fills in what the check found', () => {
+    expect(fillSentence('Use {term}: {target}', { term: 'Dodge', target: '閃避' })).toBe('Use Dodge: 閃避');
+  });
+
+  it('counts toward the hash of the prompt', () => {
+    expect(promptHash('a')).not.toBe(promptHash('b'));
+    expect(promptHash('a')).toBe(promptHash('a'));
+    expect(promptHash('a')).not.toBe(createHash('sha256').update('a').digest('hex'));
+  });
+});
+
+describe('packHash (ADR-0104 item 41)', () => {
+  const glossary = (target: string): Readonly<Record<string, string>> => ({
+    'glossary.yaml': `terms:\n  - source: { en: warden }\n    target: ${target}\n`,
+  });
+
+  it('changes with the content', () => {
+    expect(packHash(childPack(glossary('看守人')))).not.toBe(packHash(childPack(glossary('守衛'))));
+  });
+
+  it('does not change with where the pack lives', () => {
+    expect(packHash(childPack(glossary('看守人')))).toBe(packHash(childPack(glossary('看守人'))));
   });
 });
 

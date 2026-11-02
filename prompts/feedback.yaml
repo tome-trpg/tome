@@ -1,0 +1,9 @@
+# What a resend says about a unit's last attempt (ADR-0104). The maintainer reviewed these words.
+# Keep the {names}: they are filled in from the check that failed.
+number_missing: 'A number from the source is missing: {numbers}'
+placeholder_mismatch: A placeholder is missing or repeated.
+tag_error: The tags in this unit are not valid.
+unit_missing: This unit was missing from your reply.
+term_missing: 'Use the locked translation of {term}: {target}'
+script_mixed: 'Simplified Chinese was found: {found}'
+too_short: The translation is too short. Translate everything.

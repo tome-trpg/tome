@@ -9,6 +9,7 @@ import {
   type BookConfig,
 } from './book.ts';
 import { checkBudget } from './budget.ts';
+import { hitCount, scanBody, type PiiRules } from './egress/gate.ts';
 import { TomeError } from './errors.ts';
 import { estimateRequest, outputTokens, sumEstimates, type Estimate } from './estimate.ts';
 import { readDocument } from './extract.ts';
@@ -16,8 +17,8 @@ import { finding, type Finding } from './findings.ts';
 import type { IrDocument } from './ir.ts';
 import { loadTargetLanguage } from './language.ts';
 import { spentUsd } from './ledger.ts';
-import type { LocalizedTerm, ResolvedPack } from './pack.ts';
-import { staticPrefix } from './prompt.ts';
+import { packHash, type LocalizedTerm, type ResolvedPack } from './pack.ts';
+import { feedbackSentences, fillSentence, promptHash, staticPrefix } from './prompt.ts';
 import {
   findModel,
   loadProvider,
@@ -26,13 +27,14 @@ import {
   type LoadedProvider,
   type Provider,
   type ProviderModel,
+  type RequestMode,
   type ThinkingParams,
 } from './provider.ts';
 import { openBookStore, type Store } from './store.ts';
 import { escapeAttribute, escapeText, unitTag } from './tags.ts';
 import { buildUnits, syncUnits, type TranslationUnit } from './units.ts';
 import { hitTerms, loadBookPack, visibleText } from './verify.ts';
-import { piiFindings, workspaceModel, workspaceTargetLang } from './workspace.ts';
+import { piiFindings, workspaceModel, workspacePii, workspaceTargetLang } from './workspace.ts';
 
 // 把單位組成請求（白皮書 §5.7、ADR-0103）。這裡只組資料與估價，不連網。
 
@@ -73,24 +75,64 @@ function groupsOf(units: readonly TranslationUnit[]): TranslationUnit[][] {
   return list;
 }
 
-/** 同一章前面看得到的文字。佔位符拿掉，只用來理解語意，不用翻譯（ADR-0103）。 */
+/** 同一組沒有一起送的單位。重送與對半拆時才會有（ADR-0104 第 29 項）。 */
+function restOfGroups(units: readonly TranslationUnit[], sent: readonly TranslationUnit[]): TranslationUnit[] {
+  const going = new Set(sent.map(({ unit_id }) => unit_id));
+  const groups = new Set(sent.flatMap(({ group }) => (group === undefined ? [] : [group])));
+  if (groups.size === 0) return [];
+  return units.filter(({ group, unit_id }) => group !== undefined && groups.has(group) && !going.has(unit_id));
+}
+
+/**
+ * 同一組沒送的單位排在最前面，超過上限時留前面的部分，表頭才留得住（ADR-0104 第 29 項）。
+ * 剩下的空間給同一章前面看得到的文字。佔位符拿掉，只用來理解語意，不用翻譯（ADR-0103）。
+ */
 function contextOf(
   units: readonly TranslationUnit[],
-  first: TranslationUnit,
+  sent: readonly TranslationUnit[],
   chapterOf: (unit: TranslationUnit) => number,
 ): string {
-  const index = units.indexOf(first);
+  const [first] = sent;
+  if (first === undefined) return '';
+  const rest = restOfGroups(units, sent);
+  const shown = new Set(rest.map(({ unit_id }) => unit_id));
+  const head = rest.map(({ masked }) => visibleText(masked)).join('\n').slice(0, CONTEXT_CHARS);
+  const room = head === '' ? CONTEXT_CHARS : CONTEXT_CHARS - head.length - 1;
   const chapter = chapterOf(first);
   const lines: string[] = [];
   let size = 0;
-  for (let at = index - 1; at >= 0 && size < CONTEXT_CHARS; at -= 1) {
+  for (let at = units.indexOf(first) - 1; at >= 0 && size < room; at -= 1) {
     const unit = units[at];
     if (unit === undefined || chapterOf(unit) !== chapter) break;
+    if (shown.has(unit.unit_id)) continue;
     const line = visibleText(unit.masked);
     lines.unshift(line);
     size += line.length + 1;
   }
-  return escapeText(lines.join('\n').slice(-CONTEXT_CHARS));
+  const before = room > 0 ? lines.join('\n').slice(-room) : '';
+  return escapeText([head, before].filter((part) => part !== '').join('\n'));
+}
+
+/** 拿請求的一部分組成新的請求。上下文要重算，同一組的單位可能剛好被分開。 */
+export function partOfRequest(
+  units: readonly TranslationUnit[],
+  id: string,
+  part: readonly TranslationUnit[],
+  chapterOf: (unit: TranslationUnit) => number,
+): PlannedRequest {
+  return { id, units: part, context: contextOf(units, part, chapterOf) };
+}
+
+/** 依單位數對半拆，前半多一個。單一單位拆不了，回傳的還是一個（ADR-0104 第 12 項）。 */
+export function splitRequest(
+  units: readonly TranslationUnit[],
+  request: PlannedRequest,
+  chapterOf: (unit: TranslationUnit) => number,
+): PlannedRequest[] {
+  const middle = Math.ceil(request.units.length / 2);
+  return [request.units.slice(0, middle), request.units.slice(middle)]
+    .filter((part) => part.length > 0)
+    .map((part, index) => partOfRequest(units, `${request.id}.${index + 1}`, part, chapterOf));
 }
 
 /**
@@ -106,13 +148,8 @@ export function planRequests(
   let current: TranslationUnit[] = [];
   let chapter: number | undefined;
   const flush = (): void => {
-    const [first] = current;
-    if (first === undefined) return;
-    requests.push({
-      id: `r${requests.length + 1}`,
-      units: current,
-      context: contextOf(units, first, chapterOf),
-    });
+    if (current.length === 0) return;
+    requests.push(partOfRequest(units, `r${requests.length + 1}`, current, chapterOf));
     current = [];
   };
   for (const group of groupsOf(units.filter((unit) => unit.needs_llm && wanted(unit)))) {
@@ -127,10 +164,20 @@ export function planRequests(
   return requests;
 }
 
+export interface FeedbackItem {
+  /** 驗證的代碼，對應 `prompts/feedback.yaml` 的一句話。 */
+  readonly code: string;
+  readonly detail: Readonly<Record<string, string>>;
+}
+
+/** 依 `unit_id`。上次的問題，存在 `issue`，所以中斷之後還在。 */
+export type Feedback = ReadonlyMap<string, readonly FeedbackItem[]>;
+
 export interface MessageContext {
   /** 這本書適用的詞條。 */
   readonly terms: readonly LocalizedTerm[];
   readonly pack: ResolvedPack;
+  readonly feedback?: Feedback;
 }
 
 function glossaryBlock(units: readonly TranslationUnit[], terms: readonly LocalizedTerm[]): string | null {
@@ -153,11 +200,24 @@ function rolesBlock(units: readonly TranslationUnit[], pack: ResolvedPack): stri
   return lines.length === 0 ? null : `<roles>\n${lines.join('\n')}\n</roles>`;
 }
 
-export function userMessage({ units, context }: PlannedRequest, { terms, pack }: MessageContext): string {
+/** 只有說明，不放上次的譯文。`id` 是單位在這個請求的編號（ADR-0104 第 16 項）。 */
+function feedbackBlock(units: readonly TranslationUnit[], feedback: Feedback): string | null {
+  const sentences = feedbackSentences();
+  const lines = units.flatMap(({ unit_id }, index) =>
+    (feedback.get(unit_id) ?? []).map(({ code, detail }) => {
+      const sentence = fillSentence(sentences[code] ?? '', detail);
+      return `<problem id="${index + 1}">${escapeText(sentence)}</problem>`;
+    }),
+  );
+  return lines.length === 0 ? null : `<feedback>\n${lines.join('\n')}\n</feedback>`;
+}
+
+export function userMessage({ units, context }: PlannedRequest, { terms, pack, feedback }: MessageContext): string {
   const parts = [
     context === '' ? null : `<context>\n${context}\n</context>`,
     glossaryBlock(units, terms),
     rolesBlock(units, pack),
+    feedback === undefined ? null : feedbackBlock(units, feedback),
     units.map(({ role, masked }, index) => unitTag(String(index + 1), role, masked)).join('\n'),
   ];
   return parts.filter((part) => part !== null).join('\n\n');
@@ -224,18 +284,53 @@ function chapterCount(document: IrDocument): number {
 
 /** 目前只接 Anthropic（ADR-0080）。 */
 const PROVIDER_ID = 'anthropic';
-const ESTIMATE_STAGE = 'estimate';
+export const ESTIMATE_STAGE = 'estimate';
+
+export interface SizedRequest {
+  readonly body: MessagesBody;
+  readonly sourceChars: number;
+  readonly estimate: Estimate;
+}
+
+export interface SizeOptions extends MessageContext {
+  readonly prefix: string;
+  readonly model: ProviderModel;
+  readonly provider: Provider;
+  readonly mode: RequestMode;
+}
+
+/** 組成請求內容並估價。實際送出與估價走同一段，數字才對得起來。 */
+export function sizeRequest(request: PlannedRequest, options: SizeOptions): SizedRequest {
+  const { prefix, model, provider, mode } = options;
+  const user = userMessage(request, options);
+  const sourceChars = charsOf(request.units);
+  return {
+    body: requestBody(request, { prefix, user, model, provider }),
+    sourceChars,
+    estimate: estimateRequest(provider, model, { promptChars: prefix.length + user.length, sourceChars }, mode),
+  };
+}
 
 export interface BookPlan {
+  readonly mode: RequestMode;
   readonly model: ProviderModel;
+  /** `tome.yaml` 的 `fallback_model`，拒答時改送（白皮書 §5.7）。 */
+  readonly fallback: ProviderModel | null;
   readonly provider: LoadedProvider;
   readonly requests: readonly PlannedRequest[];
   readonly bodies: readonly MessagesBody[];
   readonly unitCount: number;
   readonly chars: number;
   readonly estimate: Estimate;
-  /** 單位、模型、價格、範圍、預算、提示的內容指紋（ADR-0103）。 */
+  /** 單位、模型、回退模型、價格、範圍、預算、提示、規則包與模式的內容指紋（ADR-0103、ADR-0104）。 */
   readonly fingerprint: string;
+  /** 全書依閱讀順序的單位，上文要用。 */
+  readonly units: readonly TranslationUnit[];
+  readonly chapterOf: (unit: TranslationUnit) => number;
+  readonly inScope: (unit: TranslationUnit) => boolean;
+  readonly prefix: string;
+  readonly pack: ResolvedPack;
+  readonly terms: readonly LocalizedTerm[];
 }
 
 export interface PlanResult {
@@ -253,11 +348,13 @@ function pendingUnits(store: Store): ReadonlySet<string> {
 }
 
 /** 組出這本書還要送的請求。單位寫進 `book.db`，其他什麼都不動。 */
-async function planBook(home: string, book: Book, store: Store): Promise<PlanResult> {
+export async function planBook(home: string, book: Book, store: Store, mode: RequestMode): Promise<PlanResult> {
   const modelId = workspaceModel(home, 'translator_model');
   if (modelId === undefined) throw new TomeError('model.missing');
   const provider = loadProvider(PROVIDER_ID);
   const model = findModel(provider.profile, modelId);
+  const fallbackId = workspaceModel(home, 'fallback_model');
+  const fallback = fallbackId === undefined ? null : findModel(provider.profile, fallbackId);
   const document = readDocument(home, book.slug);
   const { pack, terms, findings: packFindings } = loadBookPack(home, book);
   if (pack === null) return { plan: null, findings: packFindings };
@@ -275,20 +372,9 @@ async function planBook(home: string, book: Book, store: Store): Promise<PlanRes
 
   const { profile: language } = loadTargetLanguage(workspaceTargetLang(home));
   const prefix = staticPrefix(language, pack);
-  const sized = requests.map((request) => {
-    const user = userMessage(request, { terms, pack });
-    const sourceChars = charsOf(request.units);
-    return {
-      body: requestBody(request, { prefix, user, model, provider: provider.profile }),
-      sourceChars,
-      estimate: estimateRequest(
-        provider.profile,
-        model,
-        { promptChars: prefix.length + user.length, sourceChars },
-        'batch',
-      ),
-    };
-  });
+  const sized = requests.map((request) =>
+    sizeRequest(request, { prefix, terms, pack, model, provider: provider.profile, mode }),
+  );
   const planned = requests.flatMap((request) => request.units);
   // 算範圍內全部的單位，不是還沒翻的：翻到一半中斷時，續跑不用重新確認（ADR-0054）。
   const scope = units.filter((unit) => unit.needs_llm && inScope(unit));
@@ -297,16 +383,21 @@ async function planBook(home: string, book: Book, store: Store): Promise<PlanRes
       JSON.stringify([
         scope.map(({ unit_id, masked }) => [unit_id, masked]),
         model.id,
+        fallback?.id ?? null,
         provider.hash,
         spec ?? null,
         book.config.budget_usd ?? null,
-        prefix,
+        promptHash(prefix),
+        packHash(pack),
+        mode,
       ]),
     )
     .digest('hex');
   return {
     plan: {
+      mode,
       model,
+      fallback,
       provider,
       requests,
       bodies: sized.map(({ body }) => body),
@@ -314,18 +405,25 @@ async function planBook(home: string, book: Book, store: Store): Promise<PlanRes
       chars: sized.reduce((total, { sourceChars }) => total + sourceChars, 0),
       estimate: sumEstimates(sized.map(({ estimate }) => estimate)),
       fingerprint,
+      units,
+      chapterOf,
+      inScope,
+      prefix,
+      pack,
+      terms,
     },
     findings: packFindings,
   };
 }
 
 /** 小數位數跟著金額走：便宜的模型一本書可能不到一美元。 */
-function usd(amount: number): string {
+export function usd(amount: number): string {
   return amount.toFixed(amount >= 0.01 || amount === 0 ? 2 : 6);
 }
 
 function planData(plan: BookPlan): Readonly<Record<string, unknown>> {
   return {
+    mode: plan.mode,
     model: plan.model.id,
     requests: plan.requests.length,
     units: plan.unitCount,
@@ -355,6 +453,8 @@ export interface EstimateOptions {
   readonly budget?: string | undefined;
   readonly chapters?: string | undefined;
   readonly confirm: boolean;
+  /** 不存進 `book.yaml`，只隨確認記在指紋裡（ADR-0104）。 */
+  readonly mode: RequestMode;
   readonly today?: Date;
 }
 
@@ -412,12 +512,12 @@ function confirmation(
 }
 
 async function estimateLocked(options: EstimateOptions): Promise<PlanOutcome> {
-  const { home, slug, confirm, today = new Date() } = options;
+  const { home, slug, confirm, mode, today = new Date() } = options;
   const before = readBook(home, slug);
   const book = updateIfChosen(home, before, chosenSettings(home, before, options));
   const store = openBookStore(home, slug);
   try {
-    const { plan, findings } = await planBook(home, book, store);
+    const { plan, findings } = await planBook(home, book, store, mode);
     const warnings = [...findings, ...piiFindings(home)];
     if (plan === null) return { data: { book: slug, confirmed: false }, findings: warnings };
     const stale = priceFinding(plan.provider.profile, today);
@@ -447,10 +547,22 @@ export function estimateBook(options: EstimateOptions): Promise<PlanOutcome> {
   return withBookLock(options.home, options.slug, () => estimateLocked(options));
 }
 
-async function dryRunLocked(home: string, slug: string): Promise<PlanOutcome> {
+/** 這本書送出前要比對的清單。 */
+export function piiRulesOf(home: string, book: Book): PiiRules {
+  return { pii: workspacePii(home), exceptions: book.config.pii_exceptions ?? [] };
+}
+
+/** 跟真的送出時掃描同樣的內容：序列化後的完整請求。 */
+function gateFindings(bodies: readonly MessagesBody[], rules: PiiRules): readonly Finding[] {
+  const count = bodies.reduce((total, body) => total + hitCount(scanBody(JSON.stringify(body), rules)), 0);
+  return count === 0 ? [] : [finding('translate.blocked', 'fail', { count: String(count) })];
+}
+
+async function dryRunLocked(home: string, slug: string, mode: RequestMode): Promise<PlanOutcome> {
+  const book = readBook(home, slug);
   const store = openBookStore(home, slug);
   try {
-    const { plan, findings } = await planBook(home, readBook(home, slug), store);
+    const { plan, findings } = await planBook(home, book, store, mode);
     if (plan === null) return { data: { book: slug }, findings };
     const prefixes = new Set(plan.bodies.map(({ system }) => system));
     return {
@@ -458,6 +570,7 @@ async function dryRunLocked(home: string, slug: string): Promise<PlanOutcome> {
       findings: [
         finding('dry_run.done', 'info', planParams(plan)),
         ...(prefixes.size > 1 ? [finding('dry_run.prefix_unstable', 'fail')] : []),
+        ...gateFindings(plan.bodies, piiRulesOf(home, book)),
         ...findings,
       ],
     };
@@ -466,7 +579,7 @@ async function dryRunLocked(home: string, slug: string): Promise<PlanOutcome> {
   }
 }
 
-/** `tome translate --dry-run`：組出所有請求但不送出（ADR-0040）。 */
-export function dryRunBook(home: string, slug: string): Promise<PlanOutcome> {
-  return withBookLock(home, slug, () => dryRunLocked(home, slug));
+/** `tome translate --dry-run`：組出所有請求但不送出，閘門照樣檢查（ADR-0040、白皮書 §8.1）。 */
+export function dryRunBook(home: string, slug: string, mode: RequestMode): Promise<PlanOutcome> {
+  return withBookLock(home, slug, () => dryRunLocked(home, slug, mode));
 }
