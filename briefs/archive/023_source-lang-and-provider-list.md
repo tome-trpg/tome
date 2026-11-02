@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-02
 type: feature
 wave: 18
@@ -28,7 +28,15 @@ protectedFiles:
   - providers/**
   - schemas/**
   - systems/**
+integrity: sha256-34ae3e0bdc0f53a29c3f144d6d7c42673bdecc864d16340ecfae4b4ff0b80ff7
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-02.**
+> Merged in pull request [#51](https://github.com/tome-trpg/tome/pull/51).
+> Recorded at commit `7082917`: 14 files changed, +478 −14.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 023 — source_lang 進指紋與 tome provider list
 
