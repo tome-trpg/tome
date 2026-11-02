@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-02
 type: feature
 wave: 19
@@ -28,7 +28,15 @@ protectedFiles:
   - providers/**
   - schemas/**
   - systems/**
+integrity: sha256-cc1db2849fd93dda2455b1852fad2112a678767c25e0a22a91c69584e6405a19
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-02.**
+> Merged in pull request [#53](https://github.com/tome-trpg/tome/pull/53).
+> Recorded at commit `596a473`: 29 files changed, +3076 −171.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 019 — Batch 與續跑
 
