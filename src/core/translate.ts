@@ -388,14 +388,18 @@ function truncated({ store, plan }: Run, { request, model }: Work): Step {
   return { next: parts.map((part) => ({ request: part, model })), stop: null };
 }
 
+/** 送出時 `<s id>` 從 1 依序編號。 */
+function numbered(units: readonly TranslationUnit[]): string[] {
+  return units.map((_unit, index) => String(index + 1));
+}
+
 /** 回應先存，驗證另一步：驗證出事時這筆錢不會白花（ADR-0104 第 28 項）。 */
-function replied(run: Run, { request, model }: Work, text: string): Step {
+function replied(run: Run, { request, model }: Work, text: string, ids: readonly string[]): Step {
   const { store } = run;
-  const ids = request.units.map((_unit, index) => String(index + 1));
   const { matched } = matchUnits(parseUnits(text), ids);
   const replies = store.transaction(() =>
     request.units.map((unit, index) => {
-      const fragment = matched.get(String(index + 1))?.raw ?? '';
+      const fragment = matched.get(ids[index] ?? '')?.raw ?? '';
       const attempts = countAttempt(store, unit.unit_id);
       move(store, unit.unit_id, 'receive');
       if (fragment !== '') saveResponse(store, unit.unit_id, attempts, fragment, model.id);
@@ -410,12 +414,13 @@ function replied(run: Run, { request, model }: Work, text: string): Step {
 
 /**
  * 模型有回覆的請求，即時與批次共用。不管回應用不用得上都先記帳，
- * 否則預算會少算已經付的錢（ADR-0104 第 43 項）。
+ * 否則預算會少算已經付的錢（ADR-0104 第 43 項）。`ids` 是每個單位在回應裡的 `<s id>`，
+ * 批次收回時照送出時的位置給，中間有單位不在了也對得上（ADR-0107 第 11 項）。
  */
-export function answered(run: Run, work: Work, result: Answer): Step {
+export function answered(run: Run, work: Work, result: Answer, ids: readonly string[] = numbered(work.request.units)): Step {
   charge(run, work, result.requestId, result.usage);
   if (result.outcome === 'refused') return refused(run, work, result.category);
-  return result.outcome === 'truncated' ? truncated(run, work) : replied(run, work, result.text);
+  return result.outcome === 'truncated' ? truncated(run, work) : replied(run, work, result.text, ids);
 }
 
 /** 閘門擋下不是錯誤，單位要標成 `BLOCKED`。其他錯誤照樣丟出去，單位留在 `IN_FLIGHT`，下次會重送。 */

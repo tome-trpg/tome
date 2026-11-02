@@ -828,7 +828,7 @@ flowchart TD
 
 **批次提交**先寫入意圖紀錄，再呼叫 API，取得遠端 ID 後才更新。當機時靠這份紀錄比對遠端批次，避免重複付費（H-17）。
 
-**已實作**：續跑、`tome batch status|collect|cancel` 與 `tome status`（`src/core/batch.ts`、`src/core/status.ts`；`tests/cli/batch.test.ts`）。批次模式開頭先收回上次留下的批次，即時模式遇到沒收回的批次就停下，同一段不付兩次。建立批次時沒收到回應不重送，429 與 5xx 才重試。收回到一半中斷時再下載一次結果，跳過已經套用的請求，帳本同一個請求只記一次。`tome status` 只讀本機的資料，不連網，不拿書的鎖（ADR-0107）。
+**已實作**：續跑、`tome batch status|collect|cancel` 與 `tome status`（`src/core/batch.ts`、`src/core/status.ts`；`tests/cli/batch.test.ts`）。批次模式開頭先收回上次留下的批次，即時模式遇到沒收回的批次就停下，同一段不付兩次。建立批次時沒收到回應或收到 5xx 都不重送，留著意圖紀錄，下次執行去認，只有 429 這類 4xx 原地重試（ADR-0108）。收回到一半中斷時再下載一次結果，跳過已經套用的請求，帳本同一個請求只記一次。`tome status` 只讀本機的資料，不連網，不拿書的鎖（ADR-0107）。
 
 **認回批次**的程式已寫好：沒有遠端 ID 的意圖，從最新的批次往回列到意圖時間減 10 分鐘，取這本書沒記錄過、請求數相同的最早一批，收回時用 `custom_id` 裡的隨機碼確認，對不上的不採用也不刪除，沒有候選就重送。只對假供應商測過，依賴 H-17，真實請求驗證之前不算已實作。10 分鐘的時鐘差是**提案**（ADR-0107）。
 
@@ -1237,6 +1237,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0105](adr/0105-legal-review-before-release.md) | 0.1.0 發佈前請著作權律師審查 | M2 |
 | [ADR-0106](adr/0106-work-before-the-sdk-cooldown.md) | SDK 冷卻期先做的部分 | M2 |
 | [ADR-0107](adr/0107-batch-and-resume-decisions.md) | Batch 與續跑的細節 | M2 |
+| [ADR-0108](adr/0108-batch-create-server-errors.md) | 建立批次時收到 5xx | M2 |
 
 ---
 

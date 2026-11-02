@@ -132,11 +132,18 @@ export async function withRetry<T>(
 }
 
 /**
- * 建立批次時，沒有收到回應就不知道建立了沒有，再送一次可能多付一整批，所以不重試，
- * 留給意圖紀錄去認（ADR-0107 第 8 項）。有收到 429 或 5xx 代表沒有建立，可以重試。
+ * 建立批次時收到 4xx 代表沒有建立。5xx 不保證伺服器沒有建立，跟沒有收到回應一樣不知道（ADR-0108）。
+ */
+export function submitRejected(status: number | null): boolean {
+  return status !== null && status < 500;
+}
+
+/**
+ * 不知道建立了沒有時再送一次，可能多付一整批，所以不重試，留給意圖紀錄去認（ADR-0107 第 8 項、ADR-0108）。
+ * 只有 429 這類 4xx 原地重試。
  */
 export function retryableSubmit(status: number | null): boolean {
-  return status !== null && retryable(status);
+  return submitRejected(status) && retryable(status);
 }
 
 export function sendWithRetry(provider: LLMProvider, body: MessagesBody, sleep: Sleep = sleepSeconds): Promise<RequestResult> {

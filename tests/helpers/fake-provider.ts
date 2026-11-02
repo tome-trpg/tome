@@ -58,6 +58,8 @@ export interface FakeBatchOptions {
   createStatus: number | null;
   /** 建立了批次卻不回應，模擬送出之後、記下遠端 ID 之前中斷。 */
   dropCreate: boolean;
+  /** 建立了批次卻回這個狀態碼，5xx 不保證伺服器沒有建立。 */
+  failAfterCreate: number | null;
   /** 查詢時回這個狀態碼。 */
   pollStatus: number | null;
   /** 刪除時回這個狀態碼，不刪除。 */
@@ -95,6 +97,7 @@ const DEFAULT_BATCH: FakeBatchOptions = {
   reverse: false,
   createStatus: null,
   dropCreate: false,
+  failAfterCreate: null,
   pollStatus: null,
   deleteStatus: null,
   archived: false,
@@ -242,6 +245,10 @@ export async function startFakeProvider(script: FakeScript, options: Partial<Fak
     batches.push(created);
     if (batch.dropCreate) {
       response.socket?.destroy();
+      return;
+    }
+    if (batch.failAfterCreate !== null) {
+      sendError(response, batch.failAfterCreate);
       return;
     }
     send(response, 200, batchObject(created, batch));

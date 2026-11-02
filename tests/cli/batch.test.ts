@@ -328,14 +328,14 @@ describe('budget and gate before a batch (ADR-0107 items 6 and 7)', () => {
   });
 });
 
-describe('sending a batch (ADR-0107 item 8)', () => {
-  it('retries a 429 or 5xx on create, as nothing was made, then gives the units back', async () => {
+describe('sending a batch (ADR-0107 item 8, ADR-0108)', () => {
+  it('retries a 429 on create, as a 4xx made nothing, then gives the units back', async () => {
     const lib = await confirmed();
-    const { provider, host } = await fake(GOOD, { createStatus: 503 });
+    const { provider, host } = await fake(GOOD, { createStatus: 429 });
     const { exit, output } = await translate(lib, host);
     expect(exit).toBe(1);
     expect(host.waits).toEqual([1, 2, 4, 8, 16]);
-    expect(found(output, 'translate.provider_failed')?.params).toEqual({ status: '503' });
+    expect(found(output, 'translate.provider_failed')?.params).toEqual({ status: '429' });
     expect(provider.batches).toHaveLength(0);
     expect(batchRows(lib.home)[0]?.state).toBe('abandoned');
     expect(statesOf(lib.home)).toEqual(['QUEUED', 'QUEUED', 'QUEUED']);
@@ -347,7 +347,42 @@ describe('sending a batch (ADR-0107 item 8)', () => {
     const { exit } = await translate(lib, host);
     expect(exit).toBe(1);
     expect(host.waits).toEqual([]);
+    expect(batchRows(lib.home)[0]?.state).toBe('abandoned');
     expect(statesOf(lib.home)).toEqual(['QUEUED', 'QUEUED', 'QUEUED']);
+  });
+
+  it('does not retry a 5xx on create, which may have made the batch, and finds it on the next run', async () => {
+    const lib = await confirmed();
+    const { provider, host } = await fake(GOOD, { failAfterCreate: 500 });
+    const first = await translate(lib, host);
+    expect(first.exit).toBe(1);
+    expect(found(first.output, 'translate.provider_failed')?.params).toEqual({ status: '500' });
+    expect(host.waits).toEqual([]);
+    expect(provider.batches).toHaveLength(1);
+    expect(batchRows(lib.home)[0]).toMatchObject({ state: 'intent', remote_id: null });
+    expect(statesOf(lib.home)).toEqual(['IN_FLIGHT', 'IN_FLIGHT', 'IN_FLIGHT']);
+    provider.batch.failAfterCreate = null;
+    const second = await translate(lib, host);
+    expect(second.exit).toBe(0);
+    expect(found(second.output, 'batch.recovered')?.params).toEqual({ id: provider.batches[0]?.id });
+    expect(provider.batches).toHaveLength(1);
+    expect(provider.requests).toHaveLength(1);
+    expect(statesOf(lib.home)).toEqual(['DONE', 'DONE', 'DONE']);
+  });
+
+  it('sends the units again on the next run when a 5xx made nothing', async () => {
+    const lib = await confirmed();
+    const { provider, host } = await fake(GOOD, { createStatus: 503 });
+    const first = await translate(lib, host);
+    expect(first.exit).toBe(1);
+    expect(host.waits).toEqual([]);
+    expect(batchRows(lib.home)[0]).toMatchObject({ state: 'intent', remote_id: null });
+    provider.batch.createStatus = null;
+    const second = await translate(lib, host);
+    expect(second.exit).toBe(0);
+    expect(found(second.output, 'batch.not_sent')?.params).toEqual({ requests: '1' });
+    expect(batchRows(lib.home).map(({ state }) => state)).toEqual(['abandoned', 'collected']);
+    expect(statesOf(lib.home)).toEqual(['DONE', 'DONE', 'DONE']);
   });
 
   it('does not send the batch again when no reply came, and keeps the intent', async () => {
@@ -445,6 +480,41 @@ describe('a batch left from before (ADR-0107 items 11, 15 and 16)', () => {
     expect(exit).toBe(0);
     expect(provider.batches).toHaveLength(1);
     expect(statesOf(lib.home)).toEqual(['DONE', 'DONE', 'DONE']);
+  });
+
+  /** 估價確認之後書的內容改了，`tome batch collect` 照樣收回（第 17 項）。 */
+  function changeDocument(home: string, change: (blocks: { text: string }[]) => void): void {
+    const path = join(home, 'books', 'book', 'ir', 'document.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { blocks: { text: string }[] };
+    change(document.blocks);
+    writeFileSync(path, JSON.stringify(document));
+  }
+
+  it('gives each unit its own reply when a unit in the middle left the plan before the results came', async () => {
+    const { lib, provider, host } = await leftOver();
+    expect(provider.requests).toHaveLength(1);
+    changeDocument(lib.home, (blocks) => blocks.splice(1, 1));
+    const { exit } = await tome(lib, host, 'batch', 'collect', 'book');
+    expect(exit).toBe(0);
+    const left = rows(lib.home);
+    expect(left).toHaveLength(2);
+    for (const { state, translation, source } of left) {
+      expect(state).toBe('DONE');
+      expect(translation).toBe(`譯：${source}`);
+    }
+  });
+
+  it('does not give an old reply to a unit whose text changed before the results came', async () => {
+    const { lib, host } = await leftOver();
+    changeDocument(lib.home, (blocks) => {
+      const middle = blocks[1];
+      if (middle !== undefined) middle.text = `${middle.text} Changed.`;
+    });
+    const { exit } = await tome(lib, host, 'batch', 'collect', 'book');
+    expect(exit).toBe(0);
+    const [first, middle, last] = rows(lib.home);
+    expect(middle).toMatchObject({ state: 'PENDING', translation: null });
+    for (const unit of [first, last]) expect(unit?.translation).toBe(`譯：${unit?.source}`);
   });
 
   it('stops --realtime, which would pay for the same units again', async () => {

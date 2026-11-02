@@ -7,6 +7,7 @@ import {
   RETRYABLE_BATCH_ERRORS,
   isApiError,
   retryableSubmit,
+  submitRejected,
   withRetry,
   type ApiError,
   type BatchOutcome,
@@ -93,32 +94,42 @@ function totalOf({ counts }: RemoteBatch): number {
   return counts.processing + counts.succeeded + counts.errored + counts.canceled + counts.expired;
 }
 
+interface SentUnit {
+  readonly unit: TranslationUnit;
+  /** 送出時在請求裡的位置，回應的 `<s id>` 是它加 1（ADR-0107 第 11 項）。 */
+  readonly position: number;
+}
+
 interface SentRequest {
   readonly customId: string;
   readonly model: string;
-  readonly units: readonly TranslationUnit[];
+  /** 計畫裡已經沒有的單位不在這裡，其他單位的位置照送出時的。 */
+  readonly units: readonly SentUnit[];
 }
 
 /** 依送出的順序，單位依在請求裡的位置。 */
 function sentRequests({ store, byId }: Run, batchId: number): SentRequest[] {
-  const rows = store.all<{ custom_id: string; unit_id: string; model: string }>(
-    'SELECT custom_id, unit_id, model FROM batch_unit WHERE batch_id = ? ORDER BY rowid',
+  const rows = store.all<{ custom_id: string; position: number; unit_id: string; model: string }>(
+    'SELECT custom_id, position, unit_id, model FROM batch_unit WHERE batch_id = ? ORDER BY rowid',
     batchId,
   );
-  const requests = new Map<string, { model: string; units: TranslationUnit[] }>();
-  for (const { custom_id, unit_id, model } of rows) {
+  const requests = new Map<string, { model: string; units: SentUnit[] }>();
+  for (const { custom_id, position, unit_id, model } of rows) {
     const request = requests.get(custom_id) ?? { model, units: [] };
     requests.set(custom_id, request);
     const unit = byId.get(unit_id);
-    if (unit !== undefined) request.units.push(unit);
+    if (unit !== undefined) request.units.push({ unit, position });
   }
   return [...requests].map(([id, { model, units }]) => ({ customId: id, model, units }));
 }
 
+/** 還在 `IN_FLIGHT` 的。估價確認之後內容改了，文字變了的單位已經回到起點，不能再套用舊的回應。 */
+function liveUnits(store: Store, { units }: SentRequest): SentUnit[] {
+  return units.filter(({ unit }) => stateOf(store, unit.unit_id) === 'IN_FLIGHT');
+}
+
 function inFlightUnits(run: Run, batchId: number): TranslationUnit[] {
-  return sentRequests(run, batchId).flatMap(({ units }) =>
-    units.filter(({ unit_id }) => stateOf(run.store, unit_id) === 'IN_FLIGHT'),
-  );
+  return sentRequests(run, batchId).flatMap((sent) => liveUnits(run.store, sent).map(({ unit }) => unit));
 }
 
 /** 沒有送到供應商，或結果拿不回來：單位放回佇列。 */
@@ -195,15 +206,18 @@ async function collect(batchRun: BatchRun, row: BatchRow, remoteId: string, unve
   let failed = 0;
   let fatal = false;
   for (const sent of sentRequests(run, row.id)) {
-    const live = sent.units.filter(({ unit_id }) => stateOf(store, unit_id) === 'IN_FLIGHT');
+    const live = liveUnits(store, sent);
     // 已經套用過：中斷之後再下載一次結果時跳過（ADR-0107 第 11 項）。
     if (live.length === 0) continue;
     applied += 1;
+    const units = live.map(({ unit }) => unit);
     const result: BatchOutcome = results.get(sent.customId) ?? { outcome: 'errored', type: MISSING };
     if (result.outcome === 'ok' || result.outcome === 'truncated' || result.outcome === 'refused') {
       succeeded += 1;
-      const work = { request: { id: sent.customId, units: sent.units, context: '' }, model: findModel(plan.provider.profile, sent.model) };
-      next.push(...answered(run, work, result).next);
+      const work = { request: { id: sent.customId, units, context: '' }, model: findModel(plan.provider.profile, sent.model) };
+      // 照送出時的位置對 `<s id>`，中間有單位不在了，後面的單位才不會拿到別人的譯文。
+      const ids = live.map(({ position }) => String(position + 1));
+      next.push(...answered(run, work, result, ids).next);
       continue;
     }
     // 不收費，單位放回佇列，下一批重送（ADR-0107 第 13 項）。
@@ -211,7 +225,7 @@ async function collect(batchRun: BatchRun, row: BatchRow, remoteId: string, unve
     const type = failureType(result);
     if (!failures.includes(type)) failures.push(type);
     if (result.outcome === 'errored' && type !== MISSING && !RETRYABLE_BATCH_ERRORS.includes(type)) fatal = true;
-    moveAll(store, live, 'requeue');
+    moveAll(store, units, 'requeue');
   }
   const now = new Date().toISOString();
   store.run(
@@ -371,8 +385,8 @@ async function sendBatch(batchRun: BatchRun, works: readonly Work[]): Promise<St
     return blockedStop(hitCount(error.hits));
   }
   if (isApiError(remote)) {
-    // 有收到回應代表沒有建立。沒有收到回應就不知道，留著意圖紀錄，下次執行時去認。
-    if (remote.status !== null) giveBack(run, row.id, 'abandoned');
+    // 4xx 代表沒有建立。5xx 與沒有收到回應就不知道，留著意圖紀錄，下次執行時去認（ADR-0108）。
+    if (submitRejected(remote.status)) giveBack(run, row.id, 'abandoned');
     return stopAt(providerFailed(remote));
   }
   store.run(

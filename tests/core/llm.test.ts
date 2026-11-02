@@ -249,10 +249,18 @@ describe('withRetry for a batch (ADR-0107 items 8 and 12)', () => {
     expect(count()).toBe(1);
   });
 
-  it('creates it again after a 429 or 5xx, which made nothing', async () => {
-    const { call, count } = calls([failure(429), failure(503), { id: 'msgbatch_1' }]);
+  it('creates it again after a 429, as a 4xx made nothing', async () => {
+    const { call, count } = calls([failure(429), failure(429), { id: 'msgbatch_1' }]);
     expect(await withRetry(call, clock().sleep, retryableSubmit)).toEqual({ id: 'msgbatch_1' });
     expect(count()).toBe(3);
+  });
+
+  it('does not create it again after a 5xx, which may have made one (ADR-0108)', async () => {
+    for (const status of [500, 503, 529]) {
+      const { call, count } = calls([failure(status), { id: 'msgbatch_1' }]);
+      expect(await withRetry(call, clock().sleep, retryableSubmit)).toEqual(failure(status));
+      expect(count()).toBe(1);
+    }
   });
 
   it('takes null, an empty list and a batch as success', () => {

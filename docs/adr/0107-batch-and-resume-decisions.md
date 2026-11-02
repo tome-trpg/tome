@@ -129,7 +129,8 @@ Batches API 的行為以 2026-11-02 讀的官方文件為準（platform.claude.c
 <!-- @assert-count target="src/core/request.ts" symbol="BATCH_CHARS = 100_000" expected="1" reason="第 3 項：一批 100,000 字元，是提案" -->
 <!-- @assert-count target="src/core/batch.ts" symbol="overBudget(run, high)" expected="1" reason="第 6 項：每批送出前檢查預算" -->
 <!-- @assert-count target="src/core/batch.ts" symbol="markBlocked(run, work.request.units, hits, ['block'])" expected="1" reason="第 7 項：閘門逐一掃描每個請求" -->
-<!-- @assert-count target="src/core/llm.ts" symbol="status !== null && retryable(status)" expected="1" reason="第 8 項：沒收到回應的建立不重送" -->
+<!-- @assert-count target="src/core/llm.ts" symbol="return submitRejected(status) && retryable(status);" expected="1" reason="第 8 項：沒收到回應的建立不重送，ADR-0108 再加上 5xx" -->
+<!-- @assert-count target="src/core/batch.ts" symbol="const ids = live.map(({ position }) => String(position + 1));" expected="1" reason="第 11 項：<s id> 照送出時的位置加 1" -->
 <!-- @assert-count target="src/core/batch.ts" symbol="CLOCK_SKEW_MS = 10 * 60 * 1000" expected="1" reason="第 9 項：時鐘差 10 分鐘，是提案" -->
 <!-- @assert-count target="src/core/batch.ts" symbol="return `tome-${nonce}-${index + 1}`;" expected="1" reason="第 10 項：custom_id 只有隨機碼與序號" -->
 <!-- @assert-count target="src/core/store.ts" symbol="CREATE TABLE batch_unit" expected="1" reason="第 11 項：遷移第 6 版" -->
