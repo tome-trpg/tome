@@ -20,7 +20,7 @@ G-5 要求合規是結構，不是紀律。個資閘門與端點白名單只要�
 
 ## 驗證
 
-<!-- @assert-import-absence target="src" exclude="src/core/egress/** *.json" module="node:http node:https node:http2 node:net node:tls node:dgram node:dns http https http2 net tls dgram dns undici axios node-fetch got ky ws @anthropic-ai/sdk openai @google/genai" reason="對外連線與供應商 SDK 只能在對外出口模組" -->
+<!-- @assert-import-absence target="src" exclude="src/core/egress/**" module="node:http node:https node:http2 node:net node:tls node:dgram node:dns http https http2 net tls dgram dns undici axios node-fetch got ky ws @anthropic-ai/sdk openai @google/genai" reason="對外連線與供應商 SDK 只能在對外出口模組" -->
 <!-- @assert-absence target="src" exclude="src/core/egress/**" regex="true" symbol="\b(fetch|WebSocket|EventSource|XMLHttpRequest)\s*\(" reason="全域的連網 API 也一樣" -->
 
 ## 後果
