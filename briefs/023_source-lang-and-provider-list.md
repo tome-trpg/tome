@@ -55,20 +55,26 @@ protectedFiles:
 
 ## Invariants
 
-- [ ] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
-- [ ] 新的測試先在舊行為上失敗過
+- [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
+- [x] 新的測試先在舊行為上失敗過
 - [ ] `specs`、`test` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
 - [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
-- [ ] `tome provider list` 不連網，也不讀金鑰，有測試把關
-- [ ] `package.json` 的相依沒有變
+- [x] `tome provider list` 不連網，也不讀金鑰，有測試把關
+- [x] `package.json` 的相依沒有變
 
 ## Acceptance Criteria
 
-- [ ] 只改 `source_lang` 就要重新確認估價，有測試
-- [ ] `tome provider list` 依維護者回覆的形狀輸出，資料來自 `providers/anthropic.yaml`
-- [ ] ADR-0106 修改 ADR-0104 第 1、41 項
-- [ ] 白皮書的成熟度標籤、附錄 B、CHANGELOG 更新
+- [x] 只改 `source_lang` 就要重新確認估價，有測試
+- [x] `tome provider list` 依維護者回覆的形狀輸出，資料來自 `providers/anthropic.yaml`
+- [x] ADR-0106 修改 ADR-0104 第 1、41 項
+- [x] 白皮書的成熟度標籤、附錄 B、CHANGELOG 更新
 
 ## Measured
 
 2026-11-02，Windows 參考機器。沒有連到本機以外的主機，沒有用到金鑰。
+
+| 測試 | 怎麼確認會失敗 |
+| :--- | :--- |
+| 只改 `source_lang` 要重新確認 | 舊程式上失敗，`confirmed` 還是 `true` |
+| `tests/cli/provider.test.ts` | 指令不存在時 18 個失敗 |
+| 不列的欄位 7 個、不收參數 1 個 | 指令不存在時也會過，故意把整份設定檔放進 `data`、改成收參數後失敗，再改回來 |

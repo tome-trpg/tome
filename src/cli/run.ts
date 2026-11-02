@@ -13,7 +13,7 @@ import { createPack, listPacks, locatePack } from '../core/pack.ts';
 import { previewBook } from '../core/preview.ts';
 import { detectGpu } from '../core/probe.ts';
 import { runTool, type StreamRunner, type ToolRunner } from '../core/process.ts';
-import type { RequestMode } from '../core/provider.ts';
+import { listProviders, type RequestMode } from '../core/provider.ts';
 import { dryRunBook, estimateBook } from '../core/request.ts';
 import {
   isProvider,
@@ -452,6 +452,12 @@ const COMMANDS: readonly Command[] = [
       }
       return { data: { provider }, findings: [finding('key.stored', 'info', { provider })] };
     },
+  },
+  {
+    path: ['provider', 'list'],
+    options: {},
+    positionals: 0,
+    run: async () => listProviders(),
   },
 ];
 

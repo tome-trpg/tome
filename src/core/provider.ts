@@ -110,3 +110,87 @@ export function priceFinding(provider: Provider, today: Date): Finding {
     ? finding('prices.stale', 'warn', { provider: id, verified, days: String(days) })
     : finding('prices.ok', 'info', { provider: id, verified });
 }
+
+/** 小數位數跟著金額走：便宜的模型一本書可能不到一美元。 */
+export function usd(amount: number): string {
+  return amount.toFixed(amount >= 0.01 || amount === 0 ? 2 : 6);
+}
+
+type ListedPrice = Pick<Price, 'input' | 'output' | 'batch_input' | 'batch_output'>;
+
+interface ListedModel {
+  readonly id: string;
+  readonly effective: string;
+  readonly price: ListedPrice;
+  readonly long_prompt?: { readonly over_tokens: number; readonly price: ListedPrice };
+}
+
+export interface ListedProvider {
+  readonly id: string;
+  readonly endpoint: string;
+  readonly verified: string;
+  readonly retention_days: number;
+  readonly models: readonly ListedModel[];
+}
+
+export interface ProviderListing {
+  readonly data: { readonly providers: readonly ListedProvider[] };
+  readonly findings: readonly Finding[];
+}
+
+function listedPrice({ input, output, batch_input, batch_output }: Price): ListedPrice {
+  return { input, output, batch_input, batch_output };
+}
+
+/** 快取 M2 沒開，思考倍數沒量過，伺服器端回退 TOME 不用，都不列（ADR-0106 第 4 項）。 */
+function listedModel({ id, effective, price, long_prompt: long }: ProviderModel): ListedModel {
+  return {
+    id,
+    effective,
+    price: listedPrice(price),
+    ...(long === undefined ? {} : { long_prompt: { over_tokens: long.over_tokens, price: listedPrice(long.price) } }),
+  };
+}
+
+function listedProvider({ id, endpoint, verified, retention_days, models }: Provider): ListedProvider {
+  return { id, endpoint, verified, retention_days, models: models.map(listedModel) };
+}
+
+function priceParams({ input, output, batch_input, batch_output }: ListedPrice): Record<string, string> {
+  return {
+    input: usd(input),
+    output: usd(output),
+    batch_input: usd(batch_input),
+    batch_output: usd(batch_output),
+  };
+}
+
+function modelFindings({ id, price, long_prompt: long }: ListedModel): Finding[] {
+  return [
+    finding('provider.model', 'info', { model: id, ...priceParams(price) }),
+    ...(long === undefined
+      ? []
+      : [
+          finding('provider.long_prompt', 'info', {
+            model: id,
+            over: String(long.over_tokens),
+            ...priceParams(long.price),
+          }),
+        ]),
+  ];
+}
+
+/** `tome provider list`。只讀隨程式發送的資料，不連網，不碰金鑰，也不需要工作區（ADR-0106）。 */
+export function listProviders(today: Date = new Date()): ProviderListing {
+  const profiles = PROVIDERS.map((id) => loadProvider(id).profile);
+  const providers = profiles.map(listedProvider);
+  const findings = profiles.flatMap((profile) => {
+    const { id, endpoint, retention_days, models } = profile;
+    return [
+      finding('provider.listed', 'info', { id, endpoint, retention: String(retention_days) }),
+      ...models.map(listedModel).flatMap(modelFindings),
+      priceFinding(profile, today),
+    ];
+  });
+  return { data: { providers }, findings };
+}

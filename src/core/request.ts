@@ -24,6 +24,7 @@ import {
   loadProvider,
   priceFinding,
   thinkingParams,
+  usd,
   type LoadedProvider,
   type Provider,
   type ProviderModel,
@@ -415,11 +416,6 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
     },
     findings: packFindings,
   };
-}
-
-/** 小數位數跟著金額走：便宜的模型一本書可能不到一美元。 */
-export function usd(amount: number): string {
-  return amount.toFixed(amount >= 0.01 || amount === 0 ? 2 : 6);
 }
 
 function planData(plan: BookPlan): Readonly<Record<string, unknown>> {

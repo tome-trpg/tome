@@ -37,6 +37,7 @@ The following features are design goals. See [Development status](#development-s
 | :--- | :--- | :--- |
 | Workspace setup and environment checks | `tome init`, `tome doctor` | Implemented |
 | API key setup | `tome provider auth set` | Implemented |
+| Models and prices | `tome provider list` | Implemented: no network and no API key needed; the list is not a recommendation |
 | Book registration and PDF probing | `tome add`, `tome probe` | Implemented, and suggests a rule pack from the data that packs declare |
 | Rule pack management | `tome system new`, `list`, `lint`, `test` | Implemented, with the built-in `generic` pack |
 | Parsing engine management | `tome engine add`, `list`, `remove` | Implemented |

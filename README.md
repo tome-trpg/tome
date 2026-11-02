@@ -37,6 +37,7 @@ TOME 的設計目標是解決這些問題，並讓譯文可以直接用於實際
 | :--- | :--- | :--- |
 | 建立工作區、檢查環境 | `tome init`、`tome doctor` | 已實作 |
 | 設定 API 金鑰 | `tome provider auth set` | 已實作 |
+| 查看模型與價格 | `tome provider list` | 已實作：不連網，不需要 API 金鑰，清單不代表推薦 |
 | 登記書籍、探測 PDF | `tome add`、`tome probe` | 已實作，並可依規則包的資料建議適用的規則包 |
 | 管理規則包 | `tome system new`、`list`、`lint`、`test` | 已實作，內建 `generic` 規則包 |
 | 管理解析引擎 | `tome engine add`、`list`、`remove` | 已實作 |

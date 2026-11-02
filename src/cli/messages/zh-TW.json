@@ -1,5 +1,5 @@
 {
-  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   將 API 金鑰存入作業系統憑證庫\n  add <pdf>                    加入書籍並執行探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <名稱>                 探測文件結構與頁面類型\n  extract <名稱>               以解析引擎解析書籍頁面\n  estimate <名稱>              在本機估算翻譯費用，不連網\n    [--budget <美元>] [--chapters <範圍>] [--realtime] [--confirm]\n  translate <名稱> --dry-run   組出所有請求但不送出\n  verify <名稱>                以已儲存的回應重新驗證譯文，不消耗 token\n  preview <名稱>               在本機產生原文與譯文對照\n  engine add <名稱或路徑>      安裝解析引擎，加上 --gpu 則安裝 CUDA 版\n  engine list                  列出已安裝的解析引擎\n  engine remove <名稱>         移除解析引擎\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加上 --public 則一併檢查公開規則包的要求\n  system test <ID 或路徑>      執行規則包的測試案例，不消耗 token\n\n選項：\n  --json     以 JSON 格式輸出\n  --help     顯示本說明\n  --version  顯示版本\n",
+  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   將 API 金鑰存入作業系統憑證庫\n  provider list                列出 TOME 知道怎麼呼叫的模型與價格\n  add <pdf>                    加入書籍並執行探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <名稱>                 探測文件結構與頁面類型\n  extract <名稱>               以解析引擎解析書籍頁面\n  estimate <名稱>              在本機估算翻譯費用，不連網\n    [--budget <美元>] [--chapters <範圍>] [--realtime] [--confirm]\n  translate <名稱> --dry-run   組出所有請求但不送出\n  verify <名稱>                以已儲存的回應重新驗證譯文，不消耗 token\n  preview <名稱>               在本機產生原文與譯文對照\n  engine add <名稱或路徑>      安裝解析引擎，加上 --gpu 則安裝 CUDA 版\n  engine list                  列出已安裝的解析引擎\n  engine remove <名稱>         移除解析引擎\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加上 --public 則一併檢查公開規則包的要求\n  system test <ID 或路徑>      執行規則包的測試案例，不消耗 token\n\n選項：\n  --json     以 JSON 格式輸出\n  --help     顯示本說明\n  --version  顯示版本\n",
   "prompt": {
     "secret": "請輸入 {provider} 的 API 金鑰（輸入內容不會顯示）："
   },
@@ -116,6 +116,9 @@
     "pii.empty": "tome.yaml 的個資清單 pii 是空的。請列出購買者姓名、訂單編號等資料，TOME 才能在送出前攔截。",
     "pii.too_short": "tome.yaml 的個資清單第 {entries} 項少於 3 個字元，容易誤判。",
     "preview.done": "已產生 {files} 個對照檔，位於 {path}。",
+    "provider.listed": "{id}：端點 {endpoint}，批次資料最多在供應商端保留 {retention} 天。以下是 TOME 知道怎麼呼叫的模型，不是推薦，尚未經過盲評。",
+    "provider.long_prompt": "{model} 的 prompt 超過 {over} token 時，改為即時 ${input}／${output}，批次 ${batch_input}／${batch_output}。",
+    "provider.model": "{model}：即時 ${input}／${output}，批次 ${batch_input}／${batch_output}（每百萬 token，輸入／輸出）。",
     "prices.ok": "{provider} 的價目表查證日為 {verified}。",
     "prices.stale": "{provider} 的價目表已有 {days} 天未查證（查證日 {verified}），估價可能不準確。請更新 TOME。",
     "probe.assigned": "已將 {count} 頁分配給解析引擎。",
