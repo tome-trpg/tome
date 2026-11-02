@@ -107,6 +107,14 @@ brief 018 開工前比對 ADR-0099、ADR-0017、ADR-0038、ADR-0039 與白皮書
 32. 模組是 `src/core/llm.ts`（介面與重試）、`src/core/translate.ts`（流程）、`src/core/preview.ts`。新的發現是 `pii.too_short`、`translate.provider_failed`，`issue.code` 多 `pii_hit`、`refused`、`truncated`。
 33. `translate.done` 用同一個代碼回報成果，有單位卡住時層級是 fail，結束碼 1。
 
+**實作前補定的細節**
+
+34. `--retry-failed` 放回佇列時 `attempts` 歸零，否則 `FAILED_QA` 再失敗一次就直接放棄。`BLOCKED` 走 `release`，`FAILED_QA`、`REFUSED` 走 `retry`。放回之後還是要過確認估價、預算與閘門。
+35. 請求有回覆時，那個請求的單位都算一次 `attempts`，回覆漏掉的單位也算，否則模型一直漏同一段就永遠跑不完。拒答與 429 仍然不算。
+36. 存進資料庫的 `STALE` 開始時跟 `RECEIVED` 一樣，用存下來的回應重跑驗證，不重送。估價把它算進去的現況不動。
+37. `fallback_model` 進內容指紋，改了要重新確認：它決定內容會不會送到另一個模型，也影響費用。設了表上沒有的模型時，開跑前就回 `model.unknown`，不等到被拒才發現。
+38. 估價與試算回覆的 `data` 多 `mode` 欄位，`--json` 才看得出這個估價是哪個模式。
+
 ## 驗證
 
 <!-- @assert-count target="src/core/egress/client.ts" symbol="redirect: 'error'" expected="1" reason="第 4 項：轉址當成失敗" -->
@@ -117,6 +125,8 @@ brief 018 開工前比對 ADR-0099、ADR-0017、ADR-0038、ADR-0039 與白皮書
 <!-- @assert-count target="src/core/translate.ts" symbol="'requeue', 'block'" expected="1" reason="第 9 項：閘門命中時單位標成 BLOCKED" -->
 <!-- @assert-count target="prompts/translate.md" symbol="<feedback> lists what was wrong" expected="1" comments="include" reason="第 31 項：提示說明重送的原因" -->
 <!-- @assert-count target="src/core/preview.ts" symbol="state === 'BLOCKED'" expected="1" reason="第 23 項：BLOCKED 的單位不放原文" -->
+<!-- @assert-count target="src/core/translate.ts" symbol="UPDATE unit SET attempts = 0" expected="1" reason="第 34 項：--retry-failed 放回佇列時 attempts 歸零" -->
+<!-- @assert-count target="src/core/request.ts" symbol="fallback?.id ?? null" expected="1" reason="第 37 項：fallback_model 進內容指紋" -->
 
 ## 後果
 

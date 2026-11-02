@@ -55,30 +55,40 @@ protectedFiles:
 
 ## Invariants
 
-- [ ] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
-- [ ] 新的測試先在舊行為上失敗過
+- [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
+- [x] 新的測試先在舊行為上失敗過
 - [ ] `specs`、`test` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
 - [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
-- [ ] 訊息與 `--json` 不含書本文字，也不列出命中的個資
-- [ ] 金鑰不進紀錄、訊息與帳本
-- [ ] 這個回合沒有連到本機以外的主機，有測試把關
+- [x] 訊息與 `--json` 不含書本文字，也不列出命中的個資
+- [x] 金鑰不進紀錄、訊息與帳本
+- [x] 這個回合沒有連到本機以外的主機，有測試把關
 
 ## Acceptance Criteria
 
-- [ ] 連到端點白名單以外的主機時失敗，有測試
-- [ ] 個資閘門掃描序列化後的完整請求，命中就不送，單位標成 `BLOCKED`
-- [ ] 每次送出都留下外送紀錄，只有雜湊、供應商、模型、大小與時間
-- [ ] 429、5xx 與網路錯誤會退避重試，其他 4xx 不重試
-- [ ] 拒答依序對半拆、換 `fallback_model`，都不行才是 `REFUSED`，Batch 回 `succeeded` 的情況也算得到
-- [ ] 回應被截斷時對半拆重送
-- [ ] 重送附上原因，同組的其他單位當上下文帶上
-- [ ] 預算超過就停，保留進度
-- [ ] 估價模式跟實際模式一致，模式進指紋，換模式要重新確認
-- [ ] 中斷後續跑，已驗證的單位不重付
-- [ ] `tome preview` 產生對照，`BLOCKED` 的單位不放原文
-- [ ] 白皮書 §5.7 的拒答計費照官方改，寫明不用伺服器端回退
-- [ ] 白皮書的成熟度標籤、附錄 B、CHANGELOG 更新，ADR-0099 的斷言補進「驗證」
+- [x] 連到端點白名單以外的主機時失敗，有測試
+- [x] 個資閘門掃描序列化後的完整請求，命中就不送，單位標成 `BLOCKED`
+- [x] 每次送出都留下外送紀錄，只有雜湊、供應商、模型、大小與時間
+- [x] 429、5xx 與網路錯誤會退避重試，其他 4xx 不重試
+- [x] 拒答依序對半拆、換 `fallback_model`，都不行才是 `REFUSED`，Batch 回 `succeeded` 的情況也算得到
+- [x] 回應被截斷時對半拆重送
+- [x] 重送附上原因，同組的其他單位當上下文帶上
+- [x] 預算超過就停，保留進度
+- [x] 估價模式跟實際模式一致，模式進指紋，換模式要重新確認
+- [x] 中斷後續跑，已驗證的單位不重付
+- [x] `tome preview` 產生對照，`BLOCKED` 的單位不放原文
+- [x] 白皮書 §5.7 的拒答計費照官方改，寫明不用伺服器端回退
+- [x] 白皮書的成熟度標籤、附錄 B、CHANGELOG 更新，ADR-0099 的斷言補進「驗證」
 
 ## Measured
 
-2026-11-02，Windows 參考機器。沒有連到本機以外的主機，沒有用到金鑰。
+2026-11-02，Windows 參考機器。沒有連到本機以外的主機，沒有用到金鑰。流程只跑過假供應商，沒有對真的 API 發過請求，重試次數與退避秒數都是提案。
+
+| 測試 | 怎麼確認會失敗 |
+| :--- | :--- |
+| `tests/core/egress.test.ts`、`tests/core/llm.test.ts` | 模組不存在時失敗 |
+| `tests/core/request.test.ts` 新增的同組上下文、對半拆、重送原因 | 舊行為上 9 個失敗 |
+| `tests/cli/translate.test.ts` | 舊行為上 55 個失敗 |
+| `tests/cli/estimate.test.ts` 的 `--realtime` 與閘門 | 舊行為上 5 個失敗 |
+| `tome preview`、`pii.too_short`、`fallback_model` 進指紋 | 測試在實作之後才寫，故意改壞程式後 6 個失敗，再改回來 |
+
+護欄測試在舊行為上本來就會過：閘門命中不動單位狀態、尊重 `pii_exceptions`、同組單位不重複出現、`--retry-failed` 只動選定的章節。它們擋的是之後的退化。
