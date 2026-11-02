@@ -116,7 +116,7 @@ Batches API 的行為以 2026-11-02 讀的官方文件為準（platform.claude.c
 27. `recordUsage` 遇到已經記過的 `request_id` 就跳過。記帳與改狀態不在同一個交易，收回到一半中斷、再套用一次結果時，同一筆費用不能記兩次。批次的 `request_id` 是結果裡的訊息 ID，同一份結果下載幾次都一樣，即時模式每次送出的 ID 都不同。
 28. 新訊息的文字見 `src/cli/messages/zh-TW.json`，照 ADR-0086、ADR-0089，維護者選定。
 29. 訊息裡的時間是這台機器的本機時間，到分鐘，後面加上時差，例如 `2026-11-05 18:12（UTC+8）`。時差寫成 `UTC+8`、`UTC-5`，有分鐘時寫 `UTC+5:30`、`UTC-9:30`，時差 0 寫 `UTC`。夏令時間依各個時間當天的時差算。時間與時差是兩個參數，例如 `submitted` 與 `submitted_zone`，括號在訊息檔，核心不放給人看的標點。`--json` 的 `data` 放 ISO 8601 原值。測試注入時差或時區，結果在任何時區都固定，正式程式不加測試用的掛勾。
-30. `status.units` 的六個數字對應 9 種狀態，每種狀態只算一次，加起來等於 `total`：`done` 是 `DONE`，`in_flight` 是 `IN_FLIGHT`，`blocked` 是 `BLOCKED`，`failed` 是 `FAILED_QA`，`refused` 是 `REFUSED`，`left` 是 `PENDING`、`QUEUED`、`RECEIVED`、`STALE`，也就是還要再處理的：還沒送、收到還沒驗證、等重新驗證。
+30. `status.units` 的六個數字對應 9 種狀態，每種狀態只算一次，加起來等於 `total`：`done` 是 `DONE`，`in_flight` 是 `IN_FLIGHT`，`blocked` 是 `BLOCKED`，`failed` 是 `FAILED_QA`，`refused` 是 `REFUSED`，`left` 是 `PENDING`、`QUEUED`、`RECEIVED`、`STALE`，也就是還要再處理的：還沒送、收到還沒驗證、等重新驗證。訊息寫「尚未完成 {left} 個」，跟 `translate.done` 的 `left` 用同一個詞：`RECEIVED`、`STALE` 已經送出過，寫「尚未送出」不對。這個對應與用詞是維護者在 2026-11-02 同意的，第 29 項的時差寫法也是。
 
 **不放進 019 的**
 

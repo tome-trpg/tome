@@ -152,7 +152,7 @@
     "status.no_units": "這本書還沒有翻譯單位。請先執行 tome estimate {book}。",
     "status.not_deleted": "{count} 個批次的資料還沒從供應商端刪除，下次執行 tome translate 或 tome batch collect 時會再試。",
     "status.spent": "已花費 ${spent} 美元，預算 ${budget} 美元。",
-    "status.units": "共 {total} 個翻譯單位：完成 {done} 個，送出未收回 {in_flight} 個，個資閘門擋下 {blocked} 個，未通過驗證 {failed} 個，遭拒答 {refused} 個，尚未送出 {left} 個。",
+    "status.units": "共 {total} 個翻譯單位：完成 {done} 個，送出未收回 {in_flight} 個，個資閘門擋下 {blocked} 個，未通過驗證 {failed} 個，遭拒答 {refused} 個，尚未完成 {left} 個。",
     "translate.blocked": "請求含有個資清單的項目，命中 {count} 次，沒有送出。確實是個資時，請在 overrides 用 redact 遮掉；是誤判時，請加進 book.yaml 的 pii_exceptions。處理後再執行一次，翻譯時被擋下的單位要加上 --retry-failed。",
     "translate.budget_exceeded": "下一個請求的估價上限 ${next} 美元加上已花費的 ${spent} 美元，超過預算 ${budget} 美元，已停止並保留進度。請以 tome estimate {book} --realtime --budget <美元> --confirm 提高預算後續跑。",
     "translate.done": "共 {total} 個翻譯單位：完成 {done} 個，個資閘門擋下 {blocked} 個，未通過驗證 {failed} 個，遭拒答 {refused} 個，尚未完成 {left} 個。已花費 ${spent} 美元。未通過驗證與遭拒答的單位可加上 --retry-failed 重試。",
