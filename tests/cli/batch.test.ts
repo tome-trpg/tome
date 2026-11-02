@@ -122,6 +122,7 @@ function patched(host: FakeHost, change: (provider: LLMProvider) => Partial<LLMP
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe('tome translate in batches (ADR-0107)', () => {
@@ -590,10 +591,45 @@ describe('tome status (ADR-0107 item 18)', () => {
     expect(found(output, 'status.spent')?.params).toMatchObject({ budget: '100.00' });
     const batch = found(output, 'status.batch')?.params;
     expect(batch?.['submitted']).toMatch(/^\d{4}-\d\d-\d\d \d\d:\d\d$/);
+    expect(batch?.['submitted_zone']).toMatch(/^UTC([+-]\d{1,2}(:\d\d)?)?$/);
     expect(output.data['units']).toMatchObject({ IN_FLIGHT: 3, DONE: 0, PENDING: 0 });
     expect(Object.keys(output.data['units'] as object)).toHaveLength(9);
     expect(output.data['batches']).toMatchObject([{ state: 'submitted', requests: 1, deleted: false }]);
     expect(text).not.toContain('warden');
+  });
+
+  it('shows the time of this machine with its offset, and the raw time in --json (item 18)', async () => {
+    vi.stubEnv('TZ', 'Asia/Taipei');
+    const lib = await confirmed();
+    const { host } = await fake(GOOD, { pollStatus: 500 });
+    await translate(lib, host);
+    const { output, text } = await tome(lib, undefined, 'status', 'book');
+    const [batch] = output.data['batches'] as { submitted_at: string; expires_at: string }[];
+    const shown = (iso: string): string =>
+      new Date(Date.parse(iso) + 8 * 60 * 60 * 1000).toISOString().slice(0, 16).replace('T', ' ');
+    expect(found(output, 'status.batch')?.params).toMatchObject({
+      submitted: shown(batch?.submitted_at ?? ''),
+      submitted_zone: 'UTC+8',
+      expires: shown(batch?.expires_at ?? ''),
+      expires_zone: 'UTC+8',
+    });
+    expect(batch?.submitted_at).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z$/);
+    expect(text).toContain('（UTC+8）送出');
+  });
+
+  it('adds the six numbers up to the total, with replies waiting to be verified as left', async () => {
+    const lib = await confirmed();
+    const { host } = await fake(GOOD);
+    await translate(lib, host);
+    withStore(lib.home, (store) => {
+      store.run("UPDATE unit SET state = 'RECEIVED' WHERE seq = 1");
+      store.run("UPDATE unit SET state = 'STALE' WHERE seq = 2");
+    });
+    const { output } = await tome(lib, undefined, 'status', 'book');
+    const params = found(output, 'status.units')?.params ?? {};
+    const parts = ['done', 'in_flight', 'blocked', 'failed', 'refused', 'left'].map((name) => Number(params[name]));
+    expect(parts.reduce((sum, count) => sum + count, 0)).toBe(Number(params['total']));
+    expect(params).toMatchObject({ total: '3', done: '1', left: '2' });
   });
 
   it('warns about batches still at the provider', async () => {

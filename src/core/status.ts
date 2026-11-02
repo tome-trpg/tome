@@ -18,9 +18,26 @@ interface BatchRow {
   readonly deleted_at: string | null;
 }
 
-/** 給人看的時間一律用 UTC，在哪個時區看都一樣。`--json` 放原值。 */
-export function utcMinute(iso: string): string {
-  return new Date(iso).toISOString().slice(0, 16).replace('T', ' ');
+/** 這台機器在那個時間比 UTC 快幾分鐘。夏令時間依日期而定，所以每個時間各算一次。 */
+export type ZoneOffset = (date: Date) => number;
+
+const localOffset: ZoneOffset = (date) => -date.getTimezoneOffset();
+
+/** `UTC+8`、`UTC-5`、有分鐘時 `UTC+5:30`，時差 0 是 `UTC`（ADR-0107）。 */
+export function zoneText(minutes: number): string {
+  if (minutes === 0) return 'UTC';
+  const sign = minutes < 0 ? '-' : '+';
+  const hours = Math.floor(Math.abs(minutes) / 60);
+  const rest = Math.abs(minutes) % 60;
+  return `UTC${sign}${hours}${rest === 0 ? '' : `:${String(rest).padStart(2, '0')}`}`;
+}
+
+/** 給人看的本機時間到分鐘，加上時差。`--json` 放 ISO 8601 原值（ADR-0107）。 */
+export function localTime(iso: string, offsetOf: ZoneOffset = localOffset): { readonly time: string; readonly zone: string } {
+  const date = new Date(iso);
+  const minutes = offsetOf(date);
+  const time = new Date(date.getTime() + minutes * 60_000).toISOString().slice(0, 16).replace('T', ' ');
+  return { time, zone: zoneText(minutes) };
 }
 
 function unitCounts(rows: readonly { readonly state: UnitState; readonly count: number }[]): Record<UnitState, number> {
@@ -29,15 +46,20 @@ function unitCounts(rows: readonly { readonly state: UnitState; readonly count: 
   return counts;
 }
 
-function batchFindings(rows: readonly BatchRow[]): Finding[] {
+function timeParams(name: string, iso: string | null, offsetOf: ZoneOffset): Record<string, string> {
+  const { time, zone } = iso === null ? { time: '-', zone: '-' } : localTime(iso, offsetOf);
+  return { [name]: time, [`${name}_zone`]: zone };
+}
+
+function batchFindings(rows: readonly BatchRow[], offsetOf: ZoneOffset): Finding[] {
   const outstanding = rows.flatMap((row): Finding[] => {
     if (row.state === 'submitted' && row.remote_id !== null) {
       return [
         finding('status.batch', 'info', {
           id: row.remote_id,
-          submitted: row.submitted_at === null ? '-' : utcMinute(row.submitted_at),
           requests: String(row.requests),
-          expires: row.expires_at === null ? '-' : utcMinute(row.expires_at),
+          ...timeParams('submitted', row.submitted_at, offsetOf),
+          ...timeParams('expires', row.expires_at, offsetOf),
         }),
       ];
     }
@@ -51,7 +73,26 @@ function batchFindings(rows: readonly BatchRow[]): Finding[] {
   ];
 }
 
-export function bookStatus(home: string, slug: string): PlanOutcome {
+/**
+ * `status.units` 的六個數字各涵蓋哪些狀態，9 種狀態剛好各歸一類，加起來就是全部（ADR-0107）。
+ * `left` 是還要再處理的：還沒送、收到還沒驗證、等重新驗證。
+ */
+export const STATUS_BUCKETS: Readonly<Record<string, readonly UnitState[]>> = {
+  done: ['DONE'],
+  in_flight: ['IN_FLIGHT'],
+  blocked: ['BLOCKED'],
+  failed: ['FAILED_QA'],
+  refused: ['REFUSED'],
+  left: ['PENDING', 'QUEUED', 'RECEIVED', 'STALE'],
+};
+
+function bucketParams(units: Readonly<Record<UnitState, number>>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(STATUS_BUCKETS).map(([name, states]) => [name, String(states.reduce((sum, state) => sum + units[state], 0))]),
+  );
+}
+
+export function bookStatus(home: string, slug: string, offsetOf: ZoneOffset = localOffset): PlanOutcome {
   const book = readBook(home, slug);
   const store = openBookStore(home, slug);
   try {
@@ -76,23 +117,14 @@ export function bookStatus(home: string, slug: string): PlanOutcome {
         deleted: deleted_at !== null,
       })),
     };
-    if (total === 0) return { data, findings: [finding('status.no_units', 'info', { book: slug }), ...batchFindings(rows)] };
-    const stuck = units.BLOCKED + units.FAILED_QA + units.REFUSED;
-    const inFlight = units.IN_FLIGHT;
-    const params = {
-      total: String(total),
-      done: String(units.DONE),
-      in_flight: String(inFlight),
-      blocked: String(units.BLOCKED),
-      failed: String(units.FAILED_QA),
-      refused: String(units.REFUSED),
-      left: String(total - units.DONE - stuck - inFlight),
-    };
+    const batches = batchFindings(rows, offsetOf);
+    if (total === 0) return { data, findings: [finding('status.no_units', 'info', { book: slug }), ...batches] };
+    const params = { total: String(total), ...bucketParams(units) };
     const money =
       budget === null
         ? finding('status.no_budget', 'info', { spent: usd(spent) })
         : finding('status.spent', 'info', { spent: usd(spent), budget: usd(budget) });
-    return { data, findings: [finding('status.units', 'info', params), money, ...batchFindings(rows)] };
+    return { data, findings: [finding('status.units', 'info', params), money, ...batches] };
   } finally {
     store.close();
   }

@@ -63,15 +63,15 @@ protectedFiles:
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
 - [x] 新的測試先在舊行為上失敗過，護欄測試故意改壞程式確認會失敗
-- [ ] `specs`、`test` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `specs`、`test` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
 - [x] 訊息、紀錄與 `--json` 不含書本文字，也不列出命中的個資
 - [x] 金鑰不進紀錄、訊息與帳本
 - [x] 這個回合沒有連到本機以外的主機，有測試把關
 
 ## Acceptance Criteria
 
-- [ ] 維護者的決定寫成 ADR-0107，`amends` 指向被修改的項目
+- [x] 維護者的決定寫成 ADR-0107，`amends` 指向被修改的項目
 - [x] Batch 的介面定好，假供應商模擬還在處理、部分成功、單筆錯誤、單筆被拒、截斷、過期、取消、結果順序跟送出順序不同
 - [x] 相鄰章節併到字元上限，過大才拆，每批送出前檢查預算
 - [x] 送出前先寫意圖紀錄，取得遠端 ID 後才更新，送出與記下遠端 ID 之間中斷時，續跑能認回批次或確認沒有送出
@@ -99,5 +99,7 @@ protectedFiles:
 | 收回時跳過已經套用的請求 | 拿掉之後批次的當機注入在第 24 次寫入時失敗，再改回來 |
 | 閘門掃描整批內容 | 舊程式上本來就會過。故意讓建立批次的本文不掃描，1 個失敗，再改回來 |
 | `tests/cli/translate.test.ts` 改寫的兩個 `translate.not_ready` | 舊程式上本來就會過，它們擋的是 022 之前對使用者開放 |
+| 本機時間加時差、六個數字對應 9 種狀態（細節決定之後加的） | 在第一個 commit `4c162a7` 上 8 個失敗 |
+| `tome status` 六個數字加總等於 `total` | 在 `4c162a7` 上本來就會過。故意從 `left` 拿掉 `RECEIVED`、`STALE`，3 個失敗，再改回來 |
 
 當機注入在合成書上即時模式有 39 個中斷點、批次模式有 58 個，每一點中斷後續跑，已驗證或已付費存下的單位都沒有再送出。

@@ -91,7 +91,7 @@ Batches API 的行為以 2026-11-02 讀的官方文件為準（platform.claude.c
 
 **介面**
 
-19. 修改 ADR-0104 第 39 項與白皮書 §5.7 的提案：`LLMProvider` 加 `submitBatch`、`pollBatch`、`collectBatch`、`cancelBatch`、`deleteRemote`、`listBatches`，由 022 的轉接層實作。`RemoteBatch` 是 `id`、`status`、`requests`、`createdAt`、`expiresAt`、`endedAt`。`BatchItem` 是 `customId` 加上結果：`succeeded` 轉成既有的 `RequestResult`，另外有 `errored`（帶錯誤種類）、`expired`、`canceled`。解析結果的函式放核心，跟 `messageResult` 一樣，轉接層不用自己判斷拒答與截斷。意圖由核心寫，轉接層沒有 `intent` 參數。`capabilities` 先不加，M2 只有 Anthropic，第二家供應商進來時再加。
+19. 修改 ADR-0104 第 39 項與白皮書 §5.7 的提案：`LLMProvider` 加 `submitBatch`、`pollBatch`、`collectBatch`、`cancelBatch`、`deleteRemote`、`listBatches`，由 022 的轉接層實作。`RemoteBatch` 是 `id`、`status`、`counts`、`createdAt`、`expiresAt`、`endedAt`、`archivedAt`（第 23 項）。`BatchItem` 是 `customId` 加上結果：`succeeded` 轉成既有的 `RequestResult`，另外有 `errored`（帶錯誤種類）、`expired`、`canceled`。解析結果的函式放核心，跟 `messageResult` 一樣，轉接層不用自己判斷拒答與截斷。意圖由核心寫，轉接層沒有 `intent` 參數。`capabilities` 先不加，M2 只有 Anthropic，第二家供應商進來時再加。
 
 **外送紀錄**
 
@@ -99,15 +99,28 @@ Batches API 的行為以 2026-11-02 讀的官方文件為準（platform.claude.c
 
 **模組與代碼**
 
-21. 模組是 `src/core/batch.ts`（批次的送出、輪詢、收回、刪除、認回）與 `src/core/status.ts`（`tome status`），分批的函式放 `src/core/request.ts`，即時與批次共用的收回、驗證、記帳、拒答、截斷留在 `src/core/translate.ts`。新的發現是 `batch.budget_exceeded`、`batch.recovered`、`batch.not_sent`、`batch.errored`、`batch.archived`、`batch.delete_failed`、`batch.pending`、`batch.status`、`batch.canceling`、`batch.none`、`status.units`、`status.spent`、`status.no_budget`、`status.batch`、`status.not_deleted`、`status.no_units`。進度多 `batch_sent`、`batch_wait`。`tome batch collect` 的結果沿用 `translate.done`，`--json` 的 `data` 多一個 `batches`。`translate.not_confirmed` 的 `flags` 在批次模式是 `--confirm`。
+21. 模組是 `src/core/batch.ts`（批次的送出、輪詢、收回、刪除、認回）與 `src/core/status.ts`（`tome status`），分批的函式放 `src/core/request.ts`，即時與批次共用的收回、驗證、記帳、拒答、截斷留在 `src/core/translate.ts`。新的發現是 `batch.budget_exceeded`、`batch.recovered`、`batch.not_sent`、`batch.errored`、`batch.archived`、`batch.delete_failed`、`batch.pending`、`batch.processing`、`batch.canceling`、`batch.ended`、`batch.none`、`batch.unconfirmed`（第 24、25 項）、`status.units`、`status.spent`、`status.no_budget`、`status.batch`、`status.not_deleted`、`status.no_units`。進度多 `batch_sent`、`batch_wait`。`tome batch collect` 的結果沿用 `translate.done`，`--json` 的 `data` 多一個 `batches`。`translate.not_confirmed` 的 `flags` 在批次模式是 `--confirm`。
 
 **測試**
 
 22. 當機注入（白皮書 §8.4、Q-7）：測試用 `vi.mock` 包住 `book.db` 的存取層，第 N 次寫入時丟出錯誤模擬當機，交易整個回滾，跟真的當機一樣。N 從 1 跑到整個流程的寫入次數，每次中斷後重跑到完成，檢查已經 `DONE` 的單位之後沒有再出現在任何請求裡，帳本沒有替已驗證的單位重複記帳。即時與批次兩種模式都跑，批次另外在「供應商已建立、還沒回應」這一步中斷，走第 9 項的認回。正式程式不加測試用的掛勾。
 
+**實作時補定的細節**
+
+實作時冒出的細節，維護者在 2026-11-02 選定，除了第 29 項改用本機時間，其餘照建議。
+
+23. `RemoteBatch` 多 `counts`（供應商 `request_counts` 的 5 個數字）與 `archivedAt`（結果超過保留期限、下載不到之後才有）。`tome batch status` 要列各種結果的數量，第 14 項要知道結果還拿不拿得到。請求總數由 `counts` 加總，不另外存。`collectBatch` 一次下載整批結果，回 `BatchItem` 的陣列或 `ApiError`，失敗時跟其他方法一樣重試，不用 `AsyncIterable`：下載到一半斷線時，`AsyncIterable` 只能丟例外，重試要另寫一套。
+24. 認回的批次只記遠端 ID，`state` 維持 `intent`，用 `custom_id` 確認之後才算數。確認之前又中斷時，`tome batch cancel` 不會取消到別本書的批次：它只取消 `submitted` 的批次。`tome status` 與 `tome batch status` 遇到還沒確認的批次，回報 `batch.unconfirmed`，參數是 `requests`。認錯的候選只在這次執行的記憶體裡排除，下次執行可能再認到它一次，但它已經結束，確認只要再下載一次結果。
+25. ADR-0091 第 4 項不顯示內部值，所以 `tome batch status` 依供應商的狀態用 `batch.processing`、`batch.canceling`、`batch.ended`，狀態本身放 `data.batches[].status`。`batch.canceling` 跟 `tome batch cancel` 共用。`batch.canceling`、`batch.ended` 帶 `id` 與 `book`，訊息裡才寫得出要執行的指令。
+26. `batch.errored` 的 `count` 是這批沒有成功的請求數，`type` 是出現過的種類，依第一次出現的順序用逗號連起來，過期與取消寫成 `expired`、`canceled`。這些是供應商的代碼，跟 `translate.provider_failed` 顯示狀態碼一樣原樣列出，方便對照官方文件，訊息寫明是供應商回報的。
+27. `recordUsage` 遇到已經記過的 `request_id` 就跳過。記帳與改狀態不在同一個交易，收回到一半中斷、再套用一次結果時，同一筆費用不能記兩次。批次的 `request_id` 是結果裡的訊息 ID，同一份結果下載幾次都一樣，即時模式每次送出的 ID 都不同。
+28. 新訊息的文字見 `src/cli/messages/zh-TW.json`，照 ADR-0086、ADR-0089，維護者選定。
+29. 訊息裡的時間是這台機器的本機時間，到分鐘，後面加上時差，例如 `2026-11-05 18:12（UTC+8）`。時差寫成 `UTC+8`、`UTC-5`，有分鐘時寫 `UTC+5:30`、`UTC-9:30`，時差 0 寫 `UTC`。夏令時間依各個時間當天的時差算。時間與時差是兩個參數，例如 `submitted` 與 `submitted_zone`，括號在訊息檔，核心不放給人看的標點。`--json` 的 `data` 放 ISO 8601 原值。測試注入時差或時區，結果在任何時區都固定，正式程式不加測試用的掛勾。
+30. `status.units` 的六個數字對應 9 種狀態，每種狀態只算一次，加起來等於 `total`：`done` 是 `DONE`，`in_flight` 是 `IN_FLIGHT`，`blocked` 是 `BLOCKED`，`failed` 是 `FAILED_QA`，`refused` 是 `REFUSED`，`left` 是 `PENDING`、`QUEUED`、`RECEIVED`、`STALE`，也就是還要再處理的：還沒送、收到還沒驗證、等重新驗證。
+
 **不放進 019 的**
 
-23. ADR-0106 的 Open Question、併發送出多批、把對半拆的狀態存進 `book.db`、依處理時間調整輪詢間隔。
+31. ADR-0106 的 Open Question、併發送出多批、把對半拆的狀態存進 `book.db`、依處理時間調整輪詢間隔。
 
 ## 驗證
 
@@ -128,7 +141,11 @@ Batches API 的行為以 2026-11-02 讀的官方文件為準（platform.claude.c
 <!-- @assert-absence target="src/core/status.ts" symbol="withBookLock" reason="第 18 項：tome status 不拿書的鎖" -->
 <!-- @assert-absence target="src/core/status.ts" symbol="connect(" reason="第 18 項：tome status 不連網" -->
 <!-- @assert-absence target="src/core/llm.ts" symbol="capabilities" reason="第 19 項：capabilities 先不加" -->
-<!-- @assert-count target="src/core/ledger.ts" symbol="SELECT 1 FROM ledger WHERE request_id = ?" expected="1" reason="收回到一半中斷時，同一筆費用只記一次" -->
+<!-- @assert-count target="src/core/llm.ts" symbol="collectBatch(id: string): Promise<readonly BatchItem[] | ApiError>;" expected="1" reason="第 23 項：一次下載整批結果" -->
+<!-- @assert-count target="src/core/batch.ts" symbol="row.state === 'intent' || remoteId === null" expected="1" reason="第 24 項：還沒確認的批次不查也不取消" -->
+<!-- @assert-count target="src/core/ledger.ts" symbol="SELECT 1 FROM ledger WHERE request_id = ?" expected="1" reason="第 27 項：同一筆費用只記一次" -->
+<!-- @assert-count target="src/core/status.ts" symbol="-date.getTimezoneOffset()" expected="1" reason="第 29 項：本機時間加時差" -->
+<!-- @assert-count target="src/core/status.ts" symbol="left: ['PENDING', 'QUEUED', 'RECEIVED', 'STALE']" expected="1" reason="第 30 項：六個數字對應 9 種狀態" -->
 
 ## 後果
 

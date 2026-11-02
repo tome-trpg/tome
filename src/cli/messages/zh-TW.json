@@ -147,7 +147,7 @@
     "probe.unchanged": "PDF 沒有變動，沿用上次的探測結果。",
     "sqlite.ok": "SQLite 版本 {version}。",
     "sqlite.unavailable": "此 Node 環境無法使用 node:sqlite。請確認 Node 版本符合 TOME 的需求。",
-    "status.batch": "批次 {id} 於 {submitted} UTC 送出，含 {requests} 個請求，{expires} UTC 前未處理完的請求會過期。",
+    "status.batch": "批次 {id} 於 {submitted}（{submitted_zone}）送出，含 {requests} 個請求，{expires}（{expires_zone}）前未處理完的請求會過期。",
     "status.no_budget": "已花費 ${spent} 美元，尚未設定預算。",
     "status.no_units": "這本書還沒有翻譯單位。請先執行 tome estimate {book}。",
     "status.not_deleted": "{count} 個批次的資料還沒從供應商端刪除，下次執行 tome translate 或 tome batch collect 時會再試。",
