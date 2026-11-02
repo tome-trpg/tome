@@ -34,10 +34,19 @@ export class EgressBlocked extends TomeError {
   }
 }
 
+interface SentBody {
+  readonly model?: unknown;
+  /** 建立批次時，模型在每個請求的 `params` 裡。 */
+  readonly requests?: readonly { readonly params?: { readonly model?: unknown } | null }[];
+}
+
+/** 批次裡有多種模型時用逗號連起來，沒有本文的查詢記成空字串（ADR-0107 第 20 項）。 */
 function modelOf(body: string): string {
   try {
-    const model = (JSON.parse(body) as { model?: unknown } | null)?.model;
-    return typeof model === 'string' ? model : '';
+    const sent = JSON.parse(body) as SentBody | null;
+    const requests = sent?.requests;
+    const models = Array.isArray(requests) ? requests.map((request) => request.params?.model) : [sent?.model];
+    return [...new Set(models.filter((model) => typeof model === 'string'))].join(',');
   } catch {
     return '';
   }

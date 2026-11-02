@@ -165,6 +165,75 @@ export function planRequests(
   return requests;
 }
 
+/** 一批最多這麼多字元原文，算法跟請求一樣。是提案，等真實請求量過（ADR-0107 第 3 項）。 */
+export const BATCH_CHARS = 100_000;
+
+function requestChars({ units }: PlannedRequest): number {
+  return charsOf(units);
+}
+
+/** 依章分段。請求不跨章，所以同一章的請求一定相鄰（ADR-0103）。 */
+function chaptersOf(
+  requests: readonly PlannedRequest[],
+  chapterOf: (unit: TranslationUnit) => number,
+): PlannedRequest[][] {
+  const chapters: PlannedRequest[][] = [];
+  let chapter: number | undefined;
+  for (const request of requests) {
+    const [first] = request.units;
+    const current = first === undefined ? chapter : chapterOf(first);
+    const last = chapters.at(-1);
+    if (last === undefined || current !== chapter) chapters.push([request]);
+    else last.push(request);
+    chapter = current;
+  }
+  return chapters;
+}
+
+/**
+ * 照閱讀順序把整章放進同一批，加入下一章會超過上限時先切開。單一章超過上限時，
+ * 才在請求的邊界切成幾批，每批至少一個請求（ADR-0099 第 22 項、ADR-0107 第 3 項）。
+ * `used` 是第一批已經放進去的字元，重送的請求排在最前面，一起受上限（ADR-0107 第 5 項）。
+ */
+export function planBatches(
+  requests: readonly PlannedRequest[],
+  chapterOf: (unit: TranslationUnit) => number,
+  limit: number = BATCH_CHARS,
+  used = 0,
+): PlannedRequest[][] {
+  const batches: PlannedRequest[][] = [];
+  let current: PlannedRequest[] = [];
+  let size = used;
+  const flush = (): void => {
+    if (current.length > 0 || batches.length === 0) batches.push(current);
+    current = [];
+    size = 0;
+  };
+  for (const chapter of chaptersOf(requests, chapterOf)) {
+    const chars = chapter.reduce((total, request) => total + requestChars(request), 0);
+    if (size + chars <= limit) {
+      current.push(...chapter);
+      size += chars;
+      continue;
+    }
+    if (current.length > 0 || size > 0) flush();
+    if (chars <= limit) {
+      current.push(...chapter);
+      size = chars;
+      continue;
+    }
+    for (const request of chapter) {
+      const next = requestChars(request);
+      if (current.length > 0 && size + next > limit) flush();
+      current.push(request);
+      size += next;
+    }
+    flush();
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
+
 export interface FeedbackItem {
   /** 驗證的代碼，對應 `prompts/feedback.yaml` 的一句話。 */
   readonly code: string;

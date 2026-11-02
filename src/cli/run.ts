@@ -1,5 +1,13 @@
 import { createRequire } from 'node:module';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
+import {
+  batchStatus,
+  cancelBatches,
+  collectBatches,
+  translateInBatches,
+  type BatchCommandOptions,
+  type BatchOptions,
+} from '../core/batch.ts';
 import { addBook, probeBook, type ProbeOutcome } from '../core/book.ts';
 import { runDoctor } from '../core/doctor.ts';
 import { addEngine, listEngines, removeEngine } from '../core/engine.ts';
@@ -24,6 +32,7 @@ import {
   keyEnvName,
   type SecretStore,
 } from '../core/secrets.ts';
+import { bookStatus } from '../core/status.ts';
 import { translateBook } from '../core/translate.ts';
 import { verifyBook } from '../core/verify.ts';
 import {
@@ -157,6 +166,33 @@ async function gpuFinding(io: Io): Promise<Finding> {
 }
 
 const PROGRESS_EVERY = 10;
+
+function notReady(slug: string): Result {
+  return { data: { book: slug }, findings: [finding('translate.not_ready', 'fail')] };
+}
+
+/** 進度走 stderr，`--json` 的 stdout 不受影響。 */
+function progressOf(io: Io): Pick<BatchOptions, 'onProgress' | 'onBatchSent' | 'onBatchWait'> {
+  return {
+    onProgress: (done, total) => io.stderr.write(progressText('unit', { done: String(done), total: String(total) })),
+    onBatchSent: (batch, requests) =>
+      io.stderr.write(progressText('batch_sent', { batch: String(batch), requests: String(requests) })),
+    onBatchWait: (batch, minutes) =>
+      io.stderr.write(progressText('batch_wait', { batch: String(batch), minutes: String(minutes) })),
+  };
+}
+
+/** `tome batch` 的三個指令都要轉接層，022 之前只有測試會注入（ADR-0107 第 1 項）。 */
+async function withBook(
+  positionals: readonly string[],
+  io: Io,
+  work: (options: BatchCommandOptions) => Promise<Result>,
+): Promise<Result> {
+  const slug = positionals[0];
+  if (slug === undefined) throw missing('book');
+  if (io.llm === undefined) return notReady(slug);
+  return work({ home: resolveHome(io.env, io.platform), slug, host: io.llm });
+}
 
 const COMMANDS: readonly Command[] = [
   {
@@ -295,18 +331,39 @@ const COMMANDS: readonly Command[] = [
         if (retryFailed) throw new TomeError('cli.bad_args');
         return dryRunBook(home, slug, mode);
       }
-      if (mode !== 'realtime' || io.llm === undefined) {
-        return { data: { book: slug }, findings: [finding('translate.not_ready', 'fail')] };
-      }
-      return translateBook({
-        home,
-        slug,
-        host: io.llm,
-        retryFailed,
-        // 進度走 stderr，`--json` 的 stdout 不受影響。
-        onProgress: (done, total) =>
-          io.stderr.write(progressText('unit', { done: String(done), total: String(total) })),
-      });
+      // 轉接層在 brief 022 才有，這之前只有測試會注入（ADR-0107 第 1 項）。
+      if (io.llm === undefined) return notReady(slug);
+      const options = { home, slug, host: io.llm, retryFailed, ...progressOf(io) };
+      return mode === 'realtime' ? translateBook(options) : translateInBatches(options);
+    },
+  },
+  {
+    path: ['batch', 'status'],
+    options: {},
+    positionals: 1,
+    run: ({ positionals }, io) => withBook(positionals, io, (options) => batchStatus(options)),
+  },
+  {
+    path: ['batch', 'collect'],
+    options: {},
+    positionals: 1,
+    run: ({ positionals }, io) =>
+      withBook(positionals, io, (options) => collectBatches({ ...options, retryFailed: false, ...progressOf(io) })),
+  },
+  {
+    path: ['batch', 'cancel'],
+    options: {},
+    positionals: 1,
+    run: ({ positionals }, io) => withBook(positionals, io, (options) => cancelBatches(options)),
+  },
+  {
+    path: ['status'],
+    options: {},
+    positionals: 1,
+    run: async ({ positionals }, io) => {
+      const slug = positionals[0];
+      if (slug === undefined) throw missing('book');
+      return bookStatus(resolveHome(io.env, io.platform), slug);
     },
   },
   {

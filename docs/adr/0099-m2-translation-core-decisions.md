@@ -95,6 +95,9 @@ M2 開工前比對白皮書、ADR 與實際套件，留下一批沒定的項目�
 <!-- @assert-count target="src/core/request.ts" symbol="workspaceModel(home, 'fallback_model')" expected="1" reason="第 6 項：同供應商的 fallback_model" -->
 <!-- @assert-count target="src/core/workspace.ts" symbol="finding('pii.empty', 'warn')" expected="1" reason="第 21 項：清單是空的時候警告" -->
 <!-- @assert-count target="src/core/egress/client.ts" symbol="scanBody(body, options.rules)" expected="1" reason="第 25 項：閘門掃描序列化後的完整請求" -->
+<!-- @assert-count target="src/cli/run.ts" symbol="path: ['status']" expected="1" reason="第 2 項：tome status 在 019" -->
+<!-- @assert-absence target="src" symbol="fallbacks" reason="第 6 項：Batch 由 TOME 自己重送，不用伺服器端回退" -->
+<!-- @assert-count target="src/core/batch.ts" symbol="planBatches(queued, run.plan.chapterOf" expected="1" reason="第 22 項：相鄰章節併到字元上限" -->
 
 ## 後果
 

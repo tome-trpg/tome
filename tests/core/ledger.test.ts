@@ -128,4 +128,16 @@ describe('recordUsage (ADR-0081 item 12)', () => {
     expect(spentUsd(database)).toBe(0);
     database.close();
   });
+
+  // 批次收回到一半中斷時會再下載一次結果，同一筆費用不能記兩次（ADR-0107）。
+  it('records a request only once, however often its result is read', () => {
+    const database = store();
+    record(database);
+    record(database);
+    const rows = database.all('SELECT id FROM ledger');
+    const spent = spentUsd(database);
+    database.close();
+    expect(rows).toHaveLength(2);
+    expect(spent).toBeCloseTo((2 * 900 + 10 * 300) / 1_000_000);
+  });
 });

@@ -1,13 +1,23 @@
-import { readBook, stageFingerprint, withBookLock } from './book.ts';
+import { readBook, stageFingerprint, withBookLock, type Book } from './book.ts';
 import { checkBudget } from './budget.ts';
 import { EgressBlocked, egressRecorder, guardedFetch } from './egress/client.ts';
+import { hitCount, type PiiHit, type PiiRules } from './egress/gate.ts';
 import { finding, type Finding } from './findings.ts';
 import { recordUsage, spentUsd, type Usage } from './ledger.ts';
-import { sendWithRetry, type LLMHost, type LLMProvider, type RequestResult, type Sleep } from './llm.ts';
+import {
+  sendWithRetry,
+  sleepSeconds,
+  type Answer,
+  type ApiError,
+  type LLMHost,
+  type LLMProvider,
+  type RequestResult,
+  type Sleep,
+} from './llm.ts';
 import { memoryKey, recall, remember } from './memory.ts';
 import { packHash } from './pack.ts';
 import { promptHash } from './prompt.ts';
-import { usd, type ProviderModel, type RequestMode } from './provider.ts';
+import { loadProvider, usd, type ProviderModel, type RequestMode } from './provider.ts';
 import {
   ESTIMATE_STAGE,
   partOfRequest,
@@ -21,6 +31,7 @@ import {
   type MessagesBody,
   type PlannedRequest,
   type PlanOutcome,
+  type SizedRequest,
 } from './request.ts';
 import { failureEvent, nextState, type UnitEvent, type UnitState } from './state.ts';
 import { openBookStore, openSeriesStore, type Store } from './store.ts';
@@ -29,11 +40,14 @@ import type { TranslationUnit } from './units.ts';
 import { bookVerifyContext, matchUnits, recordProblems, settle, verifyFragment, type VerifyContext } from './verify.ts';
 import { workspaceTargetLang } from './workspace.ts';
 
-// 即時模式的翻譯流程（白皮書 §5.7、§6.2、ADR-0104）。一次送一個請求，每一步都先寫進 `book.db`，
-// 中斷後再跑一次就會接著做，已驗證的單位不重付。這裡不連網，請求都經過注入的轉接層與對外出口。
+// 翻譯流程（白皮書 §5.7、§6.2、ADR-0104、ADR-0107）。即時模式一次送一個請求，批次模式在 `batch.ts`，
+// 收回、驗證、記帳、拒答與截斷兩邊共用。每一步都先寫進 `book.db`，中斷後再跑一次就會接著做，
+// 已驗證的單位不重付。這裡不連網，請求都經過注入的轉接層與對外出口。
 
-const MODE: RequestMode = 'realtime';
-const CONFIRM_FLAGS = '--realtime --confirm';
+const CONFIRM_FLAGS: Readonly<Record<RequestMode, string>> = {
+  realtime: '--realtime --confirm',
+  batch: '--confirm',
+};
 
 export interface TranslateOptions {
   readonly home: string;
@@ -43,55 +57,64 @@ export interface TranslateOptions {
   readonly onProgress?: (done: number, total: number) => void;
 }
 
-interface Run {
+/** 一次翻譯流程要的東西，即時與批次共用。 */
+export interface TranslationRun {
   readonly slug: string;
   readonly store: Store;
   readonly series: Store;
   readonly plan: BookPlan;
+  /** `tome batch collect` 不花新的錢，沒有預算時是無限大。 */
   readonly budget: number;
   readonly context: VerifyContext;
   readonly llm: LLMProvider;
-  readonly sleep: Sleep | undefined;
+  readonly sleep: Sleep;
+  readonly rules: PiiRules;
   readonly targetLang: string;
   readonly hashes: { readonly prompt_hash: string; readonly pack_hash: string };
   readonly byId: ReadonlyMap<string, TranslationUnit>;
   /** 閱讀順序上前一個單位的遮蔽後文字，翻譯記憶的鍵要用。 */
   readonly previous: ReadonlyMap<string, string>;
   readonly onProgress: TranslateOptions['onProgress'];
+  /** 不會讓流程停下的發現，最後一起回報。 */
+  readonly notes: Finding[];
   /** 這次送出了幾個請求。 */
   sent: number;
+  /** 這次送出了幾批。 */
+  batches: number;
 }
 
+type Run = TranslationRun;
+
 /** `model` 平常是主翻譯模型，單位被拒之後是 `fallback_model`。 */
-interface Work {
+export interface Work {
   readonly request: PlannedRequest;
   readonly model: ProviderModel;
 }
 
 /** 一個請求做完之後：接著要送什麼，或為什麼要停下來。 */
-interface Step {
+export interface Step {
   readonly next: readonly Work[];
   readonly stop: Finding | null;
 }
 
-const GO_ON: Step = { next: [], stop: null };
+export const GO_ON: Step = { next: [], stop: null };
 
-function stopAt(stop: Finding): Step {
+export function stopAt(stop: Finding): Step {
   return { next: [], stop };
 }
 
-function stateOf(store: Store, unitId: string): UnitState {
+export function stateOf(store: Store, unitId: string): UnitState {
   const row = store.get<{ state: UnitState }>('SELECT state FROM unit WHERE unit_id = ?', unitId);
   if (row === undefined) throw new RangeError(`no unit ${unitId}`);
   return row.state;
 }
 
-function move(store: Store, unitId: string, ...events: readonly UnitEvent[]): void {
+export function move(store: Store, unitId: string, ...events: readonly UnitEvent[]): void {
   const state = events.reduce((current, event) => nextState(current, event), stateOf(store, unitId));
   store.run('UPDATE unit SET state = ? WHERE unit_id = ?', state, unitId);
 }
 
-function moveAll(store: Store, units: readonly TranslationUnit[], event: UnitEvent): void {
+export function moveAll(store: Store, units: readonly TranslationUnit[], event: UnitEvent): void {
   store.transaction(() => {
     for (const { unit_id } of units) move(store, unit_id, event);
   });
@@ -151,10 +174,27 @@ interface SavedReply {
   readonly model: string | null;
 }
 
-/** 上次中斷留下來的。收到的回應已經付過錢，重跑驗證就好。送出去沒有下文的要重送（ADR-0104 第 28 項）。 */
-function recover(run: Run): void {
+/** 還沒收回的批次：沒有遠端 ID 的意圖紀錄也算，它可能已經送到供應商（ADR-0107 第 8 項）。 */
+export const OUTSTANDING = "state IN ('intent', 'submitted')";
+
+/** 送出去、但不在任何還沒收回的批次裡的單位。在批次裡的要等收回，不能重送（ADR-0107 第 16 項）。 */
+const STRAY_IN_FLIGHT = `
+  SELECT unit_id FROM unit WHERE state = 'IN_FLIGHT' AND unit_id NOT IN (
+    SELECT bu.unit_id FROM batch_unit bu JOIN batch b ON b.id = bu.batch_id WHERE b.${OUTSTANDING}
+  )
+`;
+
+export function outstandingBatches(store: Store): number {
+  return store.get<{ count: number }>(`SELECT COUNT(*) AS count FROM batch WHERE ${OUTSTANDING}`)?.count ?? 0;
+}
+
+/**
+ * 上次中斷留下來的。收到的回應已經付過錢，重跑驗證就好。即時模式送出去沒有下文的要重送，
+ * 批次裡的等收回（ADR-0104 第 28 項、ADR-0107 第 16 項）。
+ */
+export function recover(run: Run): void {
   const { store, plan, byId } = run;
-  const inFlight = store.all<{ unit_id: string }>("SELECT unit_id FROM unit WHERE state = 'IN_FLIGHT'");
+  const inFlight = store.all<{ unit_id: string }>(STRAY_IN_FLIGHT);
   const replies = store.all<SavedReply>(SAVED_REPLIES);
   store.transaction(() => {
     for (const { unit_id } of inFlight) move(store, unit_id, 'requeue');
@@ -173,7 +213,7 @@ const STUCK_EVENT: Readonly<Partial<Record<UnitState, UnitEvent>>> = {
 };
 
 /** 額度歸零，否則 `FAILED_QA` 再失敗一次就直接放棄（白皮書 §6.2）。 */
-function requeueStuck({ store, plan, byId }: Run): void {
+export function requeueStuck({ store, plan, byId }: Run): void {
   const rows = store.all<{ unit_id: string; state: UnitState }>(
     "SELECT unit_id, state FROM unit WHERE state IN ('BLOCKED', 'FAILED_QA', 'REFUSED')",
   );
@@ -189,7 +229,7 @@ function requeueStuck({ store, plan, byId }: Run): void {
 }
 
 /** 輪到這個請求才查，同一本書前面剛翻好的段落也用得到。回傳還要送的單位。 */
-function skipRemembered(run: Run, units: readonly TranslationUnit[]): TranslationUnit[] {
+export function skipRemembered(run: Run, units: readonly TranslationUnit[]): TranslationUnit[] {
   const { store, series, context } = run;
   const fresh: TranslationUnit[] = [];
   for (const unit of units) {
@@ -231,26 +271,72 @@ function feedbackOf(store: Store, units: readonly TranslationUnit[]): Feedback {
   );
 }
 
+/** 只留還要送的單位，組成實際送出的內容並估價。 */
+export function prepareWork(run: Run, work: Work): { readonly work: Work; readonly sized: SizedRequest } | null {
+  const { store, plan } = run;
+  const fresh = skipRemembered(run, work.request.units);
+  if (fresh.length === 0) return null;
+  const request = partOfRequest(plan.units, work.request.id, fresh, plan.chapterOf);
+  const sized = sizeRequest(request, {
+    prefix: plan.prefix,
+    terms: plan.terms,
+    pack: plan.pack,
+    feedback: feedbackOf(store, fresh),
+    model: work.model,
+    provider: plan.provider.profile,
+    mode: plan.mode,
+  });
+  return { work: { request, model: work.model }, sized };
+}
+
 function charge(run: Run, { request, model }: Work, requestId: string, usage: Usage): void {
   recordUsage(run.store, {
     request_id: requestId,
     model,
-    mode: MODE,
+    mode: run.plan.mode,
     usage,
     units: request.units.map(({ unit_id, source }) => ({ unit_id, chars: source.length })),
   });
 }
 
-function blocked({ store }: Run, units: readonly TranslationUnit[], error: EgressBlocked): Step {
-  // 只記清單的第幾項，從 1 算起。命中的文字就是個資。
-  const detail = { entries: error.hits.map(({ entry }) => entry + 1).join(', ') };
+/** 還沒收回的批次的估價上限，預算的「進行中」（ADR-0081 第 2 項）。 */
+function inFlightUsd(store: Store): number {
+  return store.get<{ total: number | null }>(`SELECT SUM(high_usd) AS total FROM batch WHERE ${OUTSTANDING}`)?.total ?? 0;
+}
+
+/** 超過預算就不送（ADR-0081 第 2 項）。批次是每批檢查，即時是每個請求檢查。 */
+export function overBudget(run: Run, next: number): Finding | null {
+  const { store, budget, slug, plan } = run;
+  const spent = spentUsd(store);
+  const check = { budget_usd: budget, spent_usd: spent, in_flight_usd: inFlightUsd(store), next_usd: next };
+  if (checkBudget(check).ok) return null;
+  const code = plan.mode === 'batch' ? 'batch.budget_exceeded' : 'translate.budget_exceeded';
+  return finding(code, 'fail', { book: slug, budget: usd(budget), spent: usd(spent), next: usd(next) });
+}
+
+/** 只記清單的第幾項，從 1 算起。命中的文字就是個資。 */
+export function markBlocked(
+  { store }: Run,
+  units: readonly TranslationUnit[],
+  hits: readonly PiiHit[],
+  events: readonly UnitEvent[],
+): void {
+  const detail = { entries: hits.map(({ entry }) => entry + 1).join(', ') };
   store.transaction(() => {
     for (const { unit_id } of units) {
-      move(store, unit_id, 'requeue', 'block');
+      move(store, unit_id, ...events);
       recordProblems(store, unit_id, [{ code: 'pii_hit', level: 'report', detail }]);
     }
   });
-  return stopAt(finding('translate.blocked', 'fail', error.params));
+}
+
+export function blockedStop(count: number): Step {
+  return stopAt(finding('translate.blocked', 'fail', { count: String(count) }));
+}
+
+/** `status` 是 null 表示沒有收到回應，訊息裡寫成 `-`。 */
+export function providerFailed({ status }: ApiError): Finding {
+  return finding('translate.provider_failed', 'fail', { status: String(status ?? '-') });
 }
 
 function afterRefusal({ plan }: Run, { request, model }: Work): Work[] {
@@ -322,6 +408,16 @@ function replied(run: Run, { request, model }: Work, text: string): Step {
   return GO_ON;
 }
 
+/**
+ * 模型有回覆的請求，即時與批次共用。不管回應用不用得上都先記帳，
+ * 否則預算會少算已經付的錢（ADR-0104 第 43 項）。
+ */
+export function answered(run: Run, work: Work, result: Answer): Step {
+  charge(run, work, result.requestId, result.usage);
+  if (result.outcome === 'refused') return refused(run, work, result.category);
+  return result.outcome === 'truncated' ? truncated(run, work) : replied(run, work, result.text);
+}
+
 /** 閘門擋下不是錯誤，單位要標成 `BLOCKED`。其他錯誤照樣丟出去，單位留在 `IN_FLIGHT`，下次會重送。 */
 async function exchange(run: Run, body: MessagesBody): Promise<RequestResult | EgressBlocked> {
   try {
@@ -333,45 +429,32 @@ async function exchange(run: Run, body: MessagesBody): Promise<RequestResult | E
 }
 
 /** 依序檢查預算、送出、收回、驗證（ADR-0104 第 18 項）。個資閘門與外送紀錄在對外出口裡。 */
-async function sendWork(run: Run, work: Work): Promise<Step> {
-  const { store, plan, slug } = run;
-  const { model } = work;
-  const fresh = skipRemembered(run, work.request.units);
-  if (fresh.length === 0) return GO_ON;
-  const request = partOfRequest(plan.units, work.request.id, fresh, plan.chapterOf);
-  const sized = sizeRequest(request, {
-    prefix: plan.prefix,
-    terms: plan.terms,
-    pack: plan.pack,
-    feedback: feedbackOf(store, fresh),
-    model,
-    provider: plan.provider.profile,
-    mode: MODE,
-  });
-  const spent = spentUsd(store);
-  const next = sized.estimate.high_usd;
-  if (!checkBudget({ budget_usd: run.budget, spent_usd: spent, in_flight_usd: 0, next_usd: next }).ok) {
-    const params = { book: slug, budget: usd(run.budget), spent: usd(spent), next: usd(next) };
-    return stopAt(finding('translate.budget_exceeded', 'fail', params));
-  }
+async function sendWork(run: Run, planned: Work): Promise<Step> {
+  const { store } = run;
+  const prepared = prepareWork(run, planned);
+  if (prepared === null) return GO_ON;
+  const { work, sized } = prepared;
+  const fresh = work.request.units;
+  const over = overBudget(run, sized.estimate.high_usd);
+  if (over !== null) return stopAt(over);
   moveAll(store, fresh, 'send');
   run.sent += 1;
   const result = await exchange(run, sized.body);
-  if (result instanceof EgressBlocked) return blocked(run, fresh, result);
+  if (result instanceof EgressBlocked) {
+    markBlocked(run, fresh, result.hits, ['requeue', 'block']);
+    return blockedStop(hitCount(result.hits));
+  }
   if (result.outcome === 'error') {
     moveAll(store, fresh, 'requeue');
-    return stopAt(finding('translate.provider_failed', 'fail', { status: String(result.status ?? '-') }));
+    return stopAt(providerFailed(result));
   }
-  const sent = { request, model };
-  // 不管回應用不用得上都先記帳，否則預算會少算已經付的錢（ADR-0104 第 43 項）。
-  charge(run, sent, result.requestId, result.usage);
-  if (result.outcome === 'refused') return refused(run, sent, result.category);
-  return result.outcome === 'truncated' ? truncated(run, sent) : replied(run, sent, result.text);
+  return answered(run, work, result);
 }
 
-function queuedWork({ store, plan }: Run): Work[] {
+/** `PENDING`、`QUEUED` 的單位照閱讀順序組成請求。`exclude` 是已經排好要重送的單位。 */
+export function queuedWork({ store, plan }: Run, exclude: ReadonlySet<string> = new Set()): Work[] {
   const rows = store.all<{ unit_id: string }>("SELECT unit_id FROM unit WHERE state IN ('PENDING', 'QUEUED')");
-  const waiting = new Set(rows.map(({ unit_id }) => unit_id));
+  const waiting = new Set(rows.map(({ unit_id }) => unit_id).filter((id) => !exclude.has(id)));
   const wanted = (unit: TranslationUnit): boolean => waiting.has(unit.unit_id) && plan.inScope(unit);
   return planRequests(plan.units, plan.chapterOf, wanted).map((request) => ({ request, model: plan.model }));
 }
@@ -386,16 +469,19 @@ function totalUnits({ store }: Run): number {
   return store.get<{ count: number }>('SELECT COUNT(*) AS count FROM unit')?.count ?? 0;
 }
 
+export function reportProgress(run: Run): void {
+  run.onProgress?.(unitCounts(run)('DONE'), totalUnits(run));
+}
+
 /**
  * 重送到沒有要送的單位。驗證失敗的單位回到佇列，要等這一輪做完才一起重組，
  * 對半拆的請求排在最前面，不會被併回原本的大小。`attempts` 的上限保證走得完。
  */
 async function drain(run: Run): Promise<Finding | null> {
-  const total = totalUnits(run);
   for (let queue = queuedWork(run); queue.length > 0; queue = queuedWork(run)) {
     for (let work = queue.shift(); work !== undefined; work = queue.shift()) {
       const { next, stop } = await sendWork(run, work);
-      run.onProgress?.(unitCounts(run)('DONE'), total);
+      reportProgress(run);
       if (stop !== null) return stop;
       queue.unshift(...next);
     }
@@ -403,13 +489,14 @@ async function drain(run: Run): Promise<Finding | null> {
   return null;
 }
 
-function report(run: Run, stop: Finding | null, findings: readonly Finding[]): PlanOutcome {
+export function report(run: Run, stop: Finding | null, findings: readonly Finding[]): PlanOutcome {
   const of = unitCounts(run);
   const total = totalUnits(run);
   const [done, blockedUnits, failed, refusedUnits] = [of('DONE'), of('BLOCKED'), of('FAILED_QA'), of('REFUSED')];
   const stuck = blockedUnits + failed + refusedUnits;
   const left = total - done - stuck;
   const spent = spentUsd(run.store);
+  const { mode } = run.plan;
   const params = {
     done: String(done),
     total: String(total),
@@ -422,8 +509,9 @@ function report(run: Run, stop: Finding | null, findings: readonly Finding[]): P
   return {
     data: {
       book: run.slug,
-      mode: MODE,
+      mode,
       requests: run.sent,
+      ...(mode === 'batch' ? { batches: run.batches } : {}),
       done,
       total,
       blocked: blockedUnits,
@@ -432,42 +520,70 @@ function report(run: Run, stop: Finding | null, findings: readonly Finding[]): P
       left,
       spent_usd: spent,
     },
-    findings: [...(stop === null ? [] : [stop]), finding('translate.done', stuck > 0 ? 'fail' : 'info', params), ...findings],
+    findings: [
+      ...(stop === null ? [] : [stop]),
+      finding('translate.done', stuck > 0 ? 'fail' : 'info', params),
+      ...run.notes,
+      ...findings,
+    ],
   };
 }
 
-async function translateLocked(options: TranslateOptions): Promise<PlanOutcome> {
-  const { home, slug, host, retryFailed, onProgress } = options;
+/** 連到供應商的轉接層，請求都經過對外出口（ADR-0039、ADR-0104 第 2 項）。 */
+export function connect(home: string, book: Book, store: Store, host: LLMHost): LLMProvider {
+  const { profile } = loadProvider('anthropic');
+  const fetcher = guardedFetch({
+    endpoint: host.endpoint ?? profile.endpoint,
+    provider: profile.id,
+    rules: piiRulesOf(home, book),
+    record: egressRecorder(store),
+  });
+  return host.connect(fetcher);
+}
+
+export interface RunSetup {
+  readonly mode: RequestMode;
+  /** 要花新的錢的指令要先確認估價（ADR-0103 第 14 項）。 */
+  readonly confirm: boolean;
+  /** 即時模式遇到還沒收回的批次要停下，否則同一段要付兩次（ADR-0107 第 16 項）。 */
+  readonly refusePending: boolean;
+}
+
+/** 開資料庫、組請求、檢查確認、載入驗證規則，把流程要的東西放進 `Run`。 */
+export async function withRun(
+  options: TranslateOptions,
+  setup: RunSetup,
+  work: (run: Run, findings: readonly Finding[]) => Promise<PlanOutcome>,
+): Promise<PlanOutcome> {
+  const { home, slug, host, onProgress } = options;
   const book = readBook(home, slug);
   const store = openBookStore(home, slug);
   const series = openSeriesStore(home, slug);
   try {
-    const { plan, findings } = await planBook(home, book, store, MODE);
+    if (setup.refusePending && outstandingBatches(store) > 0) {
+      return { data: { book: slug }, findings: [finding('batch.pending', 'fail', { book: slug })] };
+    }
+    const { plan, findings } = await planBook(home, book, store, setup.mode);
     if (plan === null) return { data: { book: slug }, findings };
     const budget = book.config.budget_usd;
-    if (budget === undefined || stageFingerprint(store, ESTIMATE_STAGE) !== plan.fingerprint) {
-      const unconfirmed = finding('translate.not_confirmed', 'fail', { book: slug, flags: CONFIRM_FLAGS });
+    const confirmed = budget !== undefined && stageFingerprint(store, ESTIMATE_STAGE) === plan.fingerprint;
+    if (setup.confirm && !confirmed) {
+      const unconfirmed = finding('translate.not_confirmed', 'fail', { book: slug, flags: CONFIRM_FLAGS[setup.mode] });
       return { data: { book: slug }, findings: [unconfirmed, ...findings] };
     }
     // 片語表約 6 MB，確認過才載入。
     const { context, findings: loaded } = await bookVerifyContext({ home, slug });
     if (context === null) return { data: { book: slug }, findings: loaded };
-    const { profile } = plan.provider;
-    const fetcher = guardedFetch({
-      endpoint: host.endpoint ?? profile.endpoint,
-      provider: profile.id,
-      rules: piiRulesOf(home, book),
-      record: egressRecorder(store),
-    });
     const run: Run = {
       slug,
       store,
       series,
       plan,
-      budget,
+      budget: budget ?? Number.POSITIVE_INFINITY,
       context,
-      llm: host.connect(fetcher),
-      sleep: host.sleep,
+      llm: connect(home, book, store, host),
+      sleep: host.sleep ?? sleepSeconds,
+      rules: piiRulesOf(home, book),
       targetLang: workspaceTargetLang(home),
       hashes: { prompt_hash: promptHash(plan.prefix), pack_hash: packHash(plan.pack) },
       byId: new Map(plan.units.map((unit) => [unit.unit_id, unit])),
@@ -476,11 +592,11 @@ async function translateLocked(options: TranslateOptions): Promise<PlanOutcome> 
         return before === undefined ? [] : [[unit_id, before.masked] as const];
       })),
       onProgress,
+      notes: [],
       sent: 0,
+      batches: 0,
     };
-    recover(run);
-    if (retryFailed) requeueStuck(run);
-    return report(run, await drain(run), findings);
+    return await work(run, findings);
   } finally {
     series.close();
     store.close();
@@ -489,5 +605,12 @@ async function translateLocked(options: TranslateOptions): Promise<PlanOutcome> 
 
 /** `tome translate --realtime`。一本書同時只跑一個流程（ADR-0054）。 */
 export function translateBook(options: TranslateOptions): Promise<PlanOutcome> {
-  return withBookLock(options.home, options.slug, () => translateLocked(options));
+  const setup = { mode: 'realtime', confirm: true, refusePending: true } as const;
+  return withBookLock(options.home, options.slug, () =>
+    withRun(options, setup, async (run, findings) => {
+      recover(run);
+      if (options.retryFailed) requeueStuck(run);
+      return report(run, await drain(run), findings);
+    }),
+  );
 }

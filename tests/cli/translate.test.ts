@@ -179,12 +179,14 @@ describe('tome translate --realtime (ADR-0104)', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it('leaves batch to brief 019', async () => {
+  it('keeps batch from users until brief 022 brings the adapter (ADR-0107 item 1)', async () => {
     const lib = await confirmed();
-    const { host } = await fake(GOOD);
-    const { io, stdout } = lib.session({ llm: host });
+    const spy = vi.fn();
+    vi.stubGlobal('fetch', spy);
+    const { io, stdout } = lib.session();
     expect(await run(['translate', 'book'], io)).toBe(1);
     expect(stdout()).toContain('翻譯功能尚未完成');
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('refuses a host outside the list, and sends nothing (ADR-0099 item 25)', async () => {
@@ -839,10 +841,9 @@ describe('--retry-failed (ADR-0104 item 26)', () => {
     expect(provider.requests).toHaveLength(0);
   });
 
-  it('needs --realtime for now', async () => {
+  it('is not ready for users until brief 022 either (ADR-0107 item 1)', async () => {
     const lib = await confirmed();
-    const { host } = await fake(GOOD);
-    const { io, stdout } = lib.session({ llm: host });
+    const { io, stdout } = lib.session();
     expect(await run(['translate', 'book', '--retry-failed'], io)).toBe(1);
     expect(stdout()).toContain('翻譯功能尚未完成');
   });
