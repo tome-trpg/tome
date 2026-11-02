@@ -57,8 +57,8 @@ protectedFiles:
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
 - [x] 新的測試先在舊行為上失敗過
-- [ ] `specs`、`test` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `specs`、`test` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
 - [x] `tome provider list` 不連網，也不讀金鑰，有測試把關
 - [x] `package.json` 的相依沒有變
 

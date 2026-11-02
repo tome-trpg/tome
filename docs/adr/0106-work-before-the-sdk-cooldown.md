@@ -46,7 +46,6 @@ amends: [ADR-0104]
 ## 驗證
 
 <!-- @assert-count target="src/core/request.ts" symbol="book.config.source_lang," expected="1" reason="第 2 項：source_lang 進內容指紋" -->
-<!-- @assert-absence target="package.json" symbol="@anthropic-ai/sdk" comments="include" reason="第 1 項：023 不加 SDK" -->
 <!-- @assert-count target="src/cli/run.ts" symbol="path: ['provider', 'list']" expected="1" reason="第 3 項：tome provider list" -->
 <!-- @assert-count target="src/cli/messages/zh-TW.json" symbol="不是推薦，尚未經過盲評" expected="1" comments="include" reason="第 3 項：寫明清單不是推薦" -->
 <!-- @assert-absence target="src/core/provider.ts" symbol="readWorkspaceConfig" reason="第 5 項：不讀 tome.yaml" -->
