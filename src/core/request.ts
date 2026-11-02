@@ -322,7 +322,7 @@ export interface BookPlan {
   readonly unitCount: number;
   readonly chars: number;
   readonly estimate: Estimate;
-  /** 單位、模型、回退模型、價格、範圍、預算、提示、規則包與模式的內容指紋（ADR-0103、ADR-0104）。 */
+  /** 單位、模型、回退模型、價格、範圍、預算、提示、規則包、來源語言與模式的內容指紋（ADR-0103、ADR-0104、ADR-0106）。 */
   readonly fingerprint: string;
   /** 全書依閱讀順序的單位，上文要用。 */
   readonly units: readonly TranslationUnit[];
@@ -389,6 +389,7 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
         book.config.budget_usd ?? null,
         promptHash(prefix),
         packHash(pack),
+        book.config.source_lang,
         mode,
       ]),
     )

@@ -1030,7 +1030,7 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 
 **估價**在本機完成，不連網：依字元數與各家比例估算，顯示成區間。`tome trial` 先翻一小段，用實際 `usage` 校準比例，人工改動也回饋成風格範例。試翻用小批次執行，才量得到 Batch 的快取命中率。估價同時顯示資料保留時間（DC-3）。
 
-**已實作**：`tome estimate`、`--confirm`、`--budget`、`--chapters`、`--realtime`、`tome translate --dry-run`、預算檢查與費用帳本（`src/core/request.ts`、`src/core/estimate.ts`、`src/core/budget.ts`、`src/core/ledger.ts`；`tests/cli/estimate.test.ts`、`tests/core/estimate.test.ts`、`tests/core/budget.test.ts`、`tests/core/ledger.test.ts`）。估價的比例與思考的倍數都是**提案**，沒有量過，要等 `tome trial`（ADR-0103）。估價模式不存進 `book.yaml`，確認時隨內容指紋記下，`fallback_model`、重送的句子與規則包也進指紋，對不上就回報 `translate.not_confirmed`（ADR-0104）。即時模式每個請求送出前都檢查預算（`tests/cli/translate.test.ts`）。第一次真實請求由維護者在 019 之後跑。
+**已實作**：`tome estimate`、`--confirm`、`--budget`、`--chapters`、`--realtime`、`tome translate --dry-run`、預算檢查與費用帳本（`src/core/request.ts`、`src/core/estimate.ts`、`src/core/budget.ts`、`src/core/ledger.ts`；`tests/cli/estimate.test.ts`、`tests/core/estimate.test.ts`、`tests/core/budget.test.ts`、`tests/core/ledger.test.ts`）。估價的比例與思考的倍數都是**提案**，沒有量過，要等 `tome trial`（ADR-0103）。估價模式不存進 `book.yaml`，確認時隨內容指紋記下，`fallback_model`、重送的句子、規則包與 `source_lang` 也進指紋，對不上就回報 `translate.not_confirmed`（ADR-0104、ADR-0106）。即時模式每個請求送出前都檢查預算（`tests/cli/translate.test.ts`）。第一次真實請求由維護者在 019 之後跑。
 
 **快取**依實測決定。靜態前綴一律保持位元組一致，但不為了門檻灌水，詞庫只送命中的詞條與活躍實體。試翻量到的命中率高於損益兩平點，才開 1 小時快取與預熱。Gemini 預設走隱式快取。
 
@@ -1228,6 +1228,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0103](adr/0103-cost-and-requests-decisions.md) | 成本與請求的細節 | M2 |
 | [ADR-0104](adr/0104-egress-and-realtime-decisions.md) | 對外出口與即時模式的細節 | M2 |
 | [ADR-0105](adr/0105-legal-review-before-release.md) | 0.1.0 發佈前請著作權律師審查 | M2 |
+| [ADR-0106](adr/0106-work-before-the-sdk-cooldown.md) | SDK 冷卻期先做的部分 | M2 |
 
 ---
 
