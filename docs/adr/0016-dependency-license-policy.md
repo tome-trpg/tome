@@ -18,7 +18,7 @@ PyMuPDF 等 AGPL 函式庫一旦進主程式，散布的組合就受 AGPL 約束
 
 ## 驗證
 
-<!-- @assert-import-absence target="src" exclude="*.json" module="mupdf mupdf-js pymupdf marker-pdf mineru yomitoku surya-ocr docling" reason="AGPL、GPL、非商業與引擎套件都不進主程式行程，主程式也不依賴任何引擎" -->
+<!-- @assert-import-absence target="src" module="mupdf mupdf-js pymupdf marker-pdf mineru yomitoku surya-ocr docling" reason="AGPL、GPL、非商業與引擎套件都不進主程式行程，主程式也不依賴任何引擎" -->
 <!-- @assert-count target=".github/workflows/test.yml" symbol="npm run licenses" min="1" comments="include" reason="CI 用 lockfile 檢查全部相依的授權，名單外的讓 CI 失敗" -->
 
 ## 後果

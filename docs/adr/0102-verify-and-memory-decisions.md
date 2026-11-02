@@ -77,7 +77,7 @@ brief 016 開工前比對 ADR-0060、ADR-0099 與白皮書 §5.6、§6.2，留�
 
 ## 驗證
 
-<!-- @assert-import-absence target="src" exclude="src/core/opencc.ts *.json" module="opencc-js" reason="第 5 項：只有這個模組碰 opencc-js" -->
+<!-- @assert-import-absence target="src" exclude="src/core/opencc.ts" module="opencc-js" reason="第 5 項：只有這個模組碰 opencc-js" -->
 <!-- @assert-present file="src/core/verify.ts,src/core/format.ts,src/core/opencc.ts,src/core/memory.ts,src/core/state.ts" -->
 <!-- @assert-absence target="tests/tools/traditional-chinese.test.ts" symbol="SIMPLIFIED_IN_BIG5" reason="第 2 項：字表只有一份，放語言資料" -->
 <!-- @assert-count target="languages/target/zh-TW.yaml" symbol="script_check:" expected="1" reason="第 2 項：字表是語言資料" -->

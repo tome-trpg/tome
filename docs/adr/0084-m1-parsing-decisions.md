@@ -61,8 +61,8 @@ M1 開工前比對白皮書、ADR 與實際套件，留下 16 個沒定的項目
 
 ## 驗證
 
-<!-- @assert-import-absence target="src" exclude="src/core/pdf.ts *.json" module="unpdf" reason="只有 PDF 模組碰 pdf.js" -->
-<!-- @assert-import-absence target="src" exclude="*.json" module="pdfjs-dist pdfkit pdf-lib @napi-rs/canvas" reason="不用 pdfjs-dist，鍛造工具也不進主程式" -->
+<!-- @assert-import-absence target="src" exclude="src/core/pdf.ts" module="unpdf" reason="只有 PDF 模組碰 pdf.js" -->
+<!-- @assert-import-absence target="src" module="pdfjs-dist pdfkit pdf-lib @napi-rs/canvas" reason="不用 pdfjs-dist，鍛造工具也不進主程式" -->
 <!-- @assert-absence target="package.json" symbol="pdf-lib" comments="include" reason="第 8 項：不再用 pdf-lib" -->
 <!-- @assert-count target="tools/check-licenses.ts" symbol="DEV_ONLY_ALLOWED" min="2" reason="第 9 項：0BSD 只對開發相依放行" -->
 <!-- @assert-count target="tools/check-licenses.ts" symbol="DEV_LICENSE_EXCEPTIONS" min="2" reason="第 9 項：沒有授權欄位的開發相依要逐一寫明" -->

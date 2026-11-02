@@ -56,10 +56,10 @@ schema 的欄位細節仍是提案（白皮書 §5.2、§5.8），M1 實作時�
 
 ## 驗證
 
-<!-- @assert-layers target="src" exclude="*.json" order="src/core, src/cli" reason="核心不依賴 CLI（ADR-0028）" -->
-<!-- @assert-import-absence target="src" exclude="src/core/store.ts *.json" module="node:sqlite sqlite" reason="只有資料存取層碰 node:sqlite（ADR-0052）" -->
-<!-- @assert-import-absence target="src" exclude="src/core/process.ts *.json" module="node:child_process child_process" reason="子行程一律走過濾金鑰的那一個模組（ADR-0034）" -->
-<!-- @assert-import-absence target="src" exclude="src/core/secrets.ts *.json" module="@napi-rs/keyring" reason="只有金鑰模組碰憑證庫" -->
+<!-- @assert-layers target="src" order="src/core, src/cli" reason="核心不依賴 CLI（ADR-0028）" -->
+<!-- @assert-import-absence target="src" exclude="src/core/store.ts" module="node:sqlite sqlite" reason="只有資料存取層碰 node:sqlite（ADR-0052）" -->
+<!-- @assert-import-absence target="src" exclude="src/core/process.ts" module="node:child_process child_process" reason="子行程一律走過濾金鑰的那一個模組（ADR-0034）" -->
+<!-- @assert-import-absence target="src" exclude="src/core/secrets.ts" module="@napi-rs/keyring" reason="只有金鑰模組碰憑證庫" -->
 <!-- @assert-absence target="src" glob="*.ts" regex="true" symbol="[一-鿿]" reason="訊息集中在資料檔（ADR-0027）" -->
 <!-- @assert-absence target="src/core" regex="true" symbol="console\.|process\.std(out|err)" reason="核心不輸出，CLI 才輸出（ADR-0028）" -->
 <!-- @assert-present file="schemas/tome-ir-1.schema.json,schemas/tome-pack-1.schema.json,src/cli/messages/zh-TW.json,tools/check-licenses.ts,.github/workflows/test.yml" -->
