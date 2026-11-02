@@ -471,6 +471,46 @@ describe('a reply that was cut off (ADR-0104 item 15)', () => {
     await translate(lib, host);
     expect(countRows(lib.home, 'ledger')).toBeGreaterThan(0);
   });
+
+  it('counts what it paid against the budget (ADR-0104 item 43)', async () => {
+    const lib = await confirmed({ budget: '1' });
+    const { provider, host } = await fake(() => ({
+      text: '',
+      stop_reason: 'max_tokens',
+      usage: { input_tokens: 10_000_000, output_tokens: 0 },
+    }));
+    const { exit, output } = await translate(lib, host);
+    expect(exit).toBe(1);
+    expect(provider.requests).toHaveLength(1);
+    expect(codes(output)).toContain('translate.budget_exceeded');
+    expect(output.data['spent_usd']).toBeGreaterThan(1);
+  });
+
+  it('never leaves a unit in RECEIVED, which has no reply to read (ADR-0104 item 44)', async () => {
+    const lib = await confirmed();
+    const { provider, host } = await fake((request, index) =>
+      index === 0 ? { text: '', stop_reason: 'max_tokens' } : GOOD(request, index),
+    );
+    const killed: FakeHost = {
+      ...host,
+      connect: (fetcher) => {
+        const adapter = host.connect(fetcher);
+        let calls = 0;
+        return {
+          ...adapter,
+          send: (body) => {
+            calls += 1;
+            return calls === 2 ? Promise.reject(new Error('killed')) : adapter.send(body);
+          },
+        };
+      },
+    };
+    expect((await translate(lib, killed)).exit).toBe(2);
+    expect(statesOf(lib.home)).not.toContain('RECEIVED');
+    expect((await translate(lib, host)).exit).toBe(0);
+    expect(provider.requests.map(unitsIn)).toEqual([3, 3]);
+    expect(statesOf(lib.home)).toEqual(['DONE', 'DONE', 'DONE']);
+  });
 });
 
 describe('a translation that fails the checks (ADR-0104 items 16 and 27)', () => {
@@ -631,6 +671,15 @@ describe('an interrupted run (ADR-0104 item 28)', () => {
     expect(provider.requests).toHaveLength(0);
     expect(rows(lib.home).every(({ translation }) => translation?.startsWith('譯：'))).toBe(true);
     expect(rows(lib.home).every(({ attempts }) => attempts === 1)).toBe(true);
+  });
+
+  it('sends a unit again when no reply was saved for it, instead of getting stuck', async () => {
+    const lib = await confirmed();
+    setState(lib.home, 'RECEIVED');
+    const { provider, host } = await fake(GOOD);
+    expect((await translate(lib, host)).exit).toBe(0);
+    expect(provider.requests.map(unitsIn)).toEqual([3]);
+    expect(statesOf(lib.home)).toEqual(['DONE', 'DONE', 'DONE']);
   });
 
   it('queues a saved reply that fails, without using up an attempt', async () => {

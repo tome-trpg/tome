@@ -280,7 +280,10 @@ function refused(run: Run, work: Work, category: string | null): Step {
   return { next, stop: null };
 }
 
-/** 同樣大小再送一次也是被截斷，所以對半拆。沒得拆就放棄（ADR-0104 第 15 項）。 */
+/**
+ * 同樣大小再送一次也是被截斷，所以對半拆。沒得拆就放棄（ADR-0104 第 15 項）。
+ * 這裡沒有存回應，`receive` 之後要一次走到下一個狀態，留在 `RECEIVED` 續跑時沒東西可驗。
+ */
 function truncated({ store, plan }: Run, { request, model }: Work): Step {
   const splittable = request.units.length > 1;
   const kept = store.transaction(() =>
@@ -361,6 +364,7 @@ async function sendWork(run: Run, work: Work): Promise<Step> {
     return stopAt(finding('translate.provider_failed', 'fail', { status: String(result.status ?? '-') }));
   }
   const sent = { request, model };
+  // 不管回應用不用得上都先記帳，否則預算會少算已經付的錢（ADR-0104 第 43 項）。
   charge(run, sent, result.requestId, result.usage);
   if (result.outcome === 'refused') return refused(run, sent, result.category);
   return result.outcome === 'truncated' ? truncated(run, sent) : replied(run, sent, result.text);

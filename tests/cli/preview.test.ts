@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Envelope } from '../../src/cli/output.ts';
@@ -150,6 +150,22 @@ describe('tome preview (ADR-0104)', () => {
     setChapters(lib.home, [0]);
     await preview(lib);
     expect(readdirSync(reviewDir(lib.home))).toEqual(['01.md']);
+  });
+
+  it('removes only its own files, one level down at most (ADR-0104 item 48)', async () => {
+    const lib = await withUnits();
+    const dir = reviewDir(lib.home);
+    mkdirSync(join(dir, 'notes'), { recursive: true });
+    mkdirSync(join(dir, '07.md'), { recursive: true });
+    const kept = ['notes.md', 'todo.txt', '1.md', '02.txt', 'a02.md', join('notes', '01.md'), join('07.md', 'inside.md')];
+    for (const file of kept) writeFileSync(join(dir, file), '人工筆記');
+    writeFileSync(join(dir, '09.md'), '舊的對照');
+    writeFileSync(join(dir, '100.md'), '舊的對照');
+    await preview(lib);
+    expect(existsSync(join(dir, '09.md'))).toBe(false);
+    expect(existsSync(join(dir, '100.md'))).toBe(false);
+    expect(existsSync(join(dir, '01.md'))).toBe(true);
+    for (const file of kept) expect(readFileSync(join(dir, file), 'utf8')).toBe('人工筆記');
   });
 
   it('writes nothing for a book with no units yet', async () => {

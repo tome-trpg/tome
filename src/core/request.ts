@@ -18,7 +18,7 @@ import type { IrDocument } from './ir.ts';
 import { loadTargetLanguage } from './language.ts';
 import { spentUsd } from './ledger.ts';
 import type { LocalizedTerm, ResolvedPack } from './pack.ts';
-import { feedbackSentences, fillSentence, staticPrefix } from './prompt.ts';
+import { feedbackSentences, fillSentence, promptHash, staticPrefix } from './prompt.ts';
 import {
   findModel,
   loadProvider,
@@ -387,7 +387,7 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
         provider.hash,
         spec ?? null,
         book.config.budget_usd ?? null,
-        prefix,
+        promptHash(prefix),
         mode,
       ]),
     )

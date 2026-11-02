@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { bookDir, withBookLock } from './book.ts';
 import { readDocument } from './extract.ts';
@@ -11,6 +11,8 @@ import { openBookStore } from './store.ts';
 
 const REVIEW_DIR = 'review';
 const UNTRANSLATED = '[!untranslated]';
+/** `fileName` 產生的檔名。 */
+const OWN_FILE = /^\d{2,}\.md$/;
 
 interface PreviewRow {
   readonly block_id: string;
@@ -38,6 +40,13 @@ function fileName(chapter: number): string {
   return `${String(chapter).padStart(2, '0')}.md`;
 }
 
+/** 章節變少時舊檔要清掉，使用者放在裡面的其他檔案與資料夾留著（ADR-0104 第 48 項）。 */
+function removeOldFiles(path: string): void {
+  for (const entry of readdirSync(path, { withFileTypes: true })) {
+    if (entry.isFile() && OWN_FILE.test(entry.name)) rmSync(join(path, entry.name));
+  }
+}
+
 function previewLocked(home: string, slug: string): PlanOutcome {
   const chapters = chapterMap(readDocument(home, slug));
   const store = openBookStore(home, slug);
@@ -54,10 +63,9 @@ function previewLocked(home: string, slug: string): PlanOutcome {
     paragraphs.push(paragraph(row));
     files.set(chapter, paragraphs);
   }
-  // 這個資料夾都是產生的檔案。留著的話，章節變少時舊檔還在。
   const path = join(bookDir(home, slug), REVIEW_DIR);
-  rmSync(path, { recursive: true, force: true });
   mkdirSync(path, { recursive: true });
+  removeOldFiles(path);
   for (const [chapter, paragraphs] of files) {
     writeFileSync(join(path, fileName(chapter)), paragraphs.join('\n'));
   }
