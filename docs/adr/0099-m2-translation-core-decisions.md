@@ -90,6 +90,11 @@ M2 開工前比對白皮書、ADR 與實際套件，留下一批沒定的項目�
 <!-- @assert-count target="src/core/units.ts" symbol="'furniture'" expected="1" reason="第 8 項：furniture 不產生翻譯單位" -->
 <!-- @assert-absence target="src/core/mask.ts" symbol="<pc" reason="第 9 項：<pc> 等 M3 的 runs 才產生" -->
 <!-- @assert-count target="src/core/mask.ts" symbol="escapeText(" min="2" reason="第 28 項：書本文字進標籤前跳脫" -->
+<!-- @assert-count target="src/core/preview.ts" symbol="REVIEW_DIR = 'review'" expected="1" reason="第 3 項：tome preview 在 review 產生對照" -->
+<!-- @assert-count target="src/core/translate.ts" symbol="'receive', 'refuse'" expected="1" reason="第 6 項：REFUSED 進 M2" -->
+<!-- @assert-count target="src/core/request.ts" symbol="workspaceModel(home, 'fallback_model')" expected="1" reason="第 6 項：同供應商的 fallback_model" -->
+<!-- @assert-count target="src/core/workspace.ts" symbol="finding('pii.empty', 'warn')" expected="1" reason="第 21 項：清單是空的時候警告" -->
+<!-- @assert-count target="src/core/egress/client.ts" symbol="scanBody(body, options.rules)" expected="1" reason="第 25 項：閘門掃描序列化後的完整請求" -->
 
 ## 後果
 

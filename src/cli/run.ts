@@ -6,9 +6,11 @@ import { addEngine, listEngines, removeEngine } from '../core/engine.ts';
 import { TomeError } from '../core/errors.ts';
 import { extractBook } from '../core/extract.ts';
 import { exitCodeOf, finding, type Finding } from '../core/findings.ts';
+import type { LLMHost } from '../core/llm.ts';
 import { lintPack } from '../core/pack-lint.ts';
 import { testPack } from '../core/pack-test.ts';
 import { createPack, listPacks, locatePack } from '../core/pack.ts';
+import { previewBook } from '../core/preview.ts';
 import { detectGpu } from '../core/probe.ts';
 import { runTool, type StreamRunner, type ToolRunner } from '../core/process.ts';
 import type { RequestMode } from '../core/provider.ts';
@@ -22,6 +24,7 @@ import {
   keyEnvName,
   type SecretStore,
 } from '../core/secrets.ts';
+import { translateBook } from '../core/translate.ts';
 import { verifyBook } from '../core/verify.ts';
 import {
   initWorkspace,
@@ -56,6 +59,8 @@ export interface Io {
   readonly secrets?: SecretStore;
   readonly tool?: ToolRunner;
   readonly stream?: StreamRunner;
+  /** 轉接層要等 brief 022，現在只有測試會給（ADR-0104 第 25 項）。 */
+  readonly llm?: LLMHost;
 }
 
 interface Result {
@@ -273,13 +278,45 @@ const COMMANDS: readonly Command[] = [
   },
   {
     path: ['translate'],
-    options: { 'dry-run': { type: 'boolean' }, realtime: { type: 'boolean' } },
+    options: {
+      'dry-run': { type: 'boolean' },
+      realtime: { type: 'boolean' },
+      'retry-failed': { type: 'boolean' },
+    },
     positionals: 1,
     run: async ({ positionals, values }, io) => {
       const slug = positionals[0];
       if (slug === undefined) throw missing('book');
-      if (values['dry-run'] !== true) return { data: { book: slug }, findings: [finding('translate.not_ready', 'fail')] };
-      return dryRunBook(resolveHome(io.env, io.platform), slug, requestMode(values));
+      const home = resolveHome(io.env, io.platform);
+      const mode = requestMode(values);
+      const retryFailed = values['retry-failed'] === true;
+      if (values['dry-run'] === true) {
+        // 試算沒算到要重試的單位，一起用數字會誤導（ADR-0104）。
+        if (retryFailed) throw new TomeError('cli.bad_args');
+        return dryRunBook(home, slug, mode);
+      }
+      if (mode !== 'realtime' || io.llm === undefined) {
+        return { data: { book: slug }, findings: [finding('translate.not_ready', 'fail')] };
+      }
+      return translateBook({
+        home,
+        slug,
+        host: io.llm,
+        retryFailed,
+        // 進度走 stderr，`--json` 的 stdout 不受影響。
+        onProgress: (done, total) =>
+          io.stderr.write(progressText('unit', { done: String(done), total: String(total) })),
+      });
+    },
+  },
+  {
+    path: ['preview'],
+    options: {},
+    positionals: 1,
+    run: async ({ positionals }, io) => {
+      const slug = positionals[0];
+      if (slug === undefined) throw missing('book');
+      return previewBook(resolveHome(io.env, io.platform), slug);
     },
   },
   {

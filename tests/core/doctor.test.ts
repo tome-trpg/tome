@@ -64,6 +64,25 @@ describe('runDoctor', () => {
     expect(codes(findings)).not.toContain('pii.empty');
   });
 
+  it('warns about entries too short to match safely, and repeats none of them (ADR-0104 item 8)', async () => {
+    const home = workspace();
+    const path = join(home, 'tome.yaml');
+    writeFileSync(path, readFileSync(path, 'utf8').replace('pii: []', 'pii: [Forged Buyer, Al, 王明]'));
+    const findings = await runDoctor({ home, env: envWithKey, store: new MemorySecretStore(), tool: noUv });
+    const short = findings.find((item) => item.code === 'pii.too_short');
+    expect(short).toMatchObject({ level: 'warn', params: { entries: '2, 3' } });
+    expect(JSON.stringify(findings)).not.toContain('王明');
+    expect(exitCodeOf(findings)).toBe(0);
+  });
+
+  it('takes three characters as long enough', async () => {
+    const home = workspace();
+    const path = join(home, 'tome.yaml');
+    writeFileSync(path, readFileSync(path, 'utf8').replace('pii: []', 'pii: [王小明]'));
+    const findings = await runDoctor({ home, env: envWithKey, store: new MemorySecretStore(), tool: noUv });
+    expect(codes(findings)).not.toContain('pii.too_short');
+  });
+
   it('says nothing about the list when there is no workspace', async () => {
     const findings = await runDoctor({
       home: join(tempDir(), 'none'),

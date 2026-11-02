@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parse } from 'yaml';
 import type { TargetLanguage } from './language.ts';
 import type { ResolvedPack } from './pack.ts';
 
@@ -10,10 +12,30 @@ const COMMENT_OPEN = '<!--';
 const COMMENT_CLOSE = '-->';
 const PERSONA_FILE = 'persona_and_tone.md';
 const FEW_SHOTS_FILE = 'few_shots.md';
+const SLOT = /\{(\w+)\}/g;
+
+function promptFile(name: string): string {
+  // src 與 dist 到 repo 根目錄的深度相同。
+  return readFileSync(new URL(`../../prompts/${name}`, import.meta.url), 'utf8');
+}
 
 export function readInstructions(): string {
-  // src 與 dist 到 repo 根目錄的深度相同。
-  return readFileSync(new URL('../../prompts/translate.md', import.meta.url), 'utf8');
+  return promptFile('translate.md');
+}
+
+/** 重送時說明上次哪裡錯的句子，依驗證的代碼（ADR-0104 第 30 項）。 */
+export function feedbackSentences(): Readonly<Record<string, string>> {
+  return parse(promptFile('feedback.yaml')) as Record<string, string>;
+}
+
+/** 把驗證留下的細節填進句子。 */
+export function fillSentence(sentence: string, detail: Readonly<Record<string, string>>): string {
+  return sentence.replace(SLOT, (_whole, name: string) => detail[name] ?? '');
+}
+
+/** 存進翻譯記憶，記下這段譯文是用哪一版提示翻的。重送的句子也算提示（ADR-0104 第 30 項）。 */
+export function promptHash(prefix: string): string {
+  return createHash('sha256').update(prefix).update(promptFile('feedback.yaml')).digest('hex');
 }
 
 /** 範本的說明寫在註解裡，不該送給模型。用 indexOf 掃，規則包是不受信任的資料。 */

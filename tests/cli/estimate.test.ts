@@ -1,43 +1,15 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import type { Envelope } from '../../src/cli/output.ts';
 import { run } from '../../src/cli/run.ts';
-import { forge, forgeFile } from '../forge/index.ts';
-import { capture, tempDir, type Captured } from '../helpers.ts';
+import { library, MODEL, setWorkspace, type Library } from '../helpers/library.ts';
 
 // 文字都是合成 PDF 的假文字。這一輪不連網，所以每個流程都盯著 fetch。
 
-const FAKE_ENGINE = resolve('tests/fixtures/engines/fake');
-const MODEL = 'claude-sonnet-5-5';
-
 function envelope(text: string): Envelope {
   return JSON.parse(text) as Envelope;
-}
-
-interface Library {
-  readonly env: NodeJS.ProcessEnv;
-  readonly home: string;
-  session(): Captured;
-}
-
-function setWorkspace(home: string, extra: string): void {
-  writeFileSync(join(home, 'tome.yaml'), `schema: tome-workspace/1\nengines: [fake]\n${extra}`);
-}
-
-async function library(options: { extract?: boolean; config?: string } = {}): Promise<Library> {
-  const home = join(tempDir(), 'home');
-  const textFile = join(tempDir(), 'forged-text.json');
-  writeFileSync(textFile, JSON.stringify((await forge('plain')).truth.text));
-  const env = { ...process.env, TOME_HOME: home, FAKE_ENGINE_TEXT_FILE: textFile };
-  const session = (): Captured => capture({ env, tool: async () => null });
-  await run(['init'], session().io);
-  await run(['engine', 'add', FAKE_ENGINE], session().io);
-  await run(['add', await forgeFile('plain', tempDir()), '--as', 'book'], session().io);
-  if (options.extract !== false) await run(['extract', 'book'], session().io);
-  setWorkspace(home, options.config ?? `translator_model: ${MODEL}\npii: [Forged Buyer]\n`);
-  return { env, home, session };
 }
 
 async function estimate(lib: Library, ...args: string[]): Promise<{ exit: number; output: Envelope; text: string }> {
@@ -96,6 +68,16 @@ describe('tome estimate (ADR-0103)', () => {
     expect((await estimate(lib)).output.findings.find((item) => item.code === 'pii.empty')?.level).toBe('warn');
     setWorkspace(lib.home, `translator_model: ${MODEL}\npii: [Forged Buyer]\n`);
     expect(codes((await estimate(lib)).output)).not.toContain('pii.empty');
+  });
+
+  it('warns about an entry too short to match safely (ADR-0104 item 8)', async () => {
+    const lib = await library({ config: `translator_model: ${MODEL}\npii: [Forged Buyer, Al]\n` });
+    const { output, text } = await estimate(lib);
+    expect(output.findings.find((item) => item.code === 'pii.too_short')).toMatchObject({
+      level: 'warn',
+      params: { entries: '2' },
+    });
+    expect(text).not.toContain('Forged Buyer');
   });
 
   it('keeps the budget in book.yaml, and says how much is left', async () => {

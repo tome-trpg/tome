@@ -75,11 +75,48 @@ brief 018 開工前比對 ADR-0099、ADR-0017、ADR-0038、ADR-0039 與白皮書
 
 24. `tests/helpers/fake-provider.ts` 是本機 HTTP 伺服器，先說 Anthropic Messages，腳本化拒答、漏佔位符、429、5xx、截斷。ADR-0062 寫三種協定，M2 只有一種。
 
+**沒有 SDK 的這段時間**
+
+25. 流程先寫好，轉接層是介面 `LLMProvider`，由呼叫端注入。CLI 的 `Io` 多一個測試用的 `llm`，沒注入時 `tome translate --realtime` 維持 `translate.not_ready`，022 才接上真的轉接層，使用者看到的行為這段時間不變。
+
+**續跑與重試額度**
+
+26. `tome translate --retry-failed` 在 018 一起做。沒有它，使用者處理完個資也無法續跑。
+27. `attempts` 只算模型回了譯文的次數，含截斷。拒答不算，否則對半拆幾次就用完額度，跟品質無關。429、5xx 與網路錯誤也不算。
+28. `tome translate --realtime` 開始時先收尾：`RECEIVED` 的回應已經存了，直接重跑驗證，不重送。`IN_FLIGHT` 回到 `QUEUED` 重送，即時模式沒有遠端批次可認。這一筆可能付過錢，但單位還沒驗證，符合 Q-7 只保證已驗證單位不重付。
+
+**重送的內容**
+
+29. 同組的其他單位放進 `<context>`，排在上文前面，一起受 800 字元上限，超過時留前面的部分，表頭才留得住。提示那句話不夠精確，但不用改審過的文字。
+30. `<feedback>` 的句子放 `prompts/feedback.yaml`，算進 `prompt_hash`，核心不放文字。七種重送代碼的句子由維護者審過：
+
+| 代碼 | 句子 |
+| :--- | :--- |
+| `number_missing` | `A number from the source is missing: {numbers}` |
+| `placeholder_mismatch` | `A placeholder is missing or repeated.` |
+| `tag_error` | `The tags in this unit are not valid.` |
+| `unit_missing` | `This unit was missing from your reply.` |
+| `term_missing` | `Use the locked translation of {term}: {target}` |
+| `script_mixed` | `Simplified Chinese was found: {found}` |
+| `too_short` | `The translation is too short. Translate everything.` |
+
+31. `prompts/translate.md` 的 Input 段加一句 `<feedback> lists what was wrong with your last attempt at a unit, by id. Fix those problems in this attempt.`，其他審過的文字不動。
+
+**模組與代碼**
+
+32. 模組是 `src/core/llm.ts`（介面與重試）、`src/core/translate.ts`（流程）、`src/core/preview.ts`。新的發現是 `pii.too_short`、`translate.provider_failed`，`issue.code` 多 `pii_hit`、`refused`、`truncated`。
+33. `translate.done` 用同一個代碼回報成果，有單位卡住時層級是 fail，結束碼 1。
+
 ## 驗證
 
 <!-- @assert-count target="src/core/egress/client.ts" symbol="redirect: 'error'" expected="1" reason="第 4 項：轉址當成失敗" -->
 <!-- @assert-count target="providers/anthropic.yaml" symbol="endpoint: https://api.anthropic.com" expected="1" comments="include" reason="第 3 項：白名單是設定檔的端點" -->
 <!-- @assert-count target="tests/core/egress.test.ts" symbol="egress.denied" min="4" reason="ADR-0099 第 25 項：連到白名單以外的主機時測試失敗" -->
+<!-- @assert-count target="src/core/llm.ts" symbol="BACKOFF_SECONDS: readonly number[] = [1, 2, 4, 8, 16]" expected="1" reason="第 11 項：退避 1、2、4、8、16 秒" -->
+<!-- @assert-count target="src/core/workspace.ts" symbol="MIN_PII_CHARS = 3" expected="1" reason="第 8 項：清單項目少於 3 個字元時警告" -->
+<!-- @assert-count target="src/core/translate.ts" symbol="'requeue', 'block'" expected="1" reason="第 9 項：閘門命中時單位標成 BLOCKED" -->
+<!-- @assert-count target="prompts/translate.md" symbol="<feedback> lists what was wrong" expected="1" comments="include" reason="第 31 項：提示說明重送的原因" -->
+<!-- @assert-count target="src/core/preview.ts" symbol="state === 'BLOCKED'" expected="1" reason="第 23 項：BLOCKED 的單位不放原文" -->
 
 ## 後果
 
