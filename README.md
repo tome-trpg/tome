@@ -38,15 +38,17 @@ TOME 的設計目標是解決這些問題，並讓譯文可以直接用於實際
 | 建立工作區、檢查環境 | `tome init`、`tome doctor` | 已實作 |
 | 設定 API 金鑰 | `tome provider auth set` | 已實作 |
 | 查看模型與價格 | `tome provider list` | 已實作：不連網，不需要 API 金鑰，清單不代表推薦 |
+| 確認金鑰與模型資料 | `tome provider test` | 已實作：只查詢模型資料，不消耗 token |
 | 登記書籍、探測 PDF | `tome add`、`tome probe` | 已實作，並可依規則包的資料建議適用的規則包 |
 | 管理規則包 | `tome system new`、`list`、`lint`、`test` | 已實作，內建 `generic` 規則包 |
 | 管理解析引擎 | `tome engine add`、`list`、`remove` | 已實作 |
 | 解析頁面 | `tome extract` | 已實作：將原生文字頁交給解析引擎，組裝成文件，並檢查字元是否遺失 |
-| 重新驗證譯文 | `tome verify` | 已實作，翻譯功能完成後才有回應可驗證 |
 | 估算費用 | `tome estimate`、`tome translate --dry-run` | 已實作：在本機估算，不連網，估算比例尚未校準 |
-| 對照原文與譯文 | `tome preview` | 已實作，翻譯功能完成後才有譯文可對照 |
+| 翻譯 | `tome translate`、`tome batch status`、`collect`、`cancel` | 已實作：預設以批次送出，加上 `--realtime` 則逐一送出。尚未以實際的 API 翻譯過 |
+| 重新驗證譯文 | `tome verify` | 已實作，不消耗 token |
+| 對照原文與譯文 | `tome preview` | 已實作，只存放於本機 |
 | 查看進度與花費 | `tome status` | 已實作：只讀取本機資料，不連網 |
-| 翻譯與輸出 | 尚未提供 | 規劃中 |
+| 輸出 | 尚未提供 | 規劃中 |
 
 ## 不涵蓋的範圍
 

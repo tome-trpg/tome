@@ -416,13 +416,16 @@ describe('tome translate --dry-run (ADR-0103)', () => {
     expect((await dryRun(lib)).output.data).toMatchObject({ units: 3 });
   });
 
-  it('does not translate yet without --dry-run', async () => {
+  it('needs a key without --dry-run, and with it needs none (ADR-0109 item 5)', async () => {
     const lib = await library();
     const spy = vi.fn();
     vi.stubGlobal('fetch', spy);
-    const { io, stdout } = lib.session();
+    // 開發者的機器可能設了金鑰，這裡要拿掉。
+    const env = { ...lib.env, TOME_ANTHROPIC_API_KEY: undefined };
+    const { io, stdout } = lib.session({ env });
     expect(await run(['translate', 'book'], io)).toBe(1);
-    expect(stdout()).toContain('翻譯功能尚未完成');
+    expect(stdout()).toContain('找不到 anthropic 的金鑰');
+    expect(await run(['translate', 'book', '--dry-run'], lib.session({ env }).io)).toBe(0);
     expect(spy).not.toHaveBeenCalled();
   });
 });

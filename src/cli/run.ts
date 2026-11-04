@@ -21,6 +21,7 @@ import { createPack, listPacks, locatePack } from '../core/pack.ts';
 import { previewBook } from '../core/preview.ts';
 import { detectGpu } from '../core/probe.ts';
 import { runTool, type StreamRunner, type ToolRunner } from '../core/process.ts';
+import { testProvider } from '../core/provider-test.ts';
 import { listProviders, type RequestMode } from '../core/provider.ts';
 import { dryRunBook, estimateBook } from '../core/request.ts';
 import {
@@ -28,6 +29,7 @@ import {
   normalizeKey,
   osSecretStore,
   PROVIDERS,
+  resolveApiKey,
   SecretStoreUnavailable,
   keyEnvName,
   type SecretStore,
@@ -68,7 +70,7 @@ export interface Io {
   readonly secrets?: SecretStore;
   readonly tool?: ToolRunner;
   readonly stream?: StreamRunner;
-  /** 轉接層要等 brief 022，現在只有測試會給（ADR-0104 第 25 項）。 */
+  /** 測試才給，把端點指到本機的假供應商。沒給就用使用者的金鑰接 Anthropic（ADR-0109 第 5 項）。 */
   readonly llm?: LLMHost;
 }
 
@@ -167,8 +169,29 @@ async function gpuFinding(io: Io): Promise<Finding> {
 
 const PROGRESS_EVERY = 10;
 
-function notReady(slug: string): Result {
-  return { data: { book: slug }, findings: [finding('translate.not_ready', 'fail')] };
+/**
+ * 要連網的指令一開始先取金鑰，沒有就停下，不開書也不連網（ADR-0034、ADR-0109 第 5 項）。
+ * 轉接層延後載入，不連網的指令不用載入 SDK。
+ */
+async function llmHost(io: Io): Promise<LLMHost | Finding> {
+  if (io.llm !== undefined) return io.llm;
+  const env = keyEnvName('anthropic');
+  let resolved: Awaited<ReturnType<typeof resolveApiKey>>;
+  try {
+    resolved = await resolveApiKey('anthropic', io.env, secretStore(io));
+  } catch (error) {
+    if (!(error instanceof SecretStoreUnavailable)) throw error;
+    return finding('keyring.unavailable', 'fail', { env });
+  }
+  if (resolved === null) return finding('key.missing', 'fail', { provider: 'anthropic', env });
+  const { anthropicHost } = await import('../core/egress/anthropic.ts');
+  return anthropicHost(resolved.key);
+}
+
+/** 拿得到轉接層才做，拿不到就回報原因。 */
+async function withHost(io: Io, data: Result['data'], work: (host: LLMHost) => Promise<Result>): Promise<Result> {
+  const host = await llmHost(io);
+  return 'level' in host ? { data, findings: [host] } : work(host);
 }
 
 /** 進度走 stderr，`--json` 的 stdout 不受影響。 */
@@ -182,7 +205,7 @@ function progressOf(io: Io): Pick<BatchOptions, 'onProgress' | 'onBatchSent' | '
   };
 }
 
-/** `tome batch` 的三個指令都要轉接層，022 之前只有測試會注入（ADR-0107 第 1 項）。 */
+/** `tome batch` 的三個指令都要連到供應商（ADR-0107 第 1 項、ADR-0109 第 6 項）。 */
 async function withBook(
   positionals: readonly string[],
   io: Io,
@@ -190,8 +213,7 @@ async function withBook(
 ): Promise<Result> {
   const slug = positionals[0];
   if (slug === undefined) throw missing('book');
-  if (io.llm === undefined) return notReady(slug);
-  return work({ home: resolveHome(io.env, io.platform), slug, host: io.llm });
+  return withHost(io, { book: slug }, (host) => work({ home: resolveHome(io.env, io.platform), slug, host }));
 }
 
 const COMMANDS: readonly Command[] = [
@@ -331,10 +353,10 @@ const COMMANDS: readonly Command[] = [
         if (retryFailed) throw new TomeError('cli.bad_args');
         return dryRunBook(home, slug, mode);
       }
-      // 轉接層在 brief 022 才有，這之前只有測試會注入（ADR-0107 第 1 項）。
-      if (io.llm === undefined) return notReady(slug);
-      const options = { home, slug, host: io.llm, retryFailed, ...progressOf(io) };
-      return mode === 'realtime' ? translateBook(options) : translateInBatches(options);
+      return withHost(io, { book: slug }, (host) => {
+        const options = { home, slug, host, retryFailed, ...progressOf(io) };
+        return mode === 'realtime' ? translateBook(options) : translateInBatches(options);
+      });
     },
   },
   {
@@ -515,6 +537,12 @@ const COMMANDS: readonly Command[] = [
     options: {},
     positionals: 0,
     run: async () => listProviders(),
+  },
+  {
+    path: ['provider', 'test'],
+    options: {},
+    positionals: 0,
+    run: (_parsed, io) => withHost(io, { provider: 'anthropic' }, (host) => testProvider(host)),
   },
 ];
 

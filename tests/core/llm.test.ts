@@ -25,7 +25,7 @@ function failure(status: number | null, retryAfter: number | null = null): Reque
 
 const unused = (): Promise<never> => Promise.reject(new Error('not used'));
 
-/** 這裡只測即時的請求，Batch 的方法用不到。 */
+/** 這裡只測即時的請求，Batch 與模型資料的方法用不到。 */
 const NO_BATCH = {
   submitBatch: unused,
   pollBatch: unused,
@@ -33,6 +33,7 @@ const NO_BATCH = {
   cancelBatch: unused,
   deleteRemote: unused,
   listBatches: unused,
+  describeModel: unused,
 };
 
 /** 依序回傳腳本的結果，最後一個一直重複。 */

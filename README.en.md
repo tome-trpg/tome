@@ -38,15 +38,17 @@ The following features are design goals. See [Development status](#development-s
 | Workspace setup and environment checks | `tome init`, `tome doctor` | Implemented |
 | API key setup | `tome provider auth set` | Implemented |
 | Models and prices | `tome provider list` | Implemented: no network and no API key needed; the list is not a recommendation |
+| Key and model data check | `tome provider test` | Implemented: queries model data only and spends no tokens |
 | Book registration and PDF probing | `tome add`, `tome probe` | Implemented, and suggests a rule pack from the data that packs declare |
 | Rule pack management | `tome system new`, `list`, `lint`, `test` | Implemented, with the built-in `generic` pack |
 | Parsing engine management | `tome engine add`, `list`, `remove` | Implemented |
 | Page parsing | `tome extract` | Implemented: native text pages are handed to a parsing engine, assembled into a document, and checked for lost characters |
-| Translation re-verification | `tome verify` | Implemented; there is nothing to verify until translation is available |
 | Cost estimate | `tome estimate`, `tome translate --dry-run` | Implemented: runs locally with no network; the ratios are not calibrated yet |
-| Side-by-side review | `tome preview` | Implemented; there is nothing to compare until translation is available |
+| Translation | `tome translate`, `tome batch status`, `collect`, `cancel` | Implemented: sends in batches by default, or one request at a time with `--realtime`. Not yet run against the real API |
+| Translation re-verification | `tome verify` | Implemented; spends no tokens |
+| Side-by-side review | `tome preview` | Implemented; stays on this machine |
 | Progress and spending | `tome status` | Implemented: reads local data only, with no network |
-| Translation and output | Not available | Planned |
+| Output | Not available | Planned |
 
 ## Out of scope
 

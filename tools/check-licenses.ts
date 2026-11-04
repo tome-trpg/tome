@@ -14,6 +14,16 @@ const DEV_LICENSE_EXCEPTIONS: Readonly<Record<string, string>> = {
   'png-js@2.0.0': 'MIT',
 };
 
+// 主程式綁套件與版本的窄例外，lockfile 記的授權也要相同，白名單不變。升級時 MUST 重看（ADR-0099 第 15 項）。
+const LICENSE_EXCEPTIONS: Readonly<Record<string, string>> = {
+  // `@anthropic-ai/sdk` 0.137.0 經 `standardwebhooks` 帶進來，TOME 不驗 webhook。
+  'fast-sha256@1.3.0': 'Unlicense',
+};
+
+function excepted(name: string, entry: LockEntry): boolean {
+  return entry.license !== undefined && LICENSE_EXCEPTIONS[`${name}@${entry.version ?? ''}`] === entry.license;
+}
+
 // lockfile 看不到原生二進位檔裡連結了什麼，所以主程式的原生套件要逐一審過才列在這裡（ADR-0083）。
 const REVIEWED_NATIVE = [/^@napi-rs\/keyring-/];
 
@@ -87,6 +97,7 @@ function packageName(path: string): string {
 }
 
 function licensePasses(name: string, entry: LockEntry): boolean {
+  if (excepted(name, entry)) return true;
   if (entry.dev !== true) return isAllowedLicense(entry.license);
   const license = entry.license ?? DEV_LICENSE_EXCEPTIONS[`${name}@${entry.version ?? ''}`];
   return isAllowedLicense(license, new Set([...ALLOWED, ...DEV_ONLY_ALLOWED]));

@@ -1,6 +1,7 @@
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer, type IncomingHttpHeaders, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { onTestFinished } from 'vitest';
+import { anthropicHost } from '../../src/core/egress/anthropic.ts';
 import type { GuardedFetch } from '../../src/core/egress/client.ts';
 import { TomeError } from '../../src/core/errors.ts';
 import {
@@ -14,11 +15,13 @@ import {
   type MessageBatchReply,
   type MessageReply,
 } from '../../src/core/llm.ts';
+import { modelFacts, type ModelReply } from '../../src/core/provider-test.ts';
 import { parseUnits } from '../../src/core/tags.ts';
 
-// 假供應商（ADR-0062）：本機伺服器，說 Anthropic Messages 與 Message Batches，腳本化拒答、截斷、
-// 429、5xx、批次的處理中、單筆錯誤、過期、取消與結果亂序（ADR-0104 第 24 項、ADR-0107）。
-// CI 不放金鑰，也不連外，流程的每條路都靠它走到。批次的行為照 2026-11-02 讀的官方文件。
+// 假供應商（ADR-0062）：本機伺服器，說 Anthropic Messages、Message Batches 與 Models，腳本化拒答、截斷、
+// 429、5xx、批次的處理中、單筆錯誤、過期、取消與結果亂序（ADR-0104 第 24 項、ADR-0107、ADR-0109）。
+// CI 不放金鑰，也不連外，流程的每條路都靠它走到。批次的行為照 2026-11-02 讀的官方文件，
+// Models 照 2026-11-03 讀的 API 參考。
 
 export interface FakeRequest {
   readonly body: Readonly<Record<string, unknown>>;
@@ -38,9 +41,10 @@ interface FakeUsage {
 export type FakeReply =
   | { readonly text: string; readonly stop_reason?: string; readonly usage?: FakeUsage }
   | { readonly refusal: true; readonly category?: string | null; readonly usage?: FakeUsage }
-  /** 即時模式才用得到：HTTP 狀態碼與斷線。 */
+  /** 即時模式才用得到：HTTP 狀態碼與斷線。`cut` 是送出標頭與一半的本文之後才斷線。 */
   | { readonly status: number; readonly retryAfter?: number }
   | { readonly drop: true }
+  | { readonly cut: true }
   /** 批次裡才用得到：單筆的結果。 */
   | { readonly errored: string }
   | { readonly expired: true }
@@ -66,6 +70,8 @@ export interface FakeBatchOptions {
   deleteStatus: number | null;
   /** 結果已超過保留期限。 */
   archived: boolean;
+  /** 下載結果時，前面這麼多次送出標頭與一半的本文之後就斷線。 */
+  cutResults: number;
   /** 取消時，前面這麼多個請求已經處理完，照樣有結果。 */
   keepOnCancel: number;
   /** `list` 每頁幾個。 */
@@ -83,11 +89,23 @@ export interface FakeBatch {
   lines?: readonly string[];
 }
 
+/** 收到的每一個 HTTP 請求，查標頭用。 */
+export interface FakeCall {
+  readonly method: string;
+  readonly path: string;
+  readonly headers: IncomingHttpHeaders;
+}
+
 export interface FakeProvider {
   readonly url: string;
   readonly requests: readonly FakeRequest[];
+  readonly calls: readonly FakeCall[];
   readonly batches: readonly FakeBatch[];
   readonly batch: FakeBatchOptions;
+  /** Models API 回的模型，數字是狀態碼。沒列的回 404。 */
+  readonly models: Map<string, ModelReply | number>;
+  /** 批次結果的網址從這裡開始，測試可以改成白名單以外的主機。 */
+  resultsBase: string;
   /** 別本書或別的程式送的批次，同一個工作區看得到。 */
   addForeignBatch(options: { readonly requests: number; readonly createdAt?: string; readonly polls?: number }): FakeBatch;
 }
@@ -101,6 +119,7 @@ const DEFAULT_BATCH: FakeBatchOptions = {
   pollStatus: null,
   deleteStatus: null,
   archived: false,
+  cutResults: 0,
   keepOnCancel: 0,
   pageSize: 20,
 };
@@ -120,6 +139,13 @@ function readBody(request: IncomingMessage): Promise<string> {
 function send(response: ServerResponse, status: number, body: unknown, headers: Readonly<Record<string, string>> = {}): void {
   response.writeHead(status, { 'content-type': 'application/json', ...headers });
   response.end(JSON.stringify(body));
+}
+
+/** 照實宣告長度，送出標頭與一半的本文之後斷線。收到的一方讀本文時才會出錯。 */
+function cutOff(response: ServerResponse, contentType: string, body: string): void {
+  response.writeHead(200, { 'content-type': contentType, 'content-length': String(Buffer.byteLength(body)) });
+  response.write(body.slice(0, Math.floor(body.length / 2)));
+  setTimeout(() => response.socket?.destroy(), 20);
 }
 
 function sendError(response: ServerResponse, status: number, headers: Readonly<Record<string, string>> = {}): void {
@@ -158,6 +184,10 @@ function reply(response: ServerResponse, scripted: FakeReply): void {
     response.socket?.destroy();
     return;
   }
+  if ('cut' in scripted) {
+    cutOff(response, 'application/json', JSON.stringify(message({ text: '<s id="1">cut</s>' })));
+    return;
+  }
   if ('status' in scripted) {
     sendError(response, scripted.status, scripted.retryAfter === undefined ? {} : { 'retry-after': String(scripted.retryAfter) });
     return;
@@ -194,8 +224,8 @@ function resultLine(customId: string, scripted: FakeReply): Readonly<Record<stri
   throw new RangeError('scripted HTTP failures cannot be batch results');
 }
 
-/** `request_counts` 除了 `processing`，要等整批結束才有數字（官方文件）。 */
-function batchObject(batch: FakeBatch, options: FakeBatchOptions): MessageBatchReply {
+/** `request_counts` 除了 `processing`，要等整批結束才有數字。`results_url` 結束之後才有（官方文件）。 */
+function batchObject(batch: FakeBatch, options: FakeBatchOptions, resultsBase: string): MessageBatchReply & { results_url: string | null } {
   const done = ended(batch);
   const counts = { processing: 0, succeeded: 0, errored: 0, canceled: 0, expired: 0 };
   batch.items.forEach((_item, index) => {
@@ -218,6 +248,7 @@ function batchObject(batch: FakeBatch, options: FakeBatchOptions): MessageBatchR
     expires_at: new Date(created + DAY_MS).toISOString(),
     ended_at: done ? new Date().toISOString() : null,
     archived_at: options.archived ? new Date(created + 29 * DAY_MS).toISOString() : null,
+    results_url: done ? `${resultsBase}/v1/messages/batches/${batch.id}/results` : null,
   };
 }
 
@@ -226,7 +257,11 @@ export async function startFakeProvider(script: FakeScript, options: Partial<Fak
   const requests: FakeRequest[] = [];
   const batches: FakeBatch[] = [];
   const batch: FakeBatchOptions = { ...DEFAULT_BATCH, ...options };
+  const calls: FakeCall[] = [];
+  const models = new Map<string, ModelReply | number>();
+  const shared = { resultsBase: '' };
   const live = (id: string): FakeBatch | undefined => batches.find((entry) => entry.id === id && !entry.deleted);
+  const shownAs = (entry: FakeBatch): MessageBatchReply => batchObject(entry, batch, shared.resultsBase);
 
   const createBatch = (response: ServerResponse, body: Readonly<Record<string, unknown>>): void => {
     if (batch.createStatus !== null) {
@@ -251,7 +286,7 @@ export async function startFakeProvider(script: FakeScript, options: Partial<Fak
       sendError(response, batch.failAfterCreate);
       return;
     }
-    send(response, 200, batchObject(created, batch));
+    send(response, 200, shownAs(created));
   };
 
   const results = (response: ServerResponse, found: FakeBatch): void => {
@@ -265,6 +300,11 @@ export async function startFakeProvider(script: FakeScript, options: Partial<Fak
       );
       found.lines = batch.reverse ? lines.reverse() : lines;
     }
+    if (batch.cutResults > 0) {
+      batch.cutResults -= 1;
+      cutOff(response, 'application/x-jsonl', found.lines.join('\n'));
+      return;
+    }
     response.writeHead(200, { 'content-type': 'application/x-jsonl' });
     response.end(found.lines.join('\n'));
   };
@@ -275,7 +315,7 @@ export async function startFakeProvider(script: FakeScript, options: Partial<Fak
     const page = newest.slice(start, start + batch.pageSize);
     const more = start + page.length < newest.length;
     send(response, 200, {
-      data: page.map((entry) => batchObject(entry, batch)),
+      data: page.map(shownAs),
       has_more: more,
       first_id: page[0]?.id ?? null,
       last_id: page.at(-1)?.id ?? null,
@@ -300,7 +340,7 @@ export async function startFakeProvider(script: FakeScript, options: Partial<Fak
     }
     if (action === 'cancel') {
       found.canceled = true;
-      send(response, 200, batchObject(found, batch));
+      send(response, 200, shownAs(found));
       return;
     }
     if (request.method === 'DELETE') {
@@ -317,15 +357,27 @@ export async function startFakeProvider(script: FakeScript, options: Partial<Fak
       return;
     }
     // 每查一次少一次「還在處理」。
-    const shown = batchObject(found, batch);
+    const shown = shownAs(found);
     if (!ended(found)) found.polls -= 1;
     send(response, 200, shown);
+  };
+
+  const modelRoute = (response: ServerResponse, id: string): void => {
+    const scripted = models.get(id) ?? 404;
+    if (typeof scripted === 'number') sendError(response, scripted);
+    else send(response, 200, scripted);
   };
 
   const server = createServer((request, response) => {
     void readBody(request).then((text) => {
       const body = JSON.parse(text === '' ? '{}' : text) as Readonly<Record<string, unknown>>;
       const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+      calls.push({ method: request.method ?? '', path: url.pathname, headers: request.headers });
+      const model = /^\/v1\/models\/([^/]+)$/.exec(url.pathname)?.[1];
+      if (model !== undefined) {
+        modelRoute(response, decodeURIComponent(model));
+        return;
+      }
       if (url.pathname.startsWith('/v1/messages/batches')) {
         batchRoute(request, response, url, body);
         return;
@@ -361,7 +413,23 @@ export async function startFakeProvider(script: FakeScript, options: Partial<Fak
     batches.push(foreign);
     return foreign;
   };
-  return { url: `http://127.0.0.1:${port}`, requests, batches, batch, addForeignBatch };
+  const url = `http://127.0.0.1:${port}`;
+  shared.resultsBase = url;
+  return {
+    url,
+    requests,
+    calls,
+    batches,
+    batch,
+    models,
+    get resultsBase() {
+      return shared.resultsBase;
+    },
+    set resultsBase(base: string) {
+      shared.resultsBase = base;
+    },
+    addForeignBatch,
+  };
 }
 
 export interface FakeHost extends LLMHost {
@@ -369,9 +437,28 @@ export interface FakeHost extends LLMHost {
   readonly waits: readonly number[];
 }
 
+/** 合成的金鑰，不是真的金鑰。 */
+export const SYNTHETIC_KEY = 'sk-ant-test-0000000000000000';
+
 /**
- * 測試用的轉接層。真的轉接層在 brief 022 才有，這裡用同樣的 `fetch` 與判斷函式走完整條路。
- * `endpoint` 預設是假供應商，傳 null 就是正式的端點，這時連到本機會被白名單擋下。
+ * 真的轉接層與 SDK，一律連到假供應商（ADR-0109 第 13 項）。`endpoint` 只決定白名單：
+ * 傳 null 就是正式的端點，這時連到本機會被擋下，請求不會真的送到供應商。
+ */
+export function adapterHost(provider: FakeProvider, endpoint: string | null = provider.url, key: string = SYNTHETIC_KEY): FakeHost {
+  const waits: number[] = [];
+  const sleep = async (seconds: number): Promise<void> => void waits.push(seconds);
+  const host = anthropicHost(key, { sleep });
+  return {
+    connect: (fetcher) => host.connect(fetcher, provider.url),
+    sleep,
+    waits,
+    ...(endpoint === null ? {} : { endpoint }),
+  };
+}
+
+/**
+ * 測試用的轉接層，不經過 SDK，用同樣的 `fetch` 與判斷函式走完整條路。流程的測試用它，
+ * 真的轉接層由 `adapterHost` 測。`endpoint` 預設是假供應商，傳 null 就是正式的端點，這時連到本機會被白名單擋下。
  */
 export function fakeHost(provider: FakeProvider, endpoint: string | null = provider.url): FakeHost {
   const waits: number[] = [];
@@ -416,6 +503,8 @@ export function fakeHost(provider: FakeProvider, endpoint: string | null = provi
           const page = (await response.json()) as { data: MessageBatchReply[]; has_more: boolean; last_id: string | null };
           return { batches: page.data.map(remoteBatch), next: page.has_more ? page.last_id : null };
         }),
+      describeModel: (id) =>
+        call(`/v1/models/${id}`, { method: 'GET' }, async (response) => modelFacts((await response.json()) as ModelReply)),
     };
   };
   const sleep = async (seconds: number): Promise<void> => void waits.push(seconds);
