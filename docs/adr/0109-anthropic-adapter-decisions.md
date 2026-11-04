@@ -39,13 +39,15 @@ brief 022 要接上 `@anthropic-ai/sdk` 0.137.0。這個版本在 2026-11-03 22:
    * 其他 `APIConnectionError`，包括逾時，回 `status: null`。
    * 有狀態碼的 `APIError` 回 `status`，`retryAfter` 讀 `retry-after` 標頭的秒數。
    * 其他錯誤照樣丟出。
-2. 修改 ADR-0099 第 24 項的做法：client 明確傳下列參數，SDK 會讀的 `ANTHROPIC_*` 環境變數一個都不影響送出的請求：
+2. 修改 ADR-0099 第 24 項的做法：client 明確傳下列參數，SDK 會讀的 `ANTHROPIC_*` 環境變數改不了金鑰、端點、API 版本與 beta 功能：
    * `apiKey`、`authToken: null`、`webhookKey: null`、`baseURL`、`fetch`
    * `maxRetries: 0`、`timeout`、`logLevel: 'off'`、`openTelemetry: false`
 
    `ANTHROPIC_CUSTOM_HEADERS` 關不掉，所以分兩層處理：
    * 轉接層包一層 `fetch`，只轉送 `accept`、`content-type`、`user-agent`、`x-stainless-*`、`anthropic-version`、`anthropic-beta`、`x-api-key`。
-   * `defaultHeaders` 明確帶 `X-Api-Key` 與 `anthropic-version`，大小寫不同的同名標頭也以 TOME 給的為準。
+   * `defaultHeaders` 明確帶 `X-Api-Key` 與 `anthropic-version`，並把 `anthropic-beta` 設成 null 拿掉，大小寫不同的同名標頭也以 TOME 給的為準。`describeModel` 的 beta 標頭由那次請求自己帶，排在 `defaultHeaders` 之後，照樣送出。`anthropic-beta` 這一點是審查 PR 56 時 Manager 發現的：放行了卻沒有蓋掉，環境變數能替每個請求開啟 TOME 沒選的 beta 功能。
+
+   其他允許的標頭（`accept`、`content-type`、`user-agent`、`x-stainless-*`）的值仍可能被 `ANTHROPIC_CUSTOM_HEADERS` 換掉。這些不影響用哪個帳號、送往哪裡，也不含書本文字。
 3. 照 SDK 的預設送 `User-Agent` 與 `x-stainless-*`。白皮書 §8.2 寫明：除了請求本文，還會送出作業系統、CPU 架構與 Node 版本。不含金鑰，也不含書本文字。
 4. client 明確設 `timeout`，值是 600,000 毫秒，跟 SDK 預設的 10 分鐘相同，SDK 就不會在送出前因為 `max_tokens` 大而丟錯。超過 10 分鐘的請求會被中斷，當成沒有收到回應，照 ADR-0104 第 11 項重試。M2 不做串流，等 M4 試翻量過請求時間再決定。
 
@@ -132,7 +134,7 @@ brief 022 要接上 `@anthropic-ai/sdk` 0.137.0。這個版本在 2026-11-03 22:
 <!-- @assert-count target="src/core/egress/anthropic.ts" symbol="authToken: null," expected="1" reason="第 2 項：不讀 ANTHROPIC_AUTH_TOKEN" -->
 <!-- @assert-count target="src/core/egress/anthropic.ts" symbol="logLevel: 'off'," expected="1" reason="第 2 項：不讀 ANTHROPIC_LOG，不印請求" -->
 <!-- @assert-count target="src/core/egress/anthropic.ts" symbol="openTelemetry: false," expected="1" reason="第 2 項：不讀 ANTHROPIC_OPEN_TELEMETRY" -->
-<!-- @assert-count target="src/core/egress/anthropic.ts" symbol="defaultHeaders: { 'X-Api-Key': key, 'anthropic-version': API_VERSION }," expected="1" reason="第 2 項：ANTHROPIC_CUSTOM_HEADERS 蓋不掉金鑰與版本" -->
+<!-- @assert-count target="src/core/egress/anthropic.ts" symbol="defaultHeaders: { 'X-Api-Key': key, 'anthropic-version': API_VERSION, 'anthropic-beta': null }," expected="1" reason="第 2 項：ANTHROPIC_CUSTOM_HEADERS 蓋不掉金鑰與版本，也開不了 beta 功能" -->
 <!-- @assert-count target="src/core/egress/anthropic.ts" symbol="if (FORWARDED.test(name)) headers.set(name, value);" expected="1" reason="第 2 項：只轉送允許的標頭" -->
 <!-- @assert-count target="src/core/egress/anthropic.ts" symbol="maxRetries: 0," expected="1" reason="ADR-0099 第 23 項：SDK 不重試" -->
 <!-- @assert-count target="src/core/egress/anthropic.ts" symbol="const TIMEOUT_MS = 600_000;" expected="1" reason="第 4 項：明確設 10 分鐘的逾時" -->

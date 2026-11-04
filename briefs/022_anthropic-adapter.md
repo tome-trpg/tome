@@ -78,7 +78,7 @@ protectedFiles:
 - [x] `@anthropic-ai/sdk` 釘 0.137.0，只在 `src/core/egress/` 匯入，ADR-0099 第 14 項的斷言改成檢查版本
 - [x] 轉接層實作 `LLMProvider` 的全部方法，`maxRetries: 0`、明確的 `apiKey`、`baseURL`、`timeout`，注入 `guardedFetch`，每個方法都跟本機的假供應商測過
 - [x] SDK 包起來的 `EgressBlocked` 與 `egress.denied` 解開再丟出，即時與批次模式都走到 `translate.blocked`
-- [x] `ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_BASE_URL`、`ANTHROPIC_LOG`、`ANTHROPIC_CUSTOM_HEADERS` 都影響不到送出的請求，有測試把關
+- [x] `ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_BASE_URL`、`ANTHROPIC_LOG`、`ANTHROPIC_CUSTOM_HEADERS` 改不了金鑰、端點、API 版本與 beta 功能，有測試把關
 - [x] `tome translate`、`--realtime`、`--retry-failed` 與 `tome batch` 接上轉接層，沒有金鑰時回 `key.missing` 且不連網，`translate.not_ready` 拿掉
 - [x] `tome --help` 列出翻譯、批次與 `tome provider test`
 - [x] `tome provider test` 只用 Models API，對照模型資料，不消耗 token
@@ -99,6 +99,7 @@ protectedFiles:
 | `defaultHeaders` 明確帶金鑰與版本 | 只拿掉它，2 個失敗：環境變數的 `x-api-key` 與 `anthropic-version` 蓋過 TOME 給的，大小寫兩種寫法都是，再改回來 |
 | 沒有金鑰回 `key.missing`、`tome provider test` 的 401 與思考參數、`fast-sha256` 的例外 | 故意改壞四處，8 個失敗，再改回來 |
 | 本文讀到一半斷線（維護者決定之後加的） | 拿掉處理，4 個失敗：即時模式與批次收回，轉接層與 CLI 各兩個，再改回來 |
+| 環境變數加的 `anthropic-beta`（審查 PR 56 後加的） | 拿掉 `defaultHeaders` 的 `'anthropic-beta': null`，2 個失敗：大小寫兩種寫法的 beta 都跟著即時與批次的請求送出，再改回來 |
 | 刪除收到 404 當成已經刪除（維護者決定之後加的） | 拿掉處理，1 個失敗：`deleted_at` 沒有寫入，下次執行又送了刪除請求，再改回來。其他狀態碼照舊重試的測試在舊程式上本來就會過 |
 | `npm run licenses` | 加進 SDK、開例外之前回報 `fast-sha256@1.3.0: Unlicense (license not allowed)` |
 | 改寫的 `translate.not_ready` 測試（`translate`、`batch`、`estimate`） | 舊程式回 `translate.not_ready`，新的期待是 `key.missing` 且不連網 |

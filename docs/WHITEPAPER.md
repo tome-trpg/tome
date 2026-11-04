@@ -656,7 +656,7 @@ type RequestResult =
 
 轉接層不自己連網，一律透過對外出口模組（[§8.2](#82-對外出口)）。回應與批次結果的解析、拒答與截斷的判斷都放在核心，每個協定不用各寫一次，供應商以請求計費，帳本依字元數分攤到單位。`capabilities` 等第二家供應商進來時再加，M2 只有 Anthropic（ADR-0107）。
 
-**已實作**：介面、重試與判斷回應、批次結果的函式（`src/core/llm.ts`；`tests/core/llm.test.ts`）。Anthropic 轉接層用 `@anthropic-ai/sdk` 0.137.0（`src/core/egress/anthropic.ts`；`tests/core/anthropic.test.ts`），即時請求、Batches API 與 Models API 都走注入的 `guardedFetch`。SDK 的重試關掉，金鑰、端點與 10 分鐘的逾時明確傳入，SDK 會讀的 `ANTHROPIC_*` 環境變數影響不到送出的請求。SDK 把個資閘門與白名單的錯誤包成連線錯誤，轉接層解開再丟出。本文由轉接層自己讀，讀到一半斷線當成沒有收到回應，跟 5xx 一樣重試。轉接層只跟本機的假供應商跑過，沒有對真的 API 發過請求，第一次真實翻譯由維護者在 022 合併之後執行（ADR-0109）。
+**已實作**：介面、重試與判斷回應、批次結果的函式（`src/core/llm.ts`；`tests/core/llm.test.ts`）。Anthropic 轉接層用 `@anthropic-ai/sdk` 0.137.0（`src/core/egress/anthropic.ts`；`tests/core/anthropic.test.ts`），即時請求、Batches API 與 Models API 都走注入的 `guardedFetch`。SDK 的重試關掉，金鑰、端點與 10 分鐘的逾時明確傳入，SDK 會讀的 `ANTHROPIC_*` 環境變數改不了金鑰、端點、API 版本與 beta 功能。SDK 把個資閘門與白名單的錯誤包成連線錯誤，轉接層解開再丟出。本文由轉接層自己讀，讀到一半斷線當成沒有收到回應，跟 5xx 一樣重試。轉接層只跟本機的假供應商跑過，沒有對真的 API 發過請求，第一次真實翻譯由維護者在 022 合併之後執行（ADR-0109）。
 
 即時模式收到 5xx、請求被中斷或本文讀到一半斷線時會不會計費，官方文件沒寫，重送可能多付一次。這列在 ADR-0109 的 Open Questions，重試照舊。
 
@@ -1062,7 +1062,7 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 
 本機留外送紀錄，只記內容雜湊、供應商、模型、大小與時間，不記內容。外送紀錄是每本書的，記在 `book.db`。`tome provider test` 沒有書，請求也沒有本文，所以不寫外送紀錄，白名單照樣檢查（ADR-0109）。OpenRouter 一律送 `data_collection: deny`，因為它的預設是 `allow`。
 
-除了請求本文，官方 SDK 每個請求還會送出 `User-Agent` 與 `x-stainless-*` 標頭，內容是 SDK 版本、作業系統、CPU 架構與 Node 版本，不含金鑰，也不含書本文字。其他標頭由 Anthropic 轉接層擋下，環境變數 `ANTHROPIC_CUSTOM_HEADERS` 加的標頭不會送出，也蓋不掉金鑰（ADR-0109）。
+除了請求本文，官方 SDK 每個請求還會送出 `User-Agent` 與 `x-stainless-*` 標頭，內容是 SDK 版本、作業系統、CPU 架構與 Node 版本，不含金鑰，也不含書本文字。其他標頭由 Anthropic 轉接層擋下。環境變數 `ANTHROPIC_CUSTOM_HEADERS` 加的其他標頭不會送出，也換不掉金鑰、API 版本與 beta 功能；`User-Agent`、`x-stainless-*` 這類允許的標頭，值仍可能被它換掉，不影響用哪個帳號、送往哪裡（ADR-0109）。
 
 ### 8.3 金鑰
 

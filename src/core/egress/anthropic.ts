@@ -43,8 +43,9 @@ function forwarding(fetcher: GuardedFetch): GuardedFetch {
 }
 
 /**
- * 金鑰與端點都明確傳，SDK 會讀的 `ANTHROPIC_*` 環境變數一個都不用（ADR-0099 第 24 項、ADR-0109 第 2 項）。
- * `ANTHROPIC_CUSTOM_HEADERS` 關不掉，`defaultHeaders` 排在它後面，同名的標頭以這裡的為準。
+ * 金鑰、端點與選項都明確傳，環境變數改不了金鑰、端點、API 版本與 beta 功能（ADR-0099 第 24 項、ADR-0109 第 2 項）。
+ * `ANTHROPIC_CUSTOM_HEADERS` 關不掉，`defaultHeaders` 排在它後面，同名的標頭以這裡的為準，null 是拿掉。
+ * `describeModel` 的 beta 標頭由那次請求自己帶，排在更後面，照樣送出。
  */
 function client(key: string, fetcher: GuardedFetch, endpoint: string): Anthropic {
   return new Anthropic({
@@ -57,7 +58,7 @@ function client(key: string, fetcher: GuardedFetch, endpoint: string): Anthropic
     timeout: TIMEOUT_MS,
     logLevel: 'off',
     openTelemetry: false,
-    defaultHeaders: { 'X-Api-Key': key, 'anthropic-version': API_VERSION },
+    defaultHeaders: { 'X-Api-Key': key, 'anthropic-version': API_VERSION, 'anthropic-beta': null },
   });
 }
 

@@ -227,7 +227,7 @@ describe('the Models API (ADR-0109 item 9)', () => {
   });
 });
 
-describe('the ANTHROPIC_ variables do not reach the request (ADR-0099 item 24, ADR-0109 item 2)', () => {
+describe('the ANTHROPIC_ variables change neither key, endpoint, version nor betas (ADR-0099 item 24, ADR-0109 item 2)', () => {
   it('sends only the key of TOME, to the endpoint of TOME', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-from-env');
     vi.stubEnv('ANTHROPIC_AUTH_TOKEN', 'token-from-env');
@@ -251,6 +251,24 @@ describe('the ANTHROPIC_ variables do not reach the request (ADR-0099 item 24, A
     expect(headers['anthropic-version']).toBe('2023-06-01');
     expect(headers['x-tome-extra']).toBeUndefined();
   });
+
+  it.each([['anthropic-beta: some-beta'], ['Anthropic-Beta: some-beta']])(
+    'turns on no beta that TOME did not choose, from %j',
+    async (custom) => {
+      vi.stubEnv('ANTHROPIC_CUSTOM_HEADERS', custom);
+      const { fake, llm } = await connect();
+      fake.models.set('claude-haiku-5-5', { id: 'claude-haiku-5-5' });
+      await llm.send(body());
+      await llm.submitBatch([{ customId: 'tome-0-1', body: body() }]);
+      await llm.describeModel('claude-haiku-5-5');
+      const betas = fake.calls.map(({ path, headers }) => [path, headers['anthropic-beta']]);
+      expect(betas).toEqual([
+        ['/v1/messages', undefined],
+        ['/v1/messages/batches', undefined],
+        ['/v1/models/claude-haiku-5-5', 'server-side-fallback-2026-07-01'],
+      ]);
+    },
+  );
 
   it('prints nothing, book text least of all, with ANTHROPIC_LOG=debug', async () => {
     vi.stubEnv('ANTHROPIC_LOG', 'debug');

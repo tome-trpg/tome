@@ -134,7 +134,7 @@
     "preview.done": "已產生 {files} 個對照檔，位於 {path}。",
     "provider.deprecated": "{model}：供應商已將此模型列為淘汰，之後可能無法使用。",
     "provider.fallback_mismatch": "{model}：供應商回報的伺服器端回退與 TOME 的模型資料不符。TOME 不使用伺服器端回退，翻譯不受影響。",
-    "provider.listed":"{id}：端點 {endpoint}，批次資料最多在供應商端保留 {retention} 天。以下是 TOME 知道怎麼呼叫的模型，不是推薦，尚未經過盲評。",
+    "provider.listed": "{id}：端點 {endpoint}，批次資料最多在供應商端保留 {retention} 天。以下是 TOME 知道怎麼呼叫的模型，不是推薦，尚未經過盲評。",
     "provider.long_prompt": "{model} 的 prompt 超過 {over} token 時，改為即時 ${input}／${output}，批次 ${batch_input}／${batch_output}。",
     "provider.model": "{model}：即時 ${input}／${output}，批次 ${batch_input}／${batch_output}（每百萬 token，輸入／輸出）。",
     "provider.model_unavailable": "{model}：供應商回報找不到此模型，或這把金鑰所屬的帳號無法使用。",
