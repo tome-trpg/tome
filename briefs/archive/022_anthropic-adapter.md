@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-03
 type: feature
 wave: 20
@@ -30,7 +30,15 @@ protectedFiles:
   - providers/**
   - schemas/**
   - systems/**
+integrity: sha256-af35acb358dd38aa8cb44339e2750a093223e0da322f6cbe9325b149162f8efd
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-04.**
+> Merged in pull request [#56](https://github.com/tome-trpg/tome/pull/56).
+> Recorded at commit `40f0efa`: 28 files changed, +1656 −88.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 022 — Anthropic 轉接層
 
