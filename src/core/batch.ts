@@ -142,12 +142,17 @@ function giveBack(run: Run, batchId: number, state: 'abandoned' | 'collected'): 
   });
 }
 
+/**
+ * 刪除收到 404 當成已經刪除，不再重試：上次其實刪掉了、只是沒收到回應時，之後每次都會是 404。
+ * 404 也可能是換了金鑰，資料還在原本的帳號，所以照樣警告（ADR-0109 第 24 項）。
+ */
 function remove(run: Run, remoteId: string): Promise<void> {
   return withRetry(() => run.llm.deleteRemote(remoteId), run.sleep).then((error) => {
-    if (error !== null) {
+    if (error !== null && error.status !== 404) {
       run.notes.push(finding('batch.delete_failed', 'warn', { id: remoteId }));
       return;
     }
+    if (error !== null) run.notes.push(finding('batch.delete_not_found', 'warn', { id: remoteId }));
     run.store.run('UPDATE batch SET deleted_at = ? WHERE remote_id = ?', new Date().toISOString(), remoteId);
   });
 }

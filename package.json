@@ -37,6 +37,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
+    "test:contract": "vitest run --mode contract",
     "licenses": "node tools/check-licenses.ts",
     "spec": "npm run spec:guard && npm run spec:prove && npm run spec:cites && npm run spec:graph && npm run spec:briefs && npm run spec:matrix && npm run spec:schedule && npm run spec:premises",
     "spec:guard": "spec-guard",
@@ -50,6 +51,7 @@
     "spec:doctor": "spec-harness doctor"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.137.0",
     "@napi-rs/keyring": "2.1.2",
     "ajv": "8.20.0",
     "opencc-js": "1.4.2",

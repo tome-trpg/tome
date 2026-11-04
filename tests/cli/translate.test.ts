@@ -1,13 +1,16 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Envelope } from '../../src/cli/output.ts';
 import { run } from '../../src/cli/run.ts';
+import { SecretStoreUnavailable } from '../../src/core/secrets.ts';
 import { openBookStore, openSeriesStore, type Store } from '../../src/core/store.ts';
 import { parseUnits } from '../../src/core/tags.ts';
 import {
+  adapterHost,
   fakeHost,
   startFakeProvider,
+  SYNTHETIC_KEY,
   translated,
   type FakeHost,
   type FakeProvider,
@@ -100,6 +103,11 @@ function codes(output: Envelope): string[] {
   return output.findings.map((item) => item.code);
 }
 
+/** 開發者的機器可能設了金鑰，測試沒有金鑰的情況要拿掉。 */
+function withoutKey({ env }: Library): NodeJS.ProcessEnv {
+  return { ...env, TOME_ANTHROPIC_API_KEY: undefined };
+}
+
 function found(output: Envelope, code: string): Envelope['findings'][number] | undefined {
   return output.findings.find((item) => item.code === code);
 }
@@ -169,24 +177,89 @@ describe('tome translate --realtime (ADR-0104)', () => {
     expect(output.data).toMatchObject({ requests: 0, done: 3 });
   });
 
-  it('stays quiet about the feature without a provider', async () => {
+  it('asks for a key before anything else, and sends nothing (ADR-0109 item 5)', async () => {
     const lib = await confirmed();
     const spy = vi.fn();
     vi.stubGlobal('fetch', spy);
-    const { io, stdout } = lib.session();
-    expect(await run(['translate', 'book', '--realtime'], io)).toBe(1);
-    expect(stdout()).toContain('翻譯功能尚未完成');
+    for (const args of [['--realtime'], [], ['--retry-failed'], ['--realtime', '--retry-failed']]) {
+      const { io, stdout } = lib.session({ env: withoutKey(lib) });
+      expect(await run(['translate', 'book', '--json', ...args], io)).toBe(1);
+      const output = JSON.parse(stdout()) as Envelope;
+      expect(codes(output)).toEqual(['key.missing']);
+      expect(found(output, 'key.missing')?.params).toEqual({ provider: 'anthropic', env: 'TOME_ANTHROPIC_API_KEY' });
+    }
     expect(spy).not.toHaveBeenCalled();
+    expect(countRows(lib.home, 'egress')).toBe(0);
   });
 
-  it('keeps batch from users until brief 022 brings the adapter (ADR-0107 item 1)', async () => {
+  it('says the keyring is out of reach, and names the variable to use instead', async () => {
     const lib = await confirmed();
-    const spy = vi.fn();
-    vi.stubGlobal('fetch', spy);
-    const { io, stdout } = lib.session();
-    expect(await run(['translate', 'book'], io)).toBe(1);
-    expect(stdout()).toContain('翻譯功能尚未完成');
-    expect(spy).not.toHaveBeenCalled();
+    const broken = {
+      get: () => Promise.reject(new SecretStoreUnavailable()),
+      set: () => Promise.reject(new SecretStoreUnavailable()),
+      delete: () => Promise.reject(new SecretStoreUnavailable()),
+    };
+    const { io, stdout } = lib.session({ env: withoutKey(lib), secrets: broken });
+    expect(await run(['translate', 'book', '--json'], io)).toBe(1);
+    const output = JSON.parse(stdout()) as Envelope;
+    expect(codes(output)).toEqual(['keyring.unavailable']);
+    expect(found(output, 'keyring.unavailable')?.params).toEqual({ env: 'TOME_ANTHROPIC_API_KEY' });
+  });
+
+  it('translates the book through the SDK and the injected fetch (ADR-0109 item 13)', async () => {
+    const lib = await confirmed();
+    const provider = await startFakeProvider(GOOD);
+    const { exit, output, text, progress } = await translate(lib, adapterHost(provider));
+    expect(exit).toBe(0);
+    expect(provider.requests).toHaveLength(1);
+    expect(statesOf(lib.home)).toEqual(['DONE', 'DONE', 'DONE']);
+    expect(countRows(lib.home, 'egress')).toBe(1);
+    // 金鑰只在送出的標頭裡，不進輸出與 `book.db`（ADR-0034）。
+    expect(provider.calls[0]?.headers['x-api-key']).toBe(SYNTHETIC_KEY);
+    expect(`${text}${progress}`).not.toContain(SYNTHETIC_KEY);
+    const folder = join(lib.home, 'books', 'book');
+    for (const file of readdirSync(folder).filter((name) => name.startsWith('book.db'))) {
+      expect(readFileSync(join(folder, file)).includes(SYNTHETIC_KEY)).toBe(false);
+    }
+    const series = openSeriesStore(lib.home, 'book');
+    try {
+      expect(series.all('SELECT DISTINCT sdk_version FROM memory')).toEqual([{ sdk_version: '0.137.0' }]);
+    } finally {
+      series.close();
+    }
+    expect(output.data).toMatchObject({ mode: 'realtime', done: 3 });
+  });
+
+  it('sends again in place when the reply breaks off after the headers (ADR-0109 item 20)', async () => {
+    const lib = await confirmed();
+    const provider = await startFakeProvider((request, index) => (index === 0 ? { cut: true } : GOOD(request, index)));
+    const host = adapterHost(provider);
+    const { exit } = await translate(lib, host);
+    expect(exit).toBe(0);
+    expect(host.waits).toEqual([1]);
+    expect(provider.requests).toHaveLength(2);
+    expect(statesOf(lib.home)).toEqual(['DONE', 'DONE', 'DONE']);
+    expect(withStore(lib.home, (store) => store.all('SELECT request_id FROM ledger WHERE request_id IS NULL'))).toEqual([]);
+  });
+
+  it('stops at the gate through the SDK, and sends nothing (ADR-0109 item 1)', async () => {
+    const lib = await confirmed({ config: `translator_model: ${MODEL}\npii: [warden]\n` });
+    const provider = await startFakeProvider(GOOD);
+    const { exit, output } = await translate(lib, adapterHost(provider));
+    expect(exit).toBe(1);
+    expect(found(output, 'translate.blocked')?.level).toBe('fail');
+    expect(statesOf(lib.home)).toEqual(['BLOCKED', 'BLOCKED', 'BLOCKED']);
+    expect(provider.calls).toHaveLength(0);
+  });
+
+  it('refuses a host outside the list through the SDK, and sends nothing', async () => {
+    const lib = await confirmed();
+    const provider = await startFakeProvider(GOOD);
+    const { exit, output } = await translate(lib, adapterHost(provider, null));
+    expect(exit).toBe(2);
+    expect(output.ok).toBe(false);
+    expect(provider.calls).toHaveLength(0);
+    expect(countRows(lib.home, 'egress')).toBe(0);
   });
 
   it('refuses a host outside the list, and sends nothing (ADR-0099 item 25)', async () => {
@@ -495,8 +568,8 @@ describe('a reply that was cut off (ADR-0104 item 15)', () => {
     );
     const killed: FakeHost = {
       ...host,
-      connect: (fetcher) => {
-        const adapter = host.connect(fetcher);
+      connect: (fetcher, endpoint) => {
+        const adapter = host.connect(fetcher, endpoint);
         let calls = 0;
         return {
           ...adapter,
@@ -841,11 +914,23 @@ describe('--retry-failed (ADR-0104 item 26)', () => {
     expect(provider.requests).toHaveLength(0);
   });
 
-  it('is not ready for users until brief 022 either (ADR-0107 item 1)', async () => {
-    const lib = await confirmed();
-    const { io, stdout } = lib.session();
-    expect(await run(['translate', 'book', '--retry-failed'], io)).toBe(1);
-    expect(stdout()).toContain('翻譯功能尚未完成');
+  it('retries in a batch without --realtime, through the adapter (ADR-0109 item 6)', async () => {
+    const lib = await library();
+    await run(['estimate', 'book', '--budget', '100', '--confirm'], lib.session().io);
+    // 同一個假供應商，批次 ID 才不會重複，跟真的 API 一樣。
+    let refuse = true;
+    const provider = await startFakeProvider((request, index) => (refuse ? { refusal: true } : GOOD(request, index)));
+    const host = adapterHost(provider);
+    await run(['translate', 'book', '--json'], lib.session({ llm: host }).io);
+    expect(statesOf(lib.home)).toEqual(['REFUSED', 'REFUSED', 'REFUSED']);
+    refuse = false;
+    const sent = provider.batches.length;
+    const { io, stdout } = lib.session({ llm: host });
+    const exit = await run(['translate', 'book', '--retry-failed', '--json'], io);
+    expect(codes(JSON.parse(stdout()) as Envelope)).toEqual(['translate.done']);
+    expect(exit).toBe(0);
+    expect(provider.batches).toHaveLength(sent + 1);
+    expect(statesOf(lib.home)).toEqual(['DONE', 'DONE', 'DONE']);
   });
 
   it('does not go with --dry-run, whose numbers would leave those units out', async () => {

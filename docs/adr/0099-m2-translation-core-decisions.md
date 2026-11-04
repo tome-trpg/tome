@@ -81,7 +81,7 @@ M2 開工前比對白皮書、ADR 與實際套件，留下一批沒定的項目�
 
 這些項目都在各回合實作，斷言由回合補進這一節。
 
-<!-- @assert-absence target="package.json" symbol="@anthropic-ai/sdk" comments="include" reason="第 14 項：SDK 到 018 才加入，加入時改成檢查版本" -->
+<!-- @assert-count target="package.json" regex="true" symbol="@anthropic-ai/sdk.: .0\.137\.0" expected="1" comments="include" reason="第 14 項：SDK 釘 0.137.0，在 brief 022 加入（ADR-0109）" -->
 <!-- @assert-count target="src/core/book.ts" symbol="suggestPack(" expected="1" reason="第 2 項：tome probe 建議規則包" -->
 <!-- @assert-count target="package.json" regex="true" symbol="opencc-js.: .1\.4\.2" expected="1" comments="include" reason="第 16 項：opencc-js 釘版本" -->
 <!-- @assert-count target="src/core/provider.ts" symbol="PRICES_GO_STALE_DAYS = 60" expected="1" reason="第 20 項：查證滿 60 天時警告" -->

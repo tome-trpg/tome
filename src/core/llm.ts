@@ -74,13 +74,24 @@ export interface BatchPage {
   readonly next: string | null;
 }
 
+/** Models API 回報的一個模型，`tome provider test` 拿來對照模型資料（ADR-0109 第 9 項）。不知道的是 null。 */
+export interface ModelFacts {
+  readonly id: string;
+  readonly batch: boolean | null;
+  /** 能不能關掉思考，能不能用 `between_tools`。 */
+  readonly thinking: { readonly disabled: boolean; readonly between_tools: boolean } | null;
+  /** 伺服器端回退能不能用，也就是 `allowed_fallback_models` 有沒有東西。 */
+  readonly fallback: boolean | null;
+  readonly deprecatedAt: string | null;
+}
+
 export interface LLMProvider {
   readonly id: string;
   /** 存進翻譯記憶（ADR-0102）。 */
   readonly sdkVersion: string;
   /** 連線失敗回 `error`。個資閘門與白名單的錯誤照樣丟出來，那些不該重試。 */
   send(body: MessagesBody): Promise<RequestResult>;
-  /** Batch 的方法由 brief 022 的轉接層實作，019 只有測試注入（ADR-0107 第 19 項）。 */
+  /** Batch 的方法跟 `send` 一樣，個資閘門與白名單的錯誤照樣丟出來（ADR-0107 第 19 項）。 */
   submitBatch(requests: readonly BatchRequest[]): Promise<RemoteBatch | ApiError>;
   pollBatch(id: string): Promise<RemoteBatch | ApiError>;
   /** 一次下載整批的結果，順序不一定跟送出時相同。 */
@@ -89,13 +100,16 @@ export interface LLMProvider {
   deleteRemote(id: string): Promise<ApiError | null>;
   /** 從最新的開始列。 */
   listBatches(after: string | null): Promise<BatchPage | ApiError>;
+  /** 查模型資料，不產生 token。 */
+  describeModel(id: string): Promise<ModelFacts | ApiError>;
 }
 
 export type Sleep = (seconds: number) => Promise<void>;
 
 /** 轉接層由呼叫端提供（ADR-0104）。 */
 export interface LLMHost {
-  connect(fetcher: GuardedFetch): LLMProvider;
+  /** `endpoint` 是 SDK 組網址用的，能不能連由 `fetcher` 的白名單決定（ADR-0109 第 5 項）。 */
+  connect(fetcher: GuardedFetch, endpoint: string): LLMProvider;
   /** 測試的本機伺服器才給。正式的端點在供應商設定檔，使用者改不了（ADR-0104 第 3 項）。 */
   readonly endpoint?: string;
   readonly sleep?: Sleep;

@@ -656,7 +656,9 @@ type RequestResult =
 
 轉接層不自己連網，一律透過對外出口模組（[§8.2](#82-對外出口)）。回應與批次結果的解析、拒答與截斷的判斷都放在核心，每個協定不用各寫一次，供應商以請求計費，帳本依字元數分攤到單位。`capabilities` 等第二家供應商進來時再加，M2 只有 Anthropic（ADR-0107）。
 
-**已實作**：介面、重試與判斷回應、批次結果的函式（`src/core/llm.ts`；`tests/core/llm.test.ts`）。真的轉接層要等 brief 022，現在由呼叫端注入，只有測試會注入，`tome translate` 與 `tome batch` 對使用者維持 `translate.not_ready`（ADR-0104、ADR-0107）。
+**已實作**：介面、重試與判斷回應、批次結果的函式（`src/core/llm.ts`；`tests/core/llm.test.ts`）。Anthropic 轉接層用 `@anthropic-ai/sdk` 0.137.0（`src/core/egress/anthropic.ts`；`tests/core/anthropic.test.ts`），即時請求、Batches API 與 Models API 都走注入的 `guardedFetch`。SDK 的重試關掉，金鑰、端點與 10 分鐘的逾時明確傳入，SDK 會讀的 `ANTHROPIC_*` 環境變數改不了金鑰、端點、API 版本與 beta 功能。SDK 把個資閘門與白名單的錯誤包成連線錯誤，轉接層解開再丟出。本文由轉接層自己讀，讀到一半斷線當成沒有收到回應，跟 5xx 一樣重試。轉接層只跟本機的假供應商跑過，沒有對真的 API 發過請求，第一次真實翻譯由維護者在 022 合併之後執行（ADR-0109）。
+
+即時模式收到 5xx、請求被中斷或本文讀到一半斷線時會不會計費，官方文件沒寫，重送可能多付一次。這列在 ADR-0109 的 Open Questions，重試照舊。
 
 | 供應商 | 快取 | Batch |
 | :--- | :--- | :--- |
@@ -685,7 +687,7 @@ type RequestResult =
 
 **Batch 流程**：送出、輪詢、收結果、驗證、刪除遠端資料。每批送出前檢查預算（[§8.1](#81-成本控制)）與個資閘門，命中就整批不送。收回結果後，有刪除 API 的供應商 MUST 呼叫，縮短保留窗口。被拒、截斷、驗證失敗與可以重送的錯誤排進下一批，過期與取消的請求不收費，也放回佇列。狀態機與續跑見 [§6](#6-執行期視圖)。
 
-**已實作**：批次流程與分批（`src/core/batch.ts`、`src/core/request.ts`；`tests/cli/batch.test.ts`、`tests/core/request.test.ts`）：每批的預算與閘門、意圖紀錄、送出、每 60 秒輪詢、結果不依順序也對得回去、刪除遠端資料、刪除失敗下次再試。假供應商模擬處理中、部分成功、單筆錯誤、被拒、截斷、過期、取消與結果亂序，行為照 2026-11-02 讀的官方文件。這些都只用假供應商跑過，沒有對真的 Batches API 發過請求，字元上限與輪詢間隔是**提案**（ADR-0107）。
+**已實作**：批次流程與分批（`src/core/batch.ts`、`src/core/request.ts`；`tests/cli/batch.test.ts`、`tests/core/request.test.ts`）：每批的預算與閘門、意圖紀錄、送出、每 60 秒輪詢、結果不依順序也對得回去、刪除遠端資料、刪除失敗下次再試。假供應商模擬處理中、部分成功、單筆錯誤、被拒、截斷、過期、取消與結果亂序，行為照 2026-11-02 讀的官方文件。這些都只用假供應商跑過，沒有對真的 Batches API 發過請求，字元上限與輪詢間隔是**提案**（ADR-0107）。刪除時供應商回 404 就當成已經刪除，不再重試，並提醒換過金鑰時到原本的帳號確認。結果照文件從 `results_url` 下載，主機不在白名單時會回 `egress.denied`，主機是不是 `api.anthropic.com` 要等第一次真實批次確認（ADR-0109）。
 
 **拒答**是獨立狀態 `REFUSED`，不算 QA 失敗（ADR-0038）。轉接層 MUST 檢查各家的拒答訊號，Anthropic Batch 回 `succeeded` 時也要看 `stop_reason`。
 
@@ -938,7 +940,7 @@ tome backup|purge <book>               備份與刪除
 
 `tome assemble` 偵測到未回收的 vault 修改就拒絕輸出，列出檔案，要求先跑 `tome sync`，人工譯文不會被覆蓋。
 
-**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。`tome verify <書>` 也已實作（`tests/cli/verify.test.ts`），全部通過回 0，有失敗回 1（ADR-0102）。`tome estimate <書> [--budget <美元>] [--chapters <範圍>] [--realtime] [--confirm]`、`tome translate <書> --dry-run [--realtime]` 也已實作（`tests/cli/estimate.test.ts`），`--confirm` 沒有預算或超過預算時回 1，不在表上的模型回 2（ADR-0103）。`tome preview <書>` 也已實作（`tests/cli/preview.test.ts`），在 `books/<slug>/review/` 產生原文與譯文對照（ADR-0104）。`tome translate <書> [--realtime] [--retry-failed]` 的即時與批次流程、`tome batch status|collect|cancel <書>` 寫好了，但轉接層要等 brief 022，對使用者維持 `translate.not_ready`（ADR-0107）。`tome status <書>` 也已實作（`tests/cli/batch.test.ts`），只讀本機資料，不連網。`tome provider list` 也已實作（`tests/cli/provider.test.ts`），不連網，不讀金鑰與 `tome.yaml`，還沒 `tome init` 也能用，價目表過期時警告，結束碼仍是 0（ADR-0106）。其他指令還沒有。
+**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。`tome verify <書>` 也已實作（`tests/cli/verify.test.ts`），全部通過回 0，有失敗回 1（ADR-0102）。`tome estimate <書> [--budget <美元>] [--chapters <範圍>] [--realtime] [--confirm]`、`tome translate <書> --dry-run [--realtime]` 也已實作（`tests/cli/estimate.test.ts`），`--confirm` 沒有預算或超過預算時回 1，不在表上的模型回 2（ADR-0103）。`tome preview <書>` 也已實作（`tests/cli/preview.test.ts`），在 `books/<slug>/review/` 產生原文與譯文對照（ADR-0104）。`tome translate <書> [--realtime] [--retry-failed]`、`tome batch status|collect|cancel <書>` 也已實作（`tests/cli/translate.test.ts`、`tests/cli/batch.test.ts`），接上 Anthropic 轉接層，一開始先取金鑰，沒有金鑰回 `key.missing`，不開書也不連網（ADR-0109）。`tome provider test` 也已實作（`tests/cli/provider.test.ts`），只查 Models API，不消耗 token，對照模型資料的 Batch、思考參數、伺服器端回退與淘汰，對不上只警告，不改設定檔（ADR-0109）。這兩組都只跟本機的假供應商跑過。`tome status <書>` 也已實作（`tests/cli/batch.test.ts`），只讀本機資料，不連網。`tome provider list` 也已實作（`tests/cli/provider.test.ts`），不連網，不讀金鑰與 `tome.yaml`，還沒 `tome init` 也能用，價目表過期時警告，結束碼仍是 0（ADR-0106）。其他指令還沒有。
 
 ---
 
@@ -1058,7 +1060,9 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 
 **已實作**：ADR-0039 的兩條斷言擋下 `src/core/egress/` 以外的連網模組、供應商 SDK 與全域連網 API，`spec-guard prove` 看過它們失敗。對外只有 `guardedFetch`（`src/core/egress/client.ts`；`tests/core/egress.test.ts`），依序檢查主機、掃描序列化後的完整請求、寫外送紀錄，都過了才送，轉址當成失敗。白名單是 `providers/anthropic.yaml` 的 `endpoint`，規則包碰不到。個資閘門在 `src/core/egress/gate.ts`，比對字串，解開 JSON 與標籤跳脫後才比，例外只免除它完整蓋住的命中，比例外長的項目照樣命中，清單項目少於 3 個字元時警告，命中時回報次數，不列出命中的文字（ADR-0104）。
 
-本機留外送紀錄，只記內容雜湊、供應商、模型、大小與時間，不記內容。OpenRouter 一律送 `data_collection: deny`，因為它的預設是 `allow`。
+本機留外送紀錄，只記內容雜湊、供應商、模型、大小與時間，不記內容。外送紀錄是每本書的，記在 `book.db`。`tome provider test` 沒有書，請求也沒有本文，所以不寫外送紀錄，白名單照樣檢查（ADR-0109）。OpenRouter 一律送 `data_collection: deny`，因為它的預設是 `allow`。
+
+除了請求本文，官方 SDK 每個請求還會送出 `User-Agent` 與 `x-stainless-*` 標頭，內容是 SDK 版本、作業系統、CPU 架構與 Node 版本，不含金鑰，也不含書本文字。其他標頭由 Anthropic 轉接層擋下。環境變數 `ANTHROPIC_CUSTOM_HEADERS` 加的其他標頭不會送出，也換不掉金鑰、API 版本與 beta 功能；`User-Agent`、`x-stainless-*` 這類允許的標頭，值仍可能被它換掉，不影響用哪個帳號、送往哪裡（ADR-0109）。
 
 ### 8.3 金鑰
 
@@ -1238,6 +1242,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0106](adr/0106-work-before-the-sdk-cooldown.md) | SDK 冷卻期先做的部分 | M2 |
 | [ADR-0107](adr/0107-batch-and-resume-decisions.md) | Batch 與續跑的細節 | M2 |
 | [ADR-0108](adr/0108-batch-create-server-errors.md) | 建立批次時收到 5xx | M2 |
+| [ADR-0109](adr/0109-anthropic-adapter-decisions.md) | Anthropic 轉接層的細節 | M2 |
 
 ---
 
@@ -1382,7 +1387,7 @@ Gemini 顯式快取也算過：Flash-Lite 上 8k 前綴省下約 0.13，但排�
 | M3 譯名與輸出 | Pass 0、審定、`tome glossary import`、數值塊欄位化、vault、`tome sync`、`tome run`、交付報告、一致性報告、`tome purge`、`tome backup` | 能帶團閱讀的成品 |
 | M4 首版 | `d100-orc`、試翻校準、盲評、發佈流程、著作權律師審查（ADR-0105） | Q-1 到 Q-8 達標，發佈 0.1.0 |
 
-**目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。目前在 M2，回合與範圍見 ADR-0099，還不能翻譯。
+**目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。目前在 M2，回合與範圍見 ADR-0099。Anthropic 轉接層已經接上，但還沒有對真的 API 翻譯過，第一次真實翻譯由維護者執行（ADR-0099 第 29 項、ADR-0109）。
 
 M2 已實作的項目：
 
@@ -1412,8 +1417,11 @@ M2 已實作的項目：
 | `tome batch status`、`collect`、`cancel` | `src/core/batch.ts` | `tests/cli/batch.test.ts` |
 | `tome status` | `src/core/status.ts` | `tests/cli/batch.test.ts` |
 | 當機注入 | `tests/cli/crash.test.ts` | `npm test` |
+| Anthropic 轉接層，只跑過假供應商 | `src/core/egress/anthropic.ts` | `tests/core/anthropic.test.ts`、`tests/cli/translate.test.ts`、`tests/cli/batch.test.ts` |
+| `tome provider test` | `src/core/provider-test.ts` | `tests/cli/provider.test.ts` |
+| 契約測試，還沒執行過 | `tests/contract/` | `npm run test:contract` |
 
-批次流程、`tome translate` 與 `tome batch` 要等 brief 022 的轉接層才對使用者開放。認回批次的做法依賴 H-17，還沒驗證（ADR-0107）。
+轉接層只跟本機的假供應商跑過，契約測試這個回合沒有執行。認回批次的做法依賴 H-17，`results_url` 的主機與即時模式 5xx 的計費也沒確認，要等第一次真實請求（ADR-0107、ADR-0109）。
 
 M1 已實作的項目：
 

@@ -537,13 +537,14 @@ export function report(run: Run, stop: Finding | null, findings: readonly Findin
 /** 連到供應商的轉接層，請求都經過對外出口（ADR-0039、ADR-0104 第 2 項）。 */
 export function connect(home: string, book: Book, store: Store, host: LLMHost): LLMProvider {
   const { profile } = loadProvider('anthropic');
+  const endpoint = host.endpoint ?? profile.endpoint;
   const fetcher = guardedFetch({
-    endpoint: host.endpoint ?? profile.endpoint,
+    endpoint,
     provider: profile.id,
     rules: piiRulesOf(home, book),
     record: egressRecorder(store),
   });
-  return host.connect(fetcher);
+  return host.connect(fetcher, endpoint);
 }
 
 export interface RunSetup {

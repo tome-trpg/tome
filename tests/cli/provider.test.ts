@@ -4,9 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { findingText } from '../../src/cli/messages.ts';
 import type { Envelope } from '../../src/cli/output.ts';
 import { run } from '../../src/cli/run.ts';
-import { loadProvider } from '../../src/core/provider.ts';
+import type { ModelReply } from '../../src/core/provider-test.ts';
+import { loadProvider, type ProviderModel } from '../../src/core/provider.ts';
 import type { SecretStore } from '../../src/core/secrets.ts';
-import { capture, tempDir, type Captured } from '../helpers.ts';
+import { adapterHost, startFakeProvider, type FakeHost, type FakeProvider } from '../helpers/fake-provider.ts';
+import { capture, MemorySecretStore, tempDir, type Captured } from '../helpers.ts';
 
 // 價格從 `providers/anthropic.yaml` 讀，查證時改了價格，這裡不用跟著改。
 
@@ -131,6 +133,14 @@ describe('tome provider list (ADR-0106)', () => {
     await run(['--help'], io);
     expect(stdout()).toContain('provider list');
   });
+
+  it('lists translation, the batch commands and provider test in --help now (ADR-0109 item 7)', async () => {
+    const { io, stdout } = session();
+    await run(['--help'], io);
+    for (const line of ['provider test', 'translate <名稱>   ', '[--realtime] [--retry-failed]', 'batch status <名稱>', 'batch collect <名稱>', 'batch cancel <名稱>']) {
+      expect(stdout()).toContain(line);
+    }
+  });
 });
 
 describe('the data of tome provider list (ADR-0106)', () => {
@@ -206,6 +216,134 @@ describe('what tome provider list needs (ADR-0106)', () => {
     const home = join(tempDir(), 'none');
     const { io } = session({ TOME_HOME: home });
     expect(await run(['provider', 'list'], io)).toBe(0);
+    expect(existsSync(home)).toBe(false);
+  });
+});
+
+/** 供應商回報的資料跟設定檔一致。 */
+function matching(model: ProviderModel): ModelReply {
+  const { mode } = model.thinking;
+  return {
+    id: model.id,
+    allowed_fallback_models: model.fallback.server ? ['claude-opus-5'] : [],
+    deprecated_at: null,
+    capabilities: {
+      batch: { supported: true },
+      thinking: { types: { disabled: { supported: mode === 'disabled' }, between_tools: { supported: mode === 'between_tools' } } },
+    },
+  };
+}
+
+async function tested(change: (provider: FakeProvider) => void = () => undefined): Promise<{
+  exit: number;
+  output: Envelope;
+  provider: FakeProvider;
+  host: FakeHost;
+}> {
+  const provider = await startFakeProvider(() => ({ status: 500 }));
+  for (const model of profile.models) provider.models.set(model.id, matching(model));
+  change(provider);
+  const host = adapterHost(provider);
+  const { io, stdout } = capture({ env: {}, secrets: NO_KEYS, llm: host });
+  const exit = await run(['provider', 'test', '--json'], io);
+  return { exit, output: JSON.parse(stdout()) as Envelope, provider, host };
+}
+
+function codes(output: Envelope): string[] {
+  return output.findings.map(({ code }) => code);
+}
+
+describe('tome provider test (ADR-0103 item 6, ADR-0109 item 9)', () => {
+  it('checks every model on the list against the Models API, and spends no token', async () => {
+    const { exit, output, provider } = await tested();
+    expect(exit).toBe(0);
+    expect(codes(output)).toEqual(profile.models.map(() => 'provider.tested'));
+    expect(output.findings.map(({ params }) => params['model'])).toEqual(profile.models.map(({ id }) => id));
+    expect(provider.requests).toHaveLength(0);
+    expect(provider.calls.map(({ path }) => path)).toEqual(profile.models.map(({ id }) => `/v1/models/${id}`));
+  });
+
+  it('gives what the provider said, model by model', async () => {
+    const { output } = await tested();
+    const [first] = output.data['models'] as Record<string, unknown>[];
+    expect(output.data['provider']).toBe('anthropic');
+    expect(Object.keys(first ?? {}).sort()).toEqual(['available', 'batch', 'deprecated_at', 'fallback', 'id', 'thinking']);
+  });
+
+  it('warns where the provider and the list part ways, and changes no file', async () => {
+    const [opus, sonnet, haiku, fable] = profile.models.map(({ id }) => id);
+    const { exit, output } = await tested((provider) => {
+      const of = (id: string | undefined): ModelReply => provider.models.get(id ?? '') as ModelReply;
+      provider.models.set(opus ?? '', { ...of(opus), allowed_fallback_models: [] });
+      provider.models.set(sonnet ?? '', { ...of(sonnet), capabilities: { ...of(sonnet).capabilities, batch: { supported: false } } });
+      provider.models.set(haiku ?? '', {
+        ...of(haiku),
+        capabilities: { ...of(haiku).capabilities, thinking: { types: { disabled: { supported: false }, between_tools: { supported: false } } } },
+      });
+      provider.models.set(fable ?? '', { ...of(fable), deprecated_at: '2026-11-01T00:00:00Z' });
+    });
+    expect(exit).toBe(0);
+    expect(codes(output)).toEqual([
+      'provider.fallback_mismatch',
+      'provider.no_batch',
+      'provider.thinking_mismatch',
+      'provider.deprecated',
+    ]);
+    expect(output.findings.every(({ level }) => level === 'warn')).toBe(true);
+  });
+
+  it('warns when a model that cannot turn thinking off says it can', async () => {
+    const opus = profile.models.find(({ thinking }) => thinking.mode === 'none');
+    const { output } = await tested((provider) => {
+      const reply = provider.models.get(opus?.id ?? '') as ModelReply;
+      provider.models.set(opus?.id ?? '', {
+        ...reply,
+        capabilities: { ...reply.capabilities, thinking: { types: { disabled: { supported: true }, between_tools: { supported: false } } } },
+      });
+    });
+    expect(output.findings.find(({ params }) => params['model'] === opus?.id)?.code).toBe('provider.thinking_mismatch');
+  });
+
+  it('goes on past a model the account cannot use', async () => {
+    const [opus] = profile.models.map(({ id }) => id);
+    const { exit, output } = await tested((provider) => provider.models.set(opus ?? '', 404));
+    expect(exit).toBe(0);
+    expect(codes(output)[0]).toBe('provider.model_unavailable');
+    expect((output.data['models'] as { available: boolean }[]).map(({ available }) => available)).toEqual([false, true, true, true]);
+  });
+
+  it('stops at a key the provider refused', async () => {
+    const { exit, output, provider } = await tested((fake) => {
+      for (const { id } of profile.models) fake.models.set(id, 401);
+    });
+    expect(exit).toBe(1);
+    expect(codes(output)).toEqual(['key.rejected']);
+    expect(provider.calls).toHaveLength(1);
+  });
+
+  it('retries like everything else, then stops with the status', async () => {
+    const { exit, output, host } = await tested((fake) => {
+      for (const { id } of profile.models) fake.models.set(id, 503);
+    });
+    expect(exit).toBe(1);
+    expect(output.findings.at(-1)).toMatchObject({ code: 'provider.test_failed', params: { status: '503' } });
+    expect(host.waits).toEqual([1, 2, 4, 8, 16]);
+  });
+
+  it('asks for a key first, and connects nowhere without one', async () => {
+    const spy = vi.fn();
+    vi.stubGlobal('fetch', spy);
+    const { io, stdout } = capture({ env: {}, secrets: new MemorySecretStore() });
+    expect(await run(['provider', 'test', '--json'], io)).toBe(1);
+    expect(codes(JSON.parse(stdout()) as Envelope)).toEqual(['key.missing']);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('needs no workspace, and makes none', async () => {
+    const home = join(tempDir(), 'none');
+    const provider = await startFakeProvider(() => ({ status: 500 }));
+    const { io } = capture({ env: { TOME_HOME: home }, secrets: NO_KEYS, llm: adapterHost(provider) });
+    await run(['provider', 'test'], io);
     expect(existsSync(home)).toBe(false);
   });
 });

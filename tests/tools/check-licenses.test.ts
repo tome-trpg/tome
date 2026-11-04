@@ -80,6 +80,19 @@ describe('findViolations', () => {
     expect(findViolations({ 'node_modules/png-js': { version: '2.0.0' } })).toHaveLength(1);
   });
 
+  it('takes the exception for fast-sha256 at that version and that license only (ADR-0099 item 15)', () => {
+    const at = (version: string, license?: string): Record<string, LockEntry> => ({
+      'node_modules/fast-sha256': { version, ...(license === undefined ? {} : { license }) },
+    });
+    expect(findViolations(at('1.3.0', 'Unlicense'))).toEqual([]);
+    expect(findViolations(at('1.3.1', 'Unlicense'))).toEqual([
+      { name: 'fast-sha256', version: '1.3.1', license: 'Unlicense', reason: 'license' },
+    ]);
+    expect(findViolations(at('1.3.0', 'WTFPL'))).toHaveLength(1);
+    expect(findViolations(at('1.3.0'))).toHaveLength(1);
+    expect(findViolations({ 'node_modules/other-sha256': { version: '1.3.0', license: 'Unlicense' } })).toHaveLength(1);
+  });
+
   it('names the nested package, not its parent', () => {
     const packages = {
       'node_modules/a/node_modules/@scope/b': { version: '1.0.0', license: 'GPL-3.0-only' },

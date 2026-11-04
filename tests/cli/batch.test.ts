@@ -4,10 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Envelope } from '../../src/cli/output.ts';
 import { run } from '../../src/cli/run.ts';
 import { POLL_SECONDS } from '../../src/core/batch.ts';
+import { guardedFetch } from '../../src/core/egress/client.ts';
 import type { LLMProvider } from '../../src/core/llm.ts';
 import { openBookStore, type Store } from '../../src/core/store.ts';
 import { parseUnits } from '../../src/core/tags.ts';
 import {
+  adapterHost,
   fakeHost,
   startFakeProvider,
   translated,
@@ -113,8 +115,8 @@ const REFUSE_FIRST: FakeScript = (request, index) => (index === 0 ? { refusal: t
 function patched(host: FakeHost, change: (provider: LLMProvider) => Partial<LLMProvider>): FakeHost {
   return {
     ...host,
-    connect: (fetcher) => {
-      const provider = host.connect(fetcher);
+    connect: (fetcher, endpoint) => {
+      const provider = host.connect(fetcher, endpoint);
       return { ...provider, ...change(provider) };
     },
   };
@@ -201,6 +203,79 @@ describe('tome translate in batches (ADR-0107)', () => {
     expect(exit).toBe(1);
     expect(found(output, 'translate.not_confirmed')?.params).toEqual({ book: 'book', flags: '--confirm' });
     expect(provider.requests).toHaveLength(0);
+  });
+});
+
+describe('the real adapter end to end (ADR-0109 item 13)', () => {
+  it('translates the book in a batch through the SDK, and deletes it', async () => {
+    const lib = await confirmed();
+    const provider = await startFakeProvider(GOOD, { polls: 1, reverse: true });
+    const host = adapterHost(provider);
+    const { exit, output } = await translate(lib, host);
+    expect(exit).toBe(0);
+    expect(host.waits).toEqual([POLL_SECONDS]);
+    expect(provider.batches).toHaveLength(1);
+    expect(provider.batches[0]?.deleted).toBe(true);
+    expect(statesOf(lib.home)).toEqual(['DONE', 'DONE', 'DONE']);
+    expect(output.data).toMatchObject({ mode: 'batch', batches: 1, done: 3 });
+  });
+
+  it('downloads the results again when they break off, without sending again (ADR-0109 item 20)', async () => {
+    const lib = await confirmed();
+    const provider = await startFakeProvider(GOOD, { cutResults: 1 });
+    const host = adapterHost(provider);
+    const { exit } = await translate(lib, host);
+    expect(exit).toBe(0);
+    expect(host.waits).toEqual([1]);
+    expect(provider.batches).toHaveLength(1);
+    expect(provider.requests).toHaveLength(1);
+    expect(statesOf(lib.home)).toEqual(['DONE', 'DONE', 'DONE']);
+  });
+
+  it('finds the batch again after a create that never answered, and pays once (H-17)', async () => {
+    const lib = await confirmed();
+    const provider = await startFakeProvider(GOOD, { dropCreate: true });
+    const host = adapterHost(provider);
+    expect((await translate(lib, host)).exit).toBe(1);
+    provider.batch.dropCreate = false;
+    const { exit, output } = await translate(lib, host);
+    expect(exit).toBe(0);
+    expect(found(output, 'batch.recovered')?.params).toEqual({ id: provider.batches[0]?.id });
+    expect(provider.batches).toHaveLength(1);
+    expect(provider.requests).toHaveLength(1);
+  });
+
+  it('stops at the gate of the egress, the last check, through the SDK (ADR-0109 item 1)', async () => {
+    const lib = await confirmed();
+    const provider = await startFakeProvider(GOOD);
+    const host = adapterHost(provider);
+    // 工作區的清單沒有命中，只有對外出口的清單有，核心逐一掃描時過得了，對外出口才擋下。
+    const rules = { pii: ['warden'], exceptions: [] };
+    const strict: FakeHost = {
+      ...host,
+      connect: (_fetcher, endpoint) =>
+        host.connect(guardedFetch({ endpoint: provider.url, provider: 'anthropic', rules, record: () => undefined }), endpoint),
+    };
+    const { exit, output } = await translate(lib, strict);
+    expect(exit).toBe(1);
+    expect(found(output, 'translate.blocked')?.level).toBe('fail');
+    expect(statesOf(lib.home)).toEqual(['BLOCKED', 'BLOCKED', 'BLOCKED']);
+    expect(provider.batches).toHaveLength(0);
+    expect(batchRows(lib.home).map(({ state }) => state)).toEqual(['abandoned']);
+  });
+
+  it('collects, checks and cancels through the SDK', async () => {
+    const lib = await confirmed();
+    const provider = await startFakeProvider(GOOD, { polls: 5, pollStatus: 500 });
+    const host = adapterHost(provider);
+    await translate(lib, host);
+    provider.batch.pollStatus = null;
+    expect(codes((await tome(lib, host, 'batch', 'status', 'book')).output)).toEqual(['batch.processing']);
+    expect(codes((await tome(lib, host, 'batch', 'cancel', 'book')).output)).toEqual(['batch.canceling']);
+    provider.batch.polls = 0;
+    const { exit } = await tome(lib, host, 'batch', 'collect', 'book');
+    expect(exit).toBe(1);
+    expect(provider.batches[0]?.deleted).toBe(true);
   });
 });
 
@@ -550,6 +625,34 @@ describe('a batch left from before (ADR-0107 items 11, 15 and 16)', () => {
     expect(provider.batches[0]?.deleted).toBe(true);
   });
 
+  it('takes a 404 on delete as deleted, warns once and never sends the delete again (ADR-0109 item 24)', async () => {
+    const lib = await confirmed();
+    const { provider, host } = await fake(GOOD, { deleteStatus: 404 });
+    const first = await translate(lib, host);
+    expect(first.exit).toBe(0);
+    expect(found(first.output, 'batch.delete_not_found')).toMatchObject({ level: 'warn', params: { id: provider.batches[0]?.id } });
+    expect(codes(first.output)).not.toContain('batch.delete_failed');
+    expect(batchRows(lib.home)[0]?.deleted_at).not.toBeNull();
+    const deletes = (): number => provider.calls.filter(({ method }) => method === 'DELETE').length;
+    const sent = deletes();
+    const second = await translate(lib, host);
+    expect(deletes()).toBe(sent);
+    expect(codes(second.output)).not.toContain('batch.delete_not_found');
+    const { output } = await tome(lib, undefined, 'status', 'book');
+    expect(codes(output)).not.toContain('status.not_deleted');
+  });
+
+  it('still tries again next time for a status other than 404', async () => {
+    const lib = await confirmed();
+    const { provider, host } = await fake(GOOD, { deleteStatus: 500 });
+    const first = await translate(lib, host);
+    expect(found(first.output, 'batch.delete_failed')?.level).toBe('warn');
+    expect(batchRows(lib.home)[0]?.deleted_at).toBeNull();
+    provider.batch.deleteStatus = null;
+    await translate(lib, host);
+    expect(batchRows(lib.home)[0]?.deleted_at).not.toBeNull();
+  });
+
   it('requeues units a realtime run left in flight, which no batch holds', async () => {
     const lib = await confirmed();
     withStore(lib.home, (store) => store.run("UPDATE unit SET state = 'IN_FLIGHT'"));
@@ -568,13 +671,17 @@ describe('tome batch status|collect|cancel (ADR-0107 item 17)', () => {
     return { lib, provider, host };
   }
 
-  it('is not ready for users until brief 022', async () => {
+  it('asks for a key before it connects (ADR-0109 item 6)', async () => {
     const lib = await confirmed();
+    const spy = vi.fn();
+    vi.stubGlobal('fetch', spy);
     for (const command of ['status', 'collect', 'cancel']) {
-      const { exit, output } = await tome(lib, undefined, 'batch', command, 'book');
-      expect(exit).toBe(1);
-      expect(codes(output)).toEqual(['translate.not_ready']);
+      // 開發者的機器可能設了金鑰，這裡要拿掉。
+      const { io, stdout } = lib.session({ env: { ...lib.env, TOME_ANTHROPIC_API_KEY: undefined } });
+      expect(await run(['batch', command, 'book', '--json'], io)).toBe(1);
+      expect(codes(JSON.parse(stdout()) as Envelope)).toEqual(['key.missing']);
     }
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('says there is no batch', async () => {
