@@ -9,6 +9,15 @@ import {
   type BookConfig,
 } from './book.ts';
 import { checkBudget } from './budget.ts';
+import {
+  chapterCount,
+  chapterLevels,
+  chapterMap,
+  checkedLevel,
+  levelFindings,
+  levelOf,
+  parseChapters,
+} from './chapters.ts';
 import { hitCount, scanBody, type PiiRules } from './egress/gate.ts';
 import { TomeError } from './errors.ts';
 import { estimateRequest, outputTokens, sumEstimates, type Estimate } from './estimate.ts';
@@ -339,40 +348,6 @@ export function requestBody({ units }: PlannedRequest, { prefix, user, model, pr
   };
 }
 
-/** 區塊屬於哪一章，從 1 起算。第一章之前是 0，沒有章節的書整本算第 1 章（ADR-0103）。 */
-export function chapterMap(document: IrDocument): Map<string, number> {
-  const starts = new Map(
-    document.sections.flatMap(({ block_id: id }, index) => (id === undefined ? [] : [[id, index + 1] as const])),
-  );
-  let current = starts.size === 0 ? 1 : 0;
-  return new Map(
-    document.blocks.map(({ id }) => {
-      current = starts.get(id) ?? current;
-      return [id, current];
-    }),
-  );
-}
-
-/** `3`、`1-3`、`1,3,5`。`count` 是這本書的章數。 */
-export function parseChapters(spec: string, count: number): ReadonlySet<number> {
-  const invalid = new TomeError('chapters.invalid', { spec, count: String(count) });
-  const chapters = new Set<number>();
-  for (const part of spec.split(',')) {
-    const match = /^(\d+)(?:-(\d+))?$/.exec(part);
-    if (match === null) throw invalid;
-    const from = Number(match[1]);
-    const to = match[2] === undefined ? from : Number(match[2]);
-    if (from < 1 || from > to || to > count) throw invalid;
-    for (let chapter = from; chapter <= to; chapter += 1) chapters.add(chapter);
-  }
-  return new Set([...chapters].sort((a, b) => a - b));
-}
-
-/** 這本書的章數，沒有章節的書算 1 章。 */
-export function chapterCount(document: IrDocument): number {
-  return Math.max(1, document.sections.length);
-}
-
 /** 目前只接 Anthropic（ADR-0080）。 */
 const PROVIDER_ID = 'anthropic';
 export const ESTIMATE_STAGE = 'estimate';
@@ -423,6 +398,10 @@ export interface BookPlan {
   readonly inScope: (unit: TranslationUnit) => boolean;
   /** `book.yaml` 的範圍，沒設是 null。 */
   readonly chapters: string | null;
+  /** 依第幾層分章（ADR-0115）。 */
+  readonly level: number;
+  /** 書籤有兩層以上時說明各層數量的發現，只有數字。 */
+  readonly levelFindings: readonly Finding[];
   readonly prefix: string;
   readonly pack: ResolvedPack;
   readonly terms: readonly LocalizedTerm[];
@@ -457,9 +436,10 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
   if (findings.some(({ level }) => level === 'fail')) return { plan: null, findings };
   syncUnits(store, units);
 
-  const chapters = chapterMap(document);
+  const level = checkedLevel(document, levelOf(book));
+  const chapters = chapterMap(document, level);
   const { chapters: spec } = book.config;
-  const chosen = spec === undefined ? null : parseChapters(spec, chapterCount(document));
+  const chosen = spec === undefined ? null : parseChapters(spec, chapterCount(document, level));
   const chapterOf = (unit: TranslationUnit): number => chapters.get(unit.block_id) ?? 0;
   const inScope = (unit: TranslationUnit): boolean => chosen === null || chosen.has(chapterOf(unit));
   const pending = pendingUnits(store);
@@ -486,6 +466,8 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
         packHash(pack),
         book.config.source_lang,
         mode,
+        // 同一個範圍在不同層級指到不同的章。沒設層級時不加，舊的確認才不會失效（ADR-0115）。
+        ...(book.config.chapter_level === undefined ? [] : [book.config.chapter_level]),
       ]),
     )
     .digest('hex');
@@ -506,6 +488,8 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
       chapterOf,
       inScope,
       chapters: spec ?? null,
+      level,
+      levelFindings: levelFindings(book.slug, document, level),
       prefix,
       pack,
       terms,
@@ -525,6 +509,7 @@ function planData(plan: BookPlan): Readonly<Record<string, unknown>> {
     low_usd: plan.estimate.low_usd,
     high_usd: plan.estimate.high_usd,
     retention_days: plan.provider.profile.retention_days,
+    chapter_level: plan.level,
   };
 }
 
@@ -547,6 +532,8 @@ export interface EstimateOptions {
   /** 使用者打的字，這裡才驗證。 */
   readonly budget?: string | undefined;
   readonly chapters?: string | undefined;
+  /** `--chapter-level`，使用者打的字（ADR-0115）。 */
+  readonly chapterLevel?: string | undefined;
   readonly confirm: boolean;
   /** 不存進 `book.yaml`，只隨確認記在指紋裡（ADR-0104）。 */
   readonly mode: RequestMode;
@@ -564,13 +551,35 @@ function parseBudget(value: string): number {
   return amount;
 }
 
-/** 這次指定的預算與範圍，先驗證，都對了才寫進 `book.yaml`。 */
+/** 整數才收，`2.5`、`02x` 這類照原樣回報。 */
+function parseLevel(document: IrDocument, value: string): number {
+  if (!/^[0-9]+$/.test(value)) {
+    throw new TomeError('chapter_level.invalid', { value, levels: String(chapterLevels(document)) });
+  }
+  return checkedLevel(document, Number(value));
+}
+
+/**
+ * 這次指定的預算、層級與範圍，先驗證，都對了才寫進 `book.yaml`。換了層級，已存的範圍會指到別的章，
+ * 所以要一起給 `--chapters`（ADR-0115）。
+ */
 function chosenSettings(home: string, book: Book, options: EstimateOptions): Partial<BookConfig> {
-  const { budget, chapters } = options;
-  const patch: { budget_usd?: number; chapters?: string } = {};
+  const { budget, chapters, chapterLevel } = options;
+  const patch: { budget_usd?: number; chapters?: string; chapter_level?: number } = {};
   if (budget !== undefined) patch.budget_usd = parseBudget(budget);
+  let level = levelOf(book);
+  if (chapterLevel !== undefined) {
+    const document = readDocument(home, book.slug);
+    const chosen = parseLevel(document, chapterLevel);
+    const saved = book.config.chapters;
+    if (chosen !== level && saved !== undefined && chapters === undefined) {
+      throw new TomeError('chapter_level.needs_chapters', { chapters: saved });
+    }
+    patch.chapter_level = chosen;
+    level = chosen;
+  }
   if (chapters !== undefined) {
-    parseChapters(chapters, chapterCount(readDocument(home, book.slug)));
+    parseChapters(chapters, chapterCount(readDocument(home, book.slug), level));
     patch.chapters = chapters;
   }
   return patch;
@@ -626,7 +635,7 @@ async function estimateLocked(options: EstimateOptions): Promise<PlanOutcome> {
     const { confirmed, findings: decided } = confirmation(store, plan, budget, spent, confirm);
     return {
       data: { book: slug, ...planData(plan), budget_usd: budget ?? null, spent_usd: spent, confirmed },
-      findings: [summary, ...decided, ...warnings, ...prices],
+      findings: [summary, ...plan.levelFindings, ...decided, ...warnings, ...prices],
     };
   } finally {
     store.close();

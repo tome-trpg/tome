@@ -484,13 +484,13 @@ describe('the installed engines', () => {
 
   it('prefers the engine listed first', async () => {
     const home = workspace();
-    const one = uvEngine({ name: 'one', pages: ['native', 'scan'] });
+    const one = uvEngine({ name: 'one', pages: ['native', 'full_image'] });
     const two = uvEngine({ name: 'two', pages: ['native'] });
     await addEngine({ home, target: two, gpu: false, env: {}, tool: NO_GPU, stream: recorder().stream });
     await addEngine({ home, target: one, gpu: false, env: {}, tool: NO_GPU, stream: recorder().stream });
     const engines = installedEngines(home);
     expect(engineForPage('native', engines)).toBe('two');
-    expect(engineForPage('scan', engines)).toBe('one');
+    expect(engineForPage('full_image', engines)).toBe('one');
     expect(engineForPage('image_only', engines)).toBeUndefined();
   });
 });

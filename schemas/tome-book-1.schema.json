@@ -37,6 +37,11 @@
       "type": "string",
       "pattern": "^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$"
     },
+    "chapter_level": {
+      "description": "Which level of nested bookmarks makes a chapter. Level N takes every bookmark down to depth N, in reading order. 1 when left out.",
+      "type": "integer",
+      "minimum": 1
+    },
     "pii_exceptions": {
       "description": "Strings the personal data gate must let through, such as an NPC with the same name.",
       "type": "array",

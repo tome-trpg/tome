@@ -5,12 +5,11 @@ import { maskText } from '../../src/core/mask.ts';
 import { findPack, resolvePack, type LocalizedTerm, type ResolvedPack } from '../../src/core/pack.ts';
 import { staticPrefix } from '../../src/core/prompt.ts';
 import { findModel, loadProvider } from '../../src/core/provider.ts';
+import { chapterMap, parseChapters } from '../../src/core/chapters.ts';
 import {
   BATCH_CHARS,
-  chapterMap,
   CONTEXT_CHARS,
   maxTokens,
-  parseChapters,
   planBatches,
   planRequests,
   REQUEST_CHARS,

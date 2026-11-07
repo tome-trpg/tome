@@ -850,6 +850,30 @@ describe('tome status (ADR-0107 item 18)', () => {
     expect(text).not.toContain('One');
   });
 
+  // 範圍跟 `--chapters` 一樣依 `chapter_level` 編號（ADR-0115）。
+  it('reads the range at the chapter level of the book', async () => {
+    const lib = await library();
+    const path = join(lib.home, 'books', 'book', 'ir', 'document.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { blocks: { id: string }[]; sections: unknown[] };
+    document.sections = [
+      {
+        title: 'Book',
+        block_id: document.blocks[0]?.id,
+        children: [
+          { title: 'One', block_id: document.blocks[1]?.id, children: [] },
+          { title: 'Two', block_id: document.blocks[2]?.id, children: [] },
+        ],
+      },
+    ];
+    writeFileSync(path, JSON.stringify(document));
+    await run(['estimate', 'book', '--budget', '100', '--chapter-level', '2', '--chapters', '2', '--confirm'], lib.session().io);
+    const { host } = await fake(GOOD);
+    const translated = await translate(lib, host);
+    expect(translated.output.data).toMatchObject({ total: 1, done: 1, outside: 2, chapters: '2' });
+    const { output } = await tome(lib, undefined, 'status', 'book');
+    expect(output.data['scope']).toMatchObject({ chapters: '2', total: 1, done: 1, outside: 2 });
+  });
+
   it('counts the whole book when there is no range', async () => {
     const lib = await confirmed();
     const { host } = await fake(GOOD);

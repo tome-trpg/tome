@@ -23,7 +23,31 @@ export type Operation =
   | { readonly op: 'merge'; readonly blocks: readonly string[] }
   | { readonly op: 'split'; readonly block: string; readonly before: string }
   | { readonly op: 'skip'; readonly block: string }
-  | { readonly op: 'redact'; readonly block: string; readonly text: string };
+  | { readonly op: 'redact'; readonly block: string; readonly text: string }
+  /** 放行未通過字元守恆的頁。`page` 是 PDF 頁次，從 1 起算（ADR-0115）。 */
+  | { readonly op: 'accept'; readonly page: number };
+
+/** 依頁面索引（從 0 起算），值是它在 `operations` 的第幾筆（從 0 起算）。同一頁寫兩次時取第一筆。 */
+export function acceptedPages(operations: readonly Operation[]): ReadonlyMap<number, number> {
+  const pages = new Map<number, number>();
+  operations.forEach((operation, index) => {
+    if (operation.op === 'accept' && !pages.has(operation.page - 1)) pages.set(operation.page - 1, index);
+  });
+  return pages;
+}
+
+/**
+ * 組裝時用不到的放行：那一頁沒有因為字元守恆而失敗，或引擎根本沒有輸出、沒有區塊可收。
+ * 照其他操作一樣回報，不靜默丟棄（ADR-0092 第 18 項、ADR-0115）。
+ */
+export function unusedAccepts(
+  accepted: ReadonlyMap<number, number>,
+  used: ReadonlySet<number>,
+): Finding[] {
+  return [...accepted]
+    .filter(([page]) => !used.has(page))
+    .map(([page, index]) => finding('overrides.no_page', 'warn', { index: String(index + 1), page: String(page + 1) }));
+}
 
 export interface Overrides {
   readonly operations: readonly Operation[];
@@ -120,6 +144,8 @@ function applyOperation(
   operation: Operation,
 ): 'no_block' | 'no_text' | null {
   const indexOf = (id: string): number => list.findIndex((block) => block.id === id);
+  // 放行在組裝丟掉失敗頁之前就套用了，這裡沒事可做（ADR-0115）。
+  if (operation.op === 'accept') return null;
   if (operation.op === 'merge') {
     const indexes = operation.blocks.map(indexOf);
     if (indexes.some((index) => index < 0)) return 'no_block';
@@ -167,7 +193,7 @@ function applyOperation(
   }
 }
 
-function blockOf(operation: Operation): string {
+function blockOf(operation: Exclude<Operation, { readonly op: 'accept' }>): string {
   return operation.op === 'merge' ? operation.blocks.join(', ') : operation.block;
 }
 
@@ -180,7 +206,7 @@ export function applyOverrides(
   const findings: Finding[] = [];
   operations.forEach((operation, index) => {
     const problem = applyOperation(language, list, operation);
-    if (problem === null) return;
+    if (problem === null || operation.op === 'accept') return;
     // 只回報第幾筆與區塊 ID，要找的文字可能是書本內容（ADR-0059）。給人看的編號從 1 起算（ADR-0091）。
     const params = { index: String(index + 1), block: blockOf(operation) };
     findings.push(finding(problem === 'no_block' ? 'overrides.no_block' : 'overrides.no_text', 'warn', params));

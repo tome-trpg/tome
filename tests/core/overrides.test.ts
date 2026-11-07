@@ -6,7 +6,13 @@ import { TomeError } from '../../src/core/errors.ts';
 import { bookDir } from '../../src/core/book.ts';
 import type { DocumentBlock } from '../../src/core/ir.ts';
 import { loadSourceLanguage } from '../../src/core/language.ts';
-import { applyOverrides, readOverrides, type Operation } from '../../src/core/overrides.ts';
+import {
+  acceptedPages,
+  applyOverrides,
+  readOverrides,
+  unusedAccepts,
+  type Operation,
+} from '../../src/core/overrides.ts';
 import { tempDir } from '../helpers.ts';
 
 const { profile: language } = loadSourceLanguage('en');
@@ -136,6 +142,43 @@ describe('overrides', () => {
     const blocks = [block(A, 'Toll', { role: 'table', table }), block(B, 'Toll note.')];
     expect(applyOverrides(language, blocks, [{ op: 'merge', blocks: [A, B] }]).findings).toHaveLength(1);
     expect(applyOverrides(language, blocks, [{ op: 'split', block: A, before: 'oll' }]).findings).toHaveLength(1);
+  });
+});
+
+// 放行在組裝時就用掉了，組裝之後的操作不碰它（ADR-0115）。
+describe('accept', () => {
+  it('leaves the blocks alone after assembly, and reports nothing there', () => {
+    const { blocks, findings } = apply({ op: 'accept', page: 2 });
+    expect(ids(blocks)).toEqual([A, B, C]);
+    expect(findings).toEqual([]);
+  });
+
+  it('gives the pages to accept from zero, keeping the first of two for the same page', () => {
+    const operations: Operation[] = [
+      { op: 'skip', block: A },
+      { op: 'accept', page: 3 },
+      { op: 'accept', page: 1 },
+      { op: 'accept', page: 3 },
+    ];
+    expect([...acceptedPages(operations)]).toEqual([
+      [2, 1],
+      [0, 2],
+    ]);
+  });
+
+  it('reports an accept that found nothing to let in, by entry and page from 1', () => {
+    const findings = unusedAccepts(new Map([[4, 0], [6, 2]]), new Set([4]));
+    expect(findings).toEqual([{ code: 'overrides.no_page', level: 'warn', params: { index: '3', page: '7' } }]);
+  });
+
+  it('reads accept from overrides.yaml, and refuses a page from 0', () => {
+    const home = tempDir();
+    mkdirSync(bookDir(home, 'book'), { recursive: true });
+    const path = join(bookDir(home, 'book'), 'overrides.yaml');
+    writeFileSync(path, 'schema: tome-overrides/1\noperations:\n  - op: accept\n    page: 12\n');
+    expect(readOverrides(home, 'book').operations).toEqual([{ op: 'accept', page: 12 }]);
+    writeFileSync(path, 'schema: tome-overrides/1\noperations:\n  - op: accept\n    page: 0\n');
+    expect(() => readOverrides(home, 'book')).toThrow(expect.objectContaining({ code: 'config.bad_schema' }));
   });
 });
 

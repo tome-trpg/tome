@@ -362,6 +362,48 @@ describe('the document layer', () => {
     for (const { page } of failed) expect(kept.has(page)).toBe(false);
   });
 
+  // 放行：預設仍是失敗，寫了 `accept` 才收進 document 層（ADR-0099 第 11 項、ADR-0115）。
+  it('lets a page that lost characters in when overrides accept it, and keeps the count of what was lost', async () => {
+    const home = await library();
+    await extract(home, 'lost_text');
+    const failed = documentOf(home).pages.filter(({ status }) => status === 'failed');
+    const [first] = failed;
+    if (first === undefined) throw new Error('no failed page');
+    writeFileSync(
+      join(bookDir(home, 'book'), 'overrides.yaml'),
+      stringify({ schema: 'tome-overrides/1', operations: [{ op: 'accept', page: first.page + 1 }] }),
+    );
+    const { findings } = await extract(home, 'lost_text');
+    const accepted = documentOf(home).pages[first.page];
+    expect(accepted).toEqual({ page: first.page, status: 'ok', reason: 'accepted', missing: first.missing, total: first.total });
+    expect(findings.find((item) => item.code === 'extract.accepted')).toMatchObject({
+      level: 'info',
+      params: { count: '1', pages: String(first.page + 1) },
+    });
+    const kept = new Set(documentOf(home).blocks.flatMap(({ spans }) => spans.map(({ page }) => page)));
+    expect(kept.has(first.page)).toBe(true);
+    if (failed.length === 1) expect(exitCodeOf(findings)).toBe(0);
+  });
+
+  it('reports an accept for a page that did not lose characters, and changes nothing', async () => {
+    const home = await library();
+    writeFileSync(
+      join(bookDir(home, 'book'), 'overrides.yaml'),
+      stringify({ schema: 'tome-overrides/1', operations: [{ op: 'skip', block: 'p0099-abcdef' }, { op: 'accept', page: 2 }] }),
+    );
+    const { findings } = await extract(home);
+    expect(findings.find((item) => item.code === 'overrides.no_page')).toMatchObject({
+      level: 'warn',
+      params: { index: '2', page: '2' },
+    });
+    expect(exitCodeOf(findings)).toBe(0);
+    expect(documentOf(home).pages.map(({ status, reason }) => [status, reason])).toEqual([
+      ['ok', undefined],
+      ['ok', undefined],
+      ['ok', undefined],
+    ]);
+  });
+
   it('never puts book text in what it reports', async () => {
     const home = await library();
     const { findings, data } = await extract(home, 'lost_text');
@@ -374,9 +416,9 @@ describe('the document layer', () => {
     const home = await library('scan');
     await extract(home);
     expect(documentOf(home).pages.map(({ status, reason }) => [status, reason])).toEqual([
-      ['skipped', 'scan'],
-      ['skipped', 'scan'],
-      ['skipped', 'scan'],
+      ['skipped', 'full_image'],
+      ['skipped', 'full_image'],
+      ['skipped', 'full_image'],
       ['ok', undefined],
     ]);
   });
@@ -453,6 +495,31 @@ describe('the document layer', () => {
     const { blocks } = documentOf(home);
     expect(blocks[0]).toMatchObject({ id: first?.id, role: 'sidebar' });
     expect(blocks.map(({ id }) => id)).not.toContain(second?.id);
+  });
+
+  // 不會翻譯的頁要說出來，使用者才知道可以改回（ADR-0115）。只有頁次。
+  it('says which pages hold an index or a copyright block, with page numbers alone', async () => {
+    const home = await library();
+    await extract(home);
+    const [first, second] = documentOf(home).blocks;
+    writeFileSync(
+      join(bookDir(home, 'book'), 'overrides.yaml'),
+      stringify({
+        schema: 'tome-overrides/1',
+        operations: [
+          { op: 'role', block: first?.id, role: 'credits' },
+          { op: 'role', block: second?.id, role: 'index' },
+        ],
+      }),
+    );
+    const { findings } = await extract(home);
+    const pageOf = (block: typeof first): string => String((block?.spans[0]?.page ?? 0) + 1);
+    expect(findings.find((item) => item.code === 'extract.credits_found')).toMatchObject({
+      level: 'info',
+      params: { count: '1', pages: pageOf(first) },
+    });
+    expect(findings.find((item) => item.code === 'extract.index_found')?.params).toEqual({ count: '1', pages: pageOf(second) });
+    expect(exitCodeOf(findings)).toBe(0);
   });
 
   it('refuses an overrides file that is not the format', async () => {
@@ -553,6 +620,15 @@ describe('the recorded layout book', () => {
   it('turns the ligature into plain letters', async () => {
     const { blocks } = await layoutBook();
     expect(blocks.some(({ text }) => text === LAYOUT_TRUTH.ligature)).toBe(true);
+  });
+
+  // 書籤有兩層時說每一層有幾個，只有數字，使用者才知道有層級可選（ADR-0115）。
+  it('says how many bookmarks each level has, when there is more than one level', async () => {
+    const home = await library('structure');
+    const { findings } = await extract(home);
+    const levels = findings.find(({ code }) => code === 'chapters.levels');
+    expect(levels?.params).toEqual({ book: 'book', levels: '2', counts: '2／1', level: '1', chapters: '2' });
+    expect(JSON.stringify(findings)).not.toContain('Forged');
   });
 
   it('builds sections from the headings, with no bookmarks in the book', async () => {

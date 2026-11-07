@@ -135,7 +135,7 @@ function probeFindings({ summary, reused, suggestion, findings }: ProbeOutcome):
     finding('probe.done', 'info', {
       pages: String(summary.pages),
       native: String(kinds.native),
-      scan: String(kinds.scan),
+      full_image: String(kinds.full_image),
       broken_text: String(kinds.broken_text),
       image_only: String(kinds.image_only),
     }),
@@ -348,6 +348,7 @@ const COMMANDS: readonly Command[] = [
     options: {
       budget: { type: 'string' },
       chapters: { type: 'string' },
+      'chapter-level': { type: 'string' },
       confirm: { type: 'boolean' },
       realtime: { type: 'boolean' },
     },
@@ -360,6 +361,7 @@ const COMMANDS: readonly Command[] = [
         slug,
         budget: stringValue(parsed, 'budget'),
         chapters: stringValue(parsed, 'chapters'),
+        chapterLevel: stringValue(parsed, 'chapter-level'),
         confirm: parsed.values['confirm'] === true,
         mode: requestMode(parsed.values),
       });

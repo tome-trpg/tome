@@ -475,9 +475,9 @@ const CASES = {
   },
   scan: {
     build: scan,
-    truth: { kinds: ['scan', 'scan', 'scan', 'native'], text: [[], [], [], [prose(4, 90)]] },
+    truth: { kinds: ['full_image', 'full_image', 'full_image', 'native'], text: [[], [], [], [prose(4, 90)]] },
   },
-  images: { build: images, truth: { kinds: repeat('scan', 2) } },
+  images: { build: images, truth: { kinds: repeat('full_image', 2) } },
   artwork: { build: artwork, truth: { kinds: ['image_only', 'image_only', 'native', 'image_only'] } },
   broken: {
     build: broken,

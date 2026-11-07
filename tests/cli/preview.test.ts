@@ -98,6 +98,29 @@ describe('tome preview (ADR-0104)', () => {
     expect(positions.every((position) => position >= 0)).toBe(true);
   });
 
+  // 一章一檔，跟 `--chapters` 用同一個層級（ADR-0115）。
+  it('splits the files by the chapter level of the book', async () => {
+    const lib = await withUnits();
+    const path = join(lib.home, 'books', 'book', 'ir', 'document.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { blocks: { id: string }[]; sections: unknown[] };
+    document.sections = [
+      {
+        title: 'Book',
+        block_id: document.blocks[0]?.id,
+        children: [
+          { title: 'One', block_id: document.blocks[1]?.id, children: [] },
+          { title: 'Two', block_id: document.blocks[2]?.id, children: [] },
+        ],
+      },
+    ];
+    writeFileSync(path, JSON.stringify(document));
+    await preview(lib);
+    expect(readdirSync(reviewDir(lib.home))).toEqual(['01.md']);
+    await run(['estimate', 'book', '--chapter-level', '2'], lib.session().io);
+    await preview(lib);
+    expect(readdirSync(reviewDir(lib.home)).sort()).toEqual(['01.md', '02.md', '03.md']);
+  });
+
   it('gives each chapter a file, and what comes before the first one 00.md', async () => {
     const lib = await withUnits();
     setChapters(lib.home, [1, 2]);

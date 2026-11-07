@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  ACCEPTED,
   ASSEMBLY_VERSION,
   assembleBlocks,
   withSections,
@@ -18,6 +19,7 @@ import {
   withBookLock,
   type Book,
 } from './book.ts';
+import { levelFindings, levelOf } from './chapters.ts';
 import {
   ENGINE_SCHEMA,
   engineCommand,
@@ -31,7 +33,7 @@ import { TomeError } from './errors.ts';
 import { finding, type Finding } from './findings.ts';
 import type { DocumentBlock, IrDocument, SourcePage } from './ir.ts';
 import { loadSourceLanguage } from './language.ts';
-import { applyOverrides, readOverrides } from './overrides.ts';
+import { acceptedPages, applyOverrides, readOverrides, unusedAccepts } from './overrides.ts';
 import { detectRole, findPack, patternInputs, resolvePack, type ResolvedPack } from './pack.ts';
 import { runPatterns } from './patterns.ts';
 import { openPdf } from './pdf.ts';
@@ -369,6 +371,28 @@ function writeDocument(path: string, document: IrDocument): void {
   renameSync(temporary, path);
 }
 
+/** 頁面索引列成 PDF 頁次，太多時只列前幾頁。 */
+function pageParams(pages: readonly number[]): Readonly<Record<string, string>> {
+  const shown = pages.slice(0, LISTED_PAGES).map(shownPage);
+  return { count: String(pages.length), pages: `${shown.join(', ')}${pages.length > LISTED_PAGES ? ', …' : ''}` };
+}
+
+/**
+ * 判成索引、版權頁而不會翻譯的頁，使用者才知道可以用 `overrides` 的 `role` 改回（ADR-0115）。
+ * 只有頁次，不含文字。手動標的也算在內。
+ */
+function untranslatedFindings(blocks: readonly DocumentBlock[]): Finding[] {
+  const pagesWith = (role: string): number[] => [
+    ...new Set(blocks.filter((block) => block.role === role).map(({ spans }) => spans[0]?.page ?? 0)),
+  ].sort((a, b) => a - b);
+  const index = pagesWith('index');
+  const credits = pagesWith('credits');
+  return [
+    ...(index.length === 0 ? [] : [finding('extract.index_found', 'info', pageParams(index))]),
+    ...(credits.length === 0 ? [] : [finding('extract.credits_found', 'info', pageParams(credits))]),
+  ];
+}
+
 function missingParams(document: IrDocument): Readonly<Record<string, string>> | null {
   const lost = document.pages.filter(({ reason }) => reason === 'characters_missing');
   if (lost.length === 0) return null;
@@ -449,14 +473,20 @@ async function buildDocument(
     if (previous !== null) {
       const { blocks, sections } = previous;
       const params = { blocks: String(blocks.length), sections: String(sections.length) };
-      return { data: documentData(previous, true), findings: [finding('extract.document_reused', 'info', params)] };
+      return {
+        data: documentData(previous, true),
+        findings: [finding('extract.document_reused', 'info', params), ...levelFindings(slug, previous, levelOf(book))],
+      };
     }
 
     onAssemble?.();
     const native = probe.pages.filter(({ kind }) => kind === 'native').map(({ page }) => page);
     const layouts = await readLayouts(book.config.pdf.path, native);
     const pages = assemblyPages(probe, results, layouts);
-    const assembled = assembleBlocks({ language: language.profile, pages });
+    // 放行要在丟掉失敗頁之前讀到，其他操作照舊在組裝之後（ADR-0115）。
+    const accepts = acceptedPages(overrides.operations);
+    const assembled = assembleBlocks({ language: language.profile, pages, accepted: new Set(accepts.keys()) });
+    const released = assembled.pages.filter(({ reason }) => reason === ACCEPTED).map(({ page }) => page);
     const roles =
       pack === null ? { blocks: assembled.blocks, findings: [] } : await assignPackRoles(pack, assembled.blocks);
     const corrected = applyOverrides(language.profile, roles.blocks, overrides.operations);
@@ -478,12 +508,16 @@ async function buildDocument(
       ...packFindings,
       ...roles.findings,
       ...corrected.findings,
+      ...unusedAccepts(accepts, new Set(released)),
+      ...untranslatedFindings(blocks),
+      ...(released.length === 0 ? [] : [finding('extract.accepted', 'info', pageParams(released))]),
       ...(lost === null ? [] : [finding('extract.characters_missing', 'fail', lost)]),
       finding('extract.assembled', 'info', {
         blocks: String(blocks.length),
         sections: String(sections.length),
         ok: String(assembled.pages.filter(({ status }) => status === 'ok').length),
       }),
+      ...levelFindings(slug, document, levelOf(book)),
     ];
     const clean = !findings.some(({ level }) => level === 'fail') && results.every(({ failed }) => failed.length === 0);
     if (clean) recordStage(store, DOCUMENT_STAGE, fingerprint);

@@ -25,7 +25,8 @@
       "minimum": 0
     },
     "pageKind": {
-      "enum": ["native", "scan", "broken_text", "image_only"]
+      "description": "The kinds of page tome probe tells apart. A page under one large image, a scan or a full-page picture, is the second.",
+      "enum": ["native", "full_image", "broken_text", "image_only"]
     },
     "device": {
       "enum": ["cpu", "gpu"]

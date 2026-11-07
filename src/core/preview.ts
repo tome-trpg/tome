@@ -1,9 +1,10 @@
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { bookDir, withBookLock } from './book.ts';
+import { bookDir, readBook, withBookLock } from './book.ts';
+import { chapterMap, checkedLevel, levelOf } from './chapters.ts';
 import { readDocument } from './extract.ts';
 import { finding } from './findings.ts';
-import { chapterMap, type PlanOutcome } from './request.ts';
+import type { PlanOutcome } from './request.ts';
 import { openBookStore } from './store.ts';
 
 // 原文與譯文對照（ADR-0099 第 3 項、ADR-0104 第 22、23 項）。只留在本機，M2 沒有 vault，
@@ -48,7 +49,9 @@ function removeOldFiles(path: string): void {
 }
 
 function previewLocked(home: string, slug: string): PlanOutcome {
-  const chapters = chapterMap(readDocument(home, slug));
+  // 一章一檔，跟 `--chapters` 用同一個層級（ADR-0115）。
+  const document = readDocument(home, slug);
+  const chapters = chapterMap(document, checkedLevel(document, levelOf(readBook(home, slug))));
   const store = openBookStore(home, slug);
   let rows: PreviewRow[];
   try {

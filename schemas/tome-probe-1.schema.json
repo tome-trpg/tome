@@ -68,7 +68,7 @@
         "additionalProperties": false,
         "properties": {
           "page": { "$ref": "#/$defs/pageIndex" },
-          "kind": { "enum": ["native", "scan", "broken_text", "image_only"] },
+          "kind": { "enum": ["native", "full_image", "broken_text", "image_only"] },
           "width": { "type": "number" },
           "height": { "type": "number" },
           "chars": { "type": "integer", "minimum": 0 },

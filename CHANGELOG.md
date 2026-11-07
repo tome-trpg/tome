@@ -50,6 +50,9 @@
 - 刪除供應商端的批次資料時，供應商找不到該批次就視為已刪除，不再重試，並提醒換過金鑰時到原本的帳號確認。
 - 跑得久的指令會顯示進度：`tome extract` 啟動解析引擎前先說明，引擎 30 秒沒有回應時說明仍在執行，組裝文件前也會提示；`tome add`、`tome probe` 開始探測時顯示頁數；`tome translate` 開始時顯示模式與請求數；連線供應商需要重試時，顯示幾秒後重試與第幾次。進度只輸出到 stderr，不影響 `--json`。
 - `tome translate` 與 `tome batch collect` 完成時，提示以 `tome preview` 查看譯文。
+- 組裝 `document` 層時自動判定書末索引與版權頁，這些內容不會翻譯，版權頁保留原文。`tome extract` 會列出判定的頁次，判錯時可在 `overrides.yaml` 以 `role` 改回。來源語言設定檔新增選用欄位 `credits_phrases`，列出標示版權頁的字詞。判定的門檻依維護者的書量出，尚未以更多書驗證。
+- `tome estimate --chapter-level <層>`：書籤有多層時，可選擇依第幾層分章，設定存在 `book.yaml` 的 `chapter_level`。章節範圍、`tome preview` 的分檔與 `tome status` 都依這個層級。書籤有兩層以上時，`tome extract` 與 `tome estimate` 會列出各層的書籤數。
+- `overrides.yaml` 新增放行操作 `accept`：未通過字元守恆檢查的頁面預設不翻譯，以 `{ op: accept, page: <PDF 頁次> }` 放行後就會翻譯，缺字數照樣記錄。
 
 ### 變更
 
@@ -64,6 +67,8 @@
 - 每個請求最多 40 個翻譯單位，`max_tokens` 也為每個單位多留空間。規則書表格的短格子不會再讓回覆被截斷、整個請求重送。這兩個數字依第一次實際翻譯的紀錄提出，尚未再次驗證。
 - `tome translate`、`tome batch collect` 完成時、翻譯中的進度與 `tome status` 的單位數，改為 `--chapters` 範圍內的數字，與估價一致；範圍外尚未完成的單位另列一行。`--json` 的 `total`、`kept`、`done` 等欄位也改為範圍內的數字，並新增 `outside`、`chapters`，`tome status` 另新增 `scope`。結束碼的意思也跟著改變：範圍外留下的未通過驗證、遭拒答或被個資閘門擋下的單位，不再使 `tome translate` 與 `tome batch collect` 回傳 1。
 - `book.db` 的帳本記錄每個請求回覆的 `stop_reason` 與 `max_tokens`，用來區分回覆被截斷還是漏掉段落。既有的工作區開啟時會自動升級，舊紀錄的這兩欄是空值。
+- 頁面類型 `scan` 改名為 `full_image`（滿版圖片），掃描頁與整頁插圖都屬於這一類，判斷方式不變。已探測的書籍下次會重新探測一次。`tome-engine/1` 的頁面類型也一併改名，在 `engine.yaml` 宣告 `scan` 的引擎需要改寫。
+- 已解析的書籍下次執行 `tome extract` 時會重新組裝一次 `document` 層，以判定索引與版權頁，解析引擎不會重新執行。
 
 ### 修正
 

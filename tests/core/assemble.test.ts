@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   assembleBlocks,
+  endsWithPageNumbers,
   joinText,
   withSections,
   type AssemblyPage,
@@ -367,9 +368,9 @@ describe('page statuses', () => {
   it('skips pages that are not native, and says what they are', () => {
     const { pages } = assembleBlocks({
       language,
-      pages: [{ page: 0, kind: 'scan', source: null, layout: null }, page(1, { blocks: [block('Body.', [72, 300, 540, 600])] })],
+      pages: [{ page: 0, kind: 'full_image', source: null, layout: null }, page(1, { blocks: [block('Body.', [72, 300, 540, 600])] })],
     });
-    expect(pages[0]).toEqual({ page: 0, status: 'skipped', reason: 'scan' });
+    expect(pages[0]).toEqual({ page: 0, status: 'skipped', reason: 'full_image' });
     expect(pages[1]).toMatchObject({ page: 1, status: 'ok' });
   });
 
@@ -385,6 +386,145 @@ describe('page statuses', () => {
     expect(pages[0]).toMatchObject({ status: 'failed', reason: 'characters_missing' });
     expect(pages[0]?.missing).toBeGreaterThan(5);
     expect(texts(blocks)).toEqual(['Other page.']);
+  });
+
+  // 放行的頁照樣收，原因代碼記成 accepted，缺字數照留（ADR-0115）。
+  it('keeps a page that lost characters when it is accepted, and still says how many were lost', () => {
+    const text = 'the warden of salt marsh counts tide stones before each crossing';
+    const lost = page(0, { blocks: [block('Kept.', [72, 300, 540, 600])], runs: [run(text, [72, 300, 540, 600])] });
+    const { blocks, pages } = assembleBlocks({ language, pages: [lost], accepted: new Set([0]) });
+    expect(pages[0]).toMatchObject({ status: 'ok', reason: 'accepted' });
+    expect(pages[0]?.missing).toBeGreaterThan(5);
+    expect(texts(blocks)).toEqual(['Kept.']);
+  });
+
+  it('cannot accept a page the engine gave nothing for', () => {
+    const empty = { ...page(0, { blocks: [] }), source: null, failure: 'conversion_failed' };
+    const { pages } = assembleBlocks({ language, pages: [empty], accepted: new Set([0]) });
+    expect(pages[0]).toEqual({ page: 0, status: 'failed', reason: 'conversion_failed' });
+  });
+});
+
+// 索引與版權頁的文字都是這裡編的（ADR-0115）。
+describe('index and credits', () => {
+  /** 一頁索引：20 行，每行結尾是頁碼。 */
+  const INDEX_TEXT = Array.from({ length: 20 }, (_, line) => `entry ${String.fromCharCode(97 + line)}, ${line + 3}, ${line + 40}–${line + 42}`).join('\n');
+  const PROSE = 'The warden counts tide stones before each crossing.';
+
+  /** `count` 頁的書，`special` 指定某幾頁放什麼區塊，其他頁是一段內文。 */
+  function book(count: number, special: Readonly<Record<number, readonly SourceBlock[]>>): AssemblyPage[] {
+    return Array.from({ length: count }, (_, index) =>
+      page(index, { blocks: special[index] ?? [block(PROSE, [72, 300, 540, 600])] }),
+    );
+  }
+
+  /** 這一頁的角色，排序過：閱讀順序依座標，這裡只看判成什麼。 */
+  function rolesOn(blocks: readonly DocumentBlock[], pageIndex: number): string[] {
+    return blocks
+      .filter(({ spans }) => spans[0]?.page === pageIndex)
+      .map(({ role }) => role)
+      .sort();
+  }
+
+  it.each([
+    ['Armor, 12', true],
+    ['Combat 12–14, 30', true],
+    ['spells, 3-5, 7, 120', true],
+    ['Chapter 5', true],
+    ['Contents.....12', true],
+    ['12, 45', false],
+    ['Fighter-2', false],
+    ['Page12', false],
+    ['The warden counts tide stones.', false],
+    ['Year 12345', false],
+    ['', false],
+  ])('reads %j as ending in page numbers: %s', (line, expected) => {
+    expect(endsWithPageNumbers(line)).toBe(expected);
+  });
+
+  it('reads a long line without numbers at once', () => {
+    const line = `${'a, 1 '.repeat(20_000)}x`;
+    const started = performance.now();
+    expect(endsWithPageNumbers(line)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
+  it('marks the index at the end of the book, and leaves its heading alone', () => {
+    const { blocks } = assembleBlocks({
+      language,
+      pages: book(20, {
+        19: [block('Index', [72, 50, 540, 80], 'heading'), block(INDEX_TEXT, [72, 100, 540, 700])],
+      }),
+    });
+    expect(rolesOn(blocks, 19)).toEqual(['heading', 'index']);
+    expect(rolesOn(blocks, 18)).toEqual(['paragraph']);
+  });
+
+  it('leaves a contents page alone, which looks the same but sits at the front', () => {
+    const { blocks } = assembleBlocks({
+      language,
+      pages: book(20, { 1: [block(INDEX_TEXT, [72, 100, 540, 700], 'toc')], 9: [block(INDEX_TEXT, [72, 100, 540, 700])] }),
+    });
+    expect(rolesOn(blocks, 1)).toEqual(['toc']);
+    expect(rolesOn(blocks, 9)).toEqual(['paragraph']);
+  });
+
+  it('takes a page between two index pages along, and a contents block that sits in the index', () => {
+    const index = [block(INDEX_TEXT, [72, 100, 540, 700], 'toc')];
+    const { blocks } = assembleBlocks({ language, pages: book(30, { 27: index, 28: [block(PROSE, [72, 300, 540, 600])], 29: index }) });
+    expect([27, 28, 29].map((at) => rolesOn(blocks, at))).toEqual([['index'], ['index'], ['index']]);
+  });
+
+  it('needs ten lines, half of them ending in page numbers', () => {
+    const few = INDEX_TEXT.split('\n').slice(0, 9).join('\n');
+    const half = `${INDEX_TEXT}\n${Array.from({ length: 21 }, () => PROSE).join('\n')}`;
+    const short = assembleBlocks({ language, pages: book(20, { 19: [block(few, [72, 100, 540, 700])] }) });
+    const mixed = assembleBlocks({ language, pages: book(20, { 19: [block(half, [72, 100, 540, 700])] }) });
+    expect(rolesOn(short.blocks, 19)).toEqual(['paragraph']);
+    expect(rolesOn(mixed.blocks, 19)).toEqual(['paragraph']);
+  });
+
+  it('counts table cells as lines', () => {
+    const cells = INDEX_TEXT.split('\n').map((text, row) => ({ row, col: 0, text }));
+    const table = { rows: cells.length, cols: 1, cells };
+    const { blocks } = assembleBlocks({ language, pages: book(20, { 19: [block('', [72, 100, 540, 700], 'table', { table })] }) });
+    expect(rolesOn(blocks, 19)).toEqual(['index']);
+  });
+
+  it('keeps index entries apart that would have joined as one paragraph', () => {
+    const entries = INDEX_TEXT.split('\n').map((text, line) => block(text, [72, 100 + line * 20, 540, 118 + line * 20]));
+    const { blocks } = assembleBlocks({ language, pages: book(20, { 19: entries }) });
+    expect(rolesOn(blocks, 19)).toHaveLength(20);
+    expect(rolesOn(blocks, 19).every((role) => role === 'index')).toBe(true);
+  });
+
+  it('marks the blocks with a copyright mark on the first six pages, and only those', () => {
+    const credits = [
+      block('Writing and art by the forged team.', [72, 100, 540, 200]),
+      block('© 2026 Forged Press. All rights reserved.', [72, 300, 540, 400]),
+    ];
+    const { blocks } = assembleBlocks({ language, pages: book(20, { 5: credits, 6: credits }) });
+    expect(rolesOn(blocks, 5)).toEqual(['credits', 'paragraph']);
+    expect(rolesOn(blocks, 6)).toEqual(['paragraph', 'paragraph']);
+  });
+
+  it.each([
+    ['(c) 2026 Forged Press', 'credits'],
+    ['ISBN 000-0-00-000000-0', 'credits'],
+    ['Copyright Forged Press', 'credits'],
+    ['all rights reserved', 'credits'],
+    ['Forged™ is a trademark of nobody.', 'paragraph'],
+    ['(c) the warden', 'paragraph'],
+  ])('reads %j on the last page as %s', (text, role) => {
+    const { blocks } = assembleBlocks({ language, pages: book(20, { 19: [block(text, [72, 100, 540, 200])] }) });
+    expect(rolesOn(blocks, 19)).toEqual([role]);
+  });
+
+  it('needs the phrases from the language profile, and leaves headings alone', () => {
+    const plain = { ...language, credits_phrases: [] };
+    const words = [block('All rights reserved', [72, 100, 540, 120], 'heading'), block('All rights reserved.', [72, 200, 540, 220])];
+    expect(rolesOn(assembleBlocks({ language: plain, pages: book(3, { 0: words }) }).blocks, 0)).toEqual(['heading', 'paragraph']);
+    expect(rolesOn(assembleBlocks({ language, pages: book(3, { 0: words }) }).blocks, 0)).toEqual(['credits', 'heading']);
   });
 });
 

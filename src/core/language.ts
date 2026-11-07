@@ -33,6 +33,8 @@ export interface SourceLanguage {
     readonly next_starts: 'lower' | 'any';
   };
   readonly text_quality: TextQuality;
+  /** 這個語言標示版權頁的字詞，不分大小寫比對。不分語言的記號寫在核心（ADR-0115）。 */
+  readonly credits_phrases?: readonly string[];
 }
 
 export interface TargetLanguage {

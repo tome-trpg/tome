@@ -321,6 +321,80 @@ describe('--chapters (ADR-0103)', () => {
   });
 });
 
+describe('--chapter-level (ADR-0115)', () => {
+  /** 一個書名底下兩章，跟公有領域那本的書籤一樣是兩層。 */
+  function nested(home: string): void {
+    const path = join(home, 'books', 'book', 'ir', 'document.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { blocks: { id: string }[]; sections: unknown[] };
+    document.sections = [
+      {
+        title: 'Book',
+        block_id: document.blocks[0]?.id,
+        children: [
+          { title: 'One', block_id: document.blocks[1]?.id, children: [] },
+          { title: 'Two', block_id: document.blocks[2]?.id, children: [] },
+        ],
+      },
+    ];
+    writeFileSync(path, JSON.stringify(document));
+  }
+
+  it('keeps the level in book.yaml, and numbers the chapters down to it', async () => {
+    const lib = await library();
+    nested(lib.home);
+    expect((await estimate(lib, '--chapters', '1')).output.data['units']).toBe(3);
+    const { exit, output } = await estimate(lib, '--chapter-level', '2', '--chapters', '2');
+    expect(exit).toBe(0);
+    expect(output.data).toMatchObject({ units: 1, chapter_level: 2 });
+    expect(bookYaml(lib.home)).toMatchObject({ chapter_level: 2, chapters: '2' });
+    expect((await estimate(lib, '--chapters', '1-3')).output.data['units']).toBe(3);
+  });
+
+  it('says how many bookmarks each level has, with numbers alone', async () => {
+    const lib = await library();
+    nested(lib.home);
+    const { output, text } = await estimate(lib, '--chapter-level', '2');
+    const levels = output.findings.find(({ code }) => code === 'chapters.levels');
+    expect(levels?.params).toEqual({ book: 'book', levels: '2', counts: '1／2', level: '2', chapters: '3' });
+    expect(text).not.toContain('One');
+  });
+
+  it('says nothing of levels for a book with one', async () => {
+    const lib = await library();
+    expect(codes((await estimate(lib)).output)).not.toContain('chapters.levels');
+  });
+
+  it.each([['3'], ['0'], ['2.5'], ['two']])('refuses level %s, and keeps book.yaml as it was', async (level) => {
+    const lib = await library();
+    nested(lib.home);
+    const { exit, output } = await estimate(lib, '--chapter-level', level);
+    expect(exit).toBe(2);
+    expect(output.findings[0]).toMatchObject({ code: 'chapter_level.invalid', params: { value: level, levels: '2' } });
+    expect(bookYaml(lib.home)['chapter_level']).toBeUndefined();
+  });
+
+  // 已存的範圍是依舊的層級編號，換層級就會指到別的章（ADR-0115）。
+  it('asks for --chapters with a new level when a range is saved', async () => {
+    const lib = await library();
+    nested(lib.home);
+    await estimate(lib, '--chapters', '1');
+    const refused = await estimate(lib, '--chapter-level', '2');
+    expect(refused.exit).toBe(2);
+    expect(refused.output.findings[0]).toMatchObject({ code: 'chapter_level.needs_chapters', params: { chapters: '1' } });
+    expect(bookYaml(lib.home)['chapter_level']).toBeUndefined();
+    expect((await estimate(lib, '--chapter-level', '1')).exit).toBe(0);
+    expect((await estimate(lib, '--chapter-level', '2', '--chapters', '3')).output.data['units']).toBe(1);
+  });
+
+  it('asks again for a confirmation when the level changes', async () => {
+    const lib = await library();
+    nested(lib.home);
+    await estimate(lib, '--budget', '100', '--confirm');
+    expect((await estimate(lib)).output.data['confirmed']).toBe(true);
+    expect((await estimate(lib, '--chapter-level', '2')).output.data['confirmed']).toBe(false);
+  });
+});
+
 describe('tome translate --dry-run (ADR-0103)', () => {
   async function dryRun(lib: Library): Promise<{ exit: number; output: Envelope }> {
     const { io, stdout } = lib.session();
