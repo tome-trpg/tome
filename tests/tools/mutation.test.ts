@@ -51,8 +51,11 @@ describe('the mutation testing setup (ADR-0063, ADR-0110)', () => {
     expect(workflow.on.pull_request?.paths).toEqual(['stryker.config.mjs', '.github/workflows/mutation.yml']);
   });
 
-  it('breaks on a score below the threshold only once one is set', () => {
+  it('breaks on a score below the threshold set after the first measurement (ADR-0110 item 9)', () => {
     const threshold = config.default.thresholds.break;
-    expect(threshold === null || (threshold >= 0 && threshold <= 100)).toBe(true);
+    expect(threshold).not.toBeNull();
+    expect((threshold ?? -1) % 5).toBe(0);
+    expect(threshold).toBeGreaterThan(0);
+    expect(threshold).toBeLessThanOrEqual(100);
   });
 });

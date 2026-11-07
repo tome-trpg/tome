@@ -26,6 +26,8 @@ brief 020 要照 ADR-0063 與 ADR-0099 第 17、18 項加入 Stryker。`@stryker
 
 這些事實與每一項的建議寫在共用筆記 `brief-020-questions.md`。下列決定由維護者在 2026-11-07 從問題介面選定，13 項全部照建議。維護者另外決定：Stryker 只在 CI 跑，不在維護者的電腦上跑，第一次實測也一樣。實作時又決定 `minimatch` 的新相依一起釘版本（第 2 項）。
 
+第一次在 PR 上跑（`9b3b6e1`）時，6 個 job 都在一開始的完整測試就停下，還沒開始變異，attempt 1 沒有重跑。原因是 vitest-runner 預設用 `threads`（第 5 項）。改成 `forks` 之後，`297d536` 的 attempt 1 才是第一次實測，數字在第 8 項，維護者依此定了門檻（第 9 項）。
+
 ## 決定
 
 **套件與授權**
@@ -76,7 +78,7 @@ brief 020 要照 ADR-0063 與 ADR-0099 第 17、18 項加入 Stryker。`@stryker
 6. 修改 ADR-0063 第 2 項的做法：新增 `.github/workflows/mutation.yml`，這是這個回合唯一可以改的 workflow 檔，維護者裁定 `.github/` 底下其他檔案照樣受保護。
    * 觸發：每週日 18:00 UTC 的排程、`workflow_dispatch`，以及只在改到 `stryker.config.mjs` 或這個 workflow 時才跑的 `pull_request`。
    * 只跑 `ubuntu-24.04`。一個模組一個 job，共 6 個，用 matrix 同時跑。
-   * `timeout-minutes` 150。
+   * `timeout-minutes` 原本照估計設 150。第一次實測最長的 job 是 24 分鐘，改成 60，約留 2.5 倍。
    * 每個 job 上傳 HTML 與 JSON 報告當 artifact，保留 30 天。
    * 不設成必要檢查。
    * `actions/upload-artifact` 釘在 v7.0.2 的 commit，2026-10-07 上架，已過 Action 的 7 天冷卻期（ADR-0082）。
@@ -84,15 +86,34 @@ brief 020 要照 ADR-0063 與 ADR-0099 第 17、18 項加入 Stryker。`@stryker
    * 先不設 `break` 門檻。
    * 維護者看過分數定門檻之後，在封存之前加進設定，再跑一次確認過得了。
    * 這個 `pull_request` 觸發留著，以後改設定或 workflow 時都會跑一次。
-8. 執行時間用本機的參考數字估。那是在維護者的電腦上、跟 Docling 搶 CPU 時量的，只當參考，沒有跑完：
+8. 執行時間原本用本機的參考數字估。那是在維護者的電腦上、跟 Docling 搶 CPU 時量的，沒有跑完：
    * 798 個變異，15 個 test runner，約 38 分鐘測完 739 個，換算每個變異約 0.77 個 runner 分鐘。
-   * 最長的「驗證」job 有 354 個變異，估計約 70 分鐘。
-   * 實際時間由第一次 CI 實測決定。
+   * 依此估計，最長的「驗證」job 約要 70 分鐘。
+
+   第一次 CI 實測：2026-11-07，`297d536`，run 42372952460，GitHub 的 `ubuntu-24.04` runner，每個 job 並行數 4，`pool: 'forks'`，還沒設門檻。分數是下載各 job 的 JSON 報告、用 Stryker 的 `mutation-testing-metrics` 算的，跟 Stryker 日誌印的分數一致。
+
+   | 模組 | 分數 | 變異數 | 殺掉 | 逾時 | 存活 | 沒被測試涵蓋 | job 時間 |
+   | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+   | 預算 | 100.00 | 9 | 9 | 0 | 0 | 0 | 4.0 分 |
+   | 狀態機 | 97.50 | 40 | 36 | 3 | 1 | 0 | 6.3 分 |
+   | 遮蔽還原 | 96.15 | 104 | 95 | 5 | 4 | 0 | 14.5 分 |
+   | 翻譯記憶 | 94.29 | 35 | 29 | 4 | 2 | 0 | 6.6 分 |
+   | 驗證 | 94.07 | 354 | 320 | 13 | 16 | 5 | 24.0 分 |
+   | 對外出口 | 85.55 | 256 | 188 | 31 | 35 | 2 | 20.0 分 |
+
+   * 對外出口的三個檔案：`anthropic.ts` 76.19（126 個變異，存活 28，沒被測試涵蓋 2）、`client.ts` 92.16（51 個，存活 4）、`gate.ts` 96.20（79 個，存活 3）。
+   * 合計 798 個變異：存活 58、逾時 56、沒被測試涵蓋 7，沒有編譯或執行錯誤。
+   * 6 個 job 同時跑，總時間約 24 分鐘，比本機數字的估計快很多。
+   * 每個 job 一開始的測試是 1 分 20 秒到 2 分 17 秒。vitest-runner 預設開著 `vitest.related`，只跑引用到要變異的檔案的測試檔，所以每個 job 跑的測試數不同，介於 325 到 800 個。
 
 **門檻、存活的變異與執行方式**
 
 9. 修改 ADR-0063 第 3 項的做法：門檻用 Stryker 的 `thresholds.break`，值是第一次 CI 實測時 6 個模組分數的最低值，無條件捨去到 5 的倍數，每個模組都用這個數字檢查。`high` 與 `low` 用 Stryker 的預設 80 與 60，只影響報告的顏色。
-10. 這個回合不改 `src/`，也不為了殺掉存活的變異補測試。存活與逾時的數量寫進這份 ADR，只寫數字。要不要補測試另開回合，由維護者看報告決定。
+   * 第一次實測的最低分是對外出口的 85.55，所以門檻是 **85**，由維護者在 2026-11-07 看過數字後確認。
+   * 對外出口只比門檻高 0.55 分，`anthropic.ts` 單獨算是 76.19。這個模組多一個沒被殺掉的變異就可能跌破門檻，維護者知道，仍選了照規則定。
+10. 這個回合不改 `src/`，也不為了殺掉存活的變異補測試。要不要補測試另開回合，由維護者看報告決定。存活、逾時與沒被測試涵蓋的數量見第 8 項的表，只記數字：
+    * 存活最多的是對外出口的 35 個，其中 28 個在 `anthropic.ts`。
+    * 其次是驗證的 16 個。
 11. `package.json` 不加 `npm run mutation`。workflow 直接執行 `npx --no-install @stryker-mutator/core run`，CONTRIBUTING 與白皮書寫明只在 CI 跑。
 12. CHANGELOG 不寫：這是開發工具，使用者看不到。
 
@@ -117,7 +138,8 @@ brief 020 要照 ADR-0063 與 ADR-0099 第 17、18 項加入 Stryker。`@stryker
 <!-- @assert-count target="stryker.config.mjs" symbol="tsconfigFile: 'stryker-skips-tsconfig-rewrite.json'" expected="1" comments="include" reason="第 5 項：跳過改寫 tsconfig" -->
 <!-- @assert-count target="stryker.config.mjs" symbol="pool: 'forks'" expected="1" comments="include" reason="第 5 項：跟 npm test 一樣用 forks" -->
 <!-- @assert-count target=".github/workflows/mutation.yml" symbol="cron: '0 18 * * 0'" expected="1" comments="include" reason="第 6 項：每週排程" -->
-<!-- @assert-count target=".github/workflows/mutation.yml" symbol="timeout-minutes: 150" expected="1" comments="include" reason="第 6 項：job 的時限" -->
+<!-- @assert-count target=".github/workflows/mutation.yml" symbol="timeout-minutes: 60" expected="1" comments="include" reason="第 6 項：job 的時限，照第一次實測調整" -->
+<!-- @assert-count target="stryker.config.mjs" symbol="thresholds: { high: 80, low: 60, break: 85 }," expected="1" comments="include" reason="第 9 項：門檻 85" -->
 <!-- @assert-absence target="package.json" regex="true" symbol=".mutation.:" comments="include" reason="第 11 項：不加 npm run mutation" -->
 
 ## 後果
@@ -144,5 +166,5 @@ brief 020 要照 ADR-0063 與 ADR-0099 第 17、18 項加入 Stryker。`@stryker
 
 ## Open Questions
 
-- [ ] 第一次 CI 實測的分數、存活與逾時數、每個 job 的時間，實測後補進這份 ADR。
+- [x] 第一次 CI 實測的分數、存活與逾時數、每個 job 的時間，實測後補進這份 ADR（第 8 項）。
 - [ ] `minimatch` 11.0.1 與 `@isaacs/nonrecursive-glob-match` 1.0.1 未滿冷卻期就用了：要等 Stryker 改掉 `minimatch` 的範圍，或 `minimatch` 10.x 出修補版，才拿掉覆寫（第 2 項）。

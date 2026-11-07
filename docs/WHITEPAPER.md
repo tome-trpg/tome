@@ -1090,7 +1090,7 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 
 CI 跑 Windows 與 Ubuntu。公開 repo 的 CI MUST NOT 放任何 API 金鑰。變異分數的門檻等第一次實測後再定。
 
-**已實作**：變異測試用 Stryker 10.1.1（`stryker.config.mjs`、`.github/workflows/mutation.yml`；`tests/tools/mutation.test.ts` 確認設定與 workflow 一致），跑 8 個檔案、798 個變異。只在 CI 跑，不在本機跑。第一次實測在 brief 020 的 PR 上跑，門檻是 6 個模組分數的最低值，無條件捨去到 5 的倍數；實測的數字補進 ADR-0110 之前，門檻與執行時間都還沒有定（ADR-0110）。
+**已實作**：變異測試用 Stryker 10.1.1（`stryker.config.mjs`、`.github/workflows/mutation.yml`；`tests/tools/mutation.test.ts` 確認設定與 workflow 一致），跑 8 個檔案、798 個變異。只在 CI 跑，不在本機跑。第一次實測在 brief 020 的 PR 上跑（2026-11-07，GitHub 的 Ubuntu runner），6 個模組的分數是 85.55 到 100，最低的是對外出口；6 個 job 同時跑，最長的是驗證的 24 分鐘。門檻是最低分無條件捨去到 5 的倍數，也就是 85，每個模組都用它檢查。對外出口只高出 0.55 分。存活的變異共 58 個，只記數量，這次沒有補測試（ADR-0110）。
 
 **已實作**：單元與性質測試在 `tests/`，用 vitest 與 fast-check，`.github/workflows/test.yml` 在兩個平台都跑。Q-9 的效能預算是 `tests/perf/probe-budget.test.ts`，CI 門檻 120 秒。當機注入在 `tests/cli/crash.test.ts`：`book.db` 的第 N 次寫入時丟出錯誤，交易整個回滾，N 從 1 跑到流程的寫入次數，每次中斷後重跑到完成，檢查已驗證或已付費存下的單位沒有再送出，同一筆費用沒有記兩次。合成書上即時模式有 39 個中斷點，批次模式有 58 個，只用假供應商（ADR-0107）。其他層級等對應的功能完成才加。
 

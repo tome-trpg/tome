@@ -36,8 +36,8 @@ jobs:
           - module: state
             files: src/core/state.ts
     runs-on: ubuntu-24.04
-    # 約是估計時間的 2 倍，第一次實測之後照實際時間調整（ADR-0110）。
-    timeout-minutes: 150
+    # 第一次實測最長的 job 是 24 分鐘，約留 2.5 倍（ADR-0110）。
+    timeout-minutes: 60
     steps:
       # 釘在 commit，旁邊註明標籤：標籤被移動就是進入這條流程的路。
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
