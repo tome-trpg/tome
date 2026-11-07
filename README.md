@@ -5,7 +5,7 @@ TOME（TRPG Omnilingual Markdown Engine）是在本機執行的命令列工具�
 [English](README.en.md)
 
 > [!IMPORTANT]
-> **專案狀態：開發中，尚未發布**。目前已完成基礎架構與部分解析功能，尚無翻譯功能，npm 上也只有不含程式的預留版本。各項功能的進度請參閱[開發進度](#開發進度)。
+> **專案狀態：開發中，尚未發布**。目前已完成解析與翻譯的核心功能，尚無可直接閱讀的輸出，npm 上也只有不含程式的預留版本。各項功能的進度請參閱[開發進度](#開發進度)。
 
 ## 專案概述
 
@@ -44,7 +44,7 @@ TOME 的設計目標是解決這些問題，並讓譯文可以直接用於實際
 | 管理解析引擎 | `tome engine add`、`list`、`remove` | 已實作 |
 | 解析頁面 | `tome extract` | 已實作：將原生文字頁交給解析引擎，組裝成文件，並檢查字元是否遺失 |
 | 估算費用 | `tome estimate`、`tome translate --dry-run` | 已實作：在本機估算，不連網，估算比例尚未校準 |
-| 翻譯 | `tome translate`、`tome batch status`、`collect`、`cancel` | 已實作：預設以批次送出，加上 `--realtime` 則逐一送出。尚未以實際的 API 翻譯過 |
+| 翻譯 | `tome translate`、`tome batch status`、`collect`、`cancel` | 已實作：預設以批次送出，加上 `--realtime` 則逐一送出。已用實際的 API 翻譯過一篇公有領域短篇與一本規則書的大部分內容，只用過批次模式與一個模型 |
 | 重新驗證譯文 | `tome verify` | 已實作，不消耗 token |
 | 對照原文與譯文 | `tome preview` | 已實作，只存放於本機 |
 | 查看進度與花費 | `tome status` | 已實作：只讀取本機資料，不連網 |
