@@ -41,11 +41,21 @@ import { piiFindings, workspaceModel, workspacePii, workspaceTargetLang } from '
 
 /** 一個請求約這麼多字元，用字元數是因為各家 token 計法不同（TC-5）。 */
 export const REQUEST_CHARS = 6000;
+/**
+ * 一個請求最多這麼多個單位，同一組不拆。是提案：規則書的短格子讓一個請求多達 161 個單位，
+ * 出事時整個請求都要重送（ADR-0114）。
+ */
+export const REQUEST_UNITS = 40;
 /** 上文約這麼多字元。 */
 export const CONTEXT_CHARS = 800;
 const MIN_MAX_TOKENS = 1024;
 /** 模型要翻完才停，`max_tokens` 留到預估輸出的 2 倍（ADR-0103）。 */
 const OUTPUT_ROOM = 2;
+/**
+ * 每個單位在輸出多要的 token，例如 `<s id>` 的標籤。依字元預估的輸出沒算到它，短格子的請求
+ * 因此被截斷。是提案，取 M2 兩本書帳本擬合的較大者（ADR-0114）。
+ */
+export const UNIT_OUTPUT_TOKENS = 16;
 
 export interface PlannedRequest {
   readonly id: string;
@@ -138,7 +148,7 @@ export function splitRequest(
 
 /**
  * 依閱讀順序組請求。`wanted` 決定哪些單位要送，其他單位只當上文。
- * 請求不跨章，單一組超過上限時自成一個請求。
+ * 請求不跨章，字元與單位數都有上限，單一組超過上限時自成一個請求（ADR-0029、ADR-0114）。
  */
 export function planRequests(
   units: readonly TranslationUnit[],
@@ -157,7 +167,9 @@ export function planRequests(
     const [first] = group;
     if (first === undefined) continue;
     const groupChapter = chapterOf(first);
-    if (groupChapter !== chapter || charsOf(current) + charsOf(group) > REQUEST_CHARS) flush();
+    const full =
+      charsOf(current) + charsOf(group) > REQUEST_CHARS || current.length + group.length > REQUEST_UNITS;
+    if (groupChapter !== chapter || full) flush();
     chapter = groupChapter;
     current.push(...group);
   }
@@ -307,12 +319,20 @@ export interface BodyOptions {
   readonly provider: Provider;
 }
 
-/** 組成 Messages API 的內容。思考也吃 `max_tokens`，所以用含思考的預估輸出（ADR-0103）。 */
+/**
+ * 請求的 `max_tokens`。思考也吃它，所以用含思考的預估輸出（ADR-0103），再加上每個單位的標籤（ADR-0114）。
+ * 只是上限，計費看實際產生的 token，估價不用這個數字。
+ */
+export function maxTokens(provider: Provider, model: ProviderModel, units: readonly TranslationUnit[]): number {
+  const expected = outputTokens(provider, model, charsOf(units)) + UNIT_OUTPUT_TOKENS * units.length;
+  return Math.max(MIN_MAX_TOKENS, Math.ceil(expected * OUTPUT_ROOM));
+}
+
+/** 組成 Messages API 的內容。 */
 export function requestBody({ units }: PlannedRequest, { prefix, user, model, provider }: BodyOptions): MessagesBody {
-  const expected = outputTokens(provider, model, charsOf(units));
   return {
     model: model.id,
-    max_tokens: Math.max(MIN_MAX_TOKENS, Math.ceil(expected * OUTPUT_ROOM)),
+    max_tokens: maxTokens(provider, model, units),
     system: prefix,
     messages: [{ role: 'user', content: user }],
     ...thinkingParams(model),
@@ -348,7 +368,8 @@ export function parseChapters(spec: string, count: number): ReadonlySet<number> 
   return new Set([...chapters].sort((a, b) => a - b));
 }
 
-function chapterCount(document: IrDocument): number {
+/** 這本書的章數，沒有章節的書算 1 章。 */
+export function chapterCount(document: IrDocument): number {
   return Math.max(1, document.sections.length);
 }
 
@@ -400,6 +421,8 @@ export interface BookPlan {
   readonly units: readonly TranslationUnit[];
   readonly chapterOf: (unit: TranslationUnit) => number;
   readonly inScope: (unit: TranslationUnit) => boolean;
+  /** `book.yaml` 的範圍，沒設是 null。 */
+  readonly chapters: string | null;
   readonly prefix: string;
   readonly pack: ResolvedPack;
   readonly terms: readonly LocalizedTerm[];
@@ -482,6 +505,7 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
       units,
       chapterOf,
       inScope,
+      chapters: spec ?? null,
       prefix,
       pack,
       terms,

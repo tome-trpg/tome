@@ -1,14 +1,17 @@
 import { readBook } from './book.ts';
+import { TomeError } from './errors.ts';
+import { readDocument } from './extract.ts';
 import { finding, type Finding } from './findings.ts';
 import { spentUsd } from './ledger.ts';
 import { needsLlm, type Placeholder } from './mask.ts';
 import { usd } from './provider.ts';
-import type { PlanOutcome } from './request.ts';
+import { chapterCount, chapterMap, parseChapters, type PlanOutcome } from './request.ts';
 import { UNIT_STATES, type UnitState } from './state.ts';
-import { openBookStore, type Store } from './store.ts';
+import { openBookStore } from './store.ts';
 
-// `tome status`（ADR-0099 第 2 項、ADR-0107 第 18 項）。只讀 `book.db` 與 `book.yaml`，不連網，
-// 不拿書的鎖，`tome translate` 在等批次時也能用。只有數字，不含書本文字。
+// `tome status`（ADR-0099 第 2 項、ADR-0107 第 18 項）。只讀 `book.db` 與 `book.yaml`，設了範圍時
+// 也讀 `document.json` 判斷章節（ADR-0114）。不連網，不拿書的鎖，`tome translate` 在等批次時也能用。
+// 只有數字，不含書本文字。
 
 interface BatchRow {
   readonly remote_id: string | null;
@@ -43,8 +46,46 @@ export function localTime(iso: string, offsetOf: ZoneOffset = localOffset): { re
 
 function unitCounts(rows: readonly { readonly state: UnitState; readonly count: number }[]): Record<UnitState, number> {
   const counts = Object.fromEntries(UNIT_STATES.map((state) => [state, 0])) as Record<UnitState, number>;
-  for (const { state, count } of rows) counts[state] = count;
+  for (const { state, count } of rows) counts[state] += count;
   return counts;
+}
+
+export interface ScopedUnit {
+  readonly state: UnitState;
+  /** 不需翻譯、原樣保留（ADR-0111）。 */
+  readonly kept: boolean;
+  readonly inScope: boolean;
+}
+
+export interface ScopeCounts {
+  /** 範圍內的單位數。 */
+  readonly total: number;
+  /** 範圍內不需翻譯、原樣保留的。 */
+  readonly kept: number;
+  /** 範圍內各狀態的單位數。 */
+  readonly states: Readonly<Record<UnitState, number>>;
+  /** 範圍外、還沒完成的。換過範圍之後，舊範圍留下的 `FAILED_QA` 也在這裡。 */
+  readonly outside: number;
+}
+
+/**
+ * 範圍內的數字，跟估價對得起來；範圍外沒送出的不算成「尚未完成」（ADR-0114）。
+ * 沒設範圍時每個單位都在範圍內，跟整本書相同。
+ */
+export function scopeCounts(units: readonly ScopedUnit[]): ScopeCounts {
+  const inside = units.filter(({ inScope }) => inScope);
+  return {
+    total: inside.length,
+    kept: inside.filter(({ kept }) => kept).length,
+    states: unitCounts(inside.map(({ state }) => ({ state, count: 1 }))),
+    outside: units.filter(({ inScope, state }) => !inScope && state !== 'DONE').length,
+  };
+}
+
+/** 設了範圍、範圍外又有沒完成的單位時，接在數字後面說明（ADR-0114）。 */
+export function outsideFindings(book: string, chapters: string | null, outside: number): Finding[] {
+  if (chapters === null || outside === 0) return [];
+  return [finding('scope.outside', 'info', { book, chapters, outside: String(outside) })];
 }
 
 function timeParams(name: string, iso: string | null, offsetOf: ZoneOffset): Record<string, string> {
@@ -87,16 +128,51 @@ export const STATUS_BUCKETS: Readonly<Record<string, readonly UnitState[]>> = {
   left: ['PENDING', 'QUEUED', 'RECEIVED', 'STALE'],
 };
 
-function bucketParams(units: Readonly<Record<UnitState, number>>): Record<string, string> {
+function bucketCounts(units: Readonly<Record<UnitState, number>>): Record<string, number> {
   return Object.fromEntries(
-    Object.entries(STATUS_BUCKETS).map(([name, states]) => [name, String(states.reduce((sum, state) => sum + units[state], 0))]),
+    Object.entries(STATUS_BUCKETS).map(([name, states]) => [name, states.reduce((sum, state) => sum + units[state], 0)]),
   );
 }
 
-/** 不需翻譯、原樣保留的單位。單位表沒有這一欄，用存下的原文與佔位符算，跟遮蔽時的判斷相同（ADR-0111）。 */
-function keptUnits(store: Store): number {
-  const rows = store.all<{ source: string; placeholders: string }>('SELECT source, placeholders FROM unit');
-  return rows.filter(({ source, placeholders }) => !needsLlm(source, JSON.parse(placeholders) as Placeholder[])).length;
+function asText(counts: Readonly<Record<string, number>>): Record<string, string> {
+  return Object.fromEntries(Object.entries(counts).map(([name, count]) => [name, String(count)]));
+}
+
+/**
+ * 區塊在不在範圍內，跟 `planBook` 用同一套章節判定（ADR-0114）。沒設範圍，或 `document.json`
+ * 不見了，回傳 null，照整本書算。範圍跟現在的章數對不上時照樣回報 `chapters.invalid`。
+ */
+function scopeOf(home: string, slug: string, chapters: string | null): ((blockId: string) => boolean) | null {
+  if (chapters === null) return null;
+  let document;
+  try {
+    document = readDocument(home, slug);
+  } catch (error) {
+    if (error instanceof TomeError && error.code === 'document.missing') return null;
+    throw error;
+  }
+  const map = chapterMap(document);
+  const chosen = parseChapters(chapters, chapterCount(document));
+  return (blockId) => chosen.has(map.get(blockId) ?? 0);
+}
+
+interface UnitRow {
+  readonly block_id: string;
+  readonly state: UnitState;
+  readonly source: string;
+  readonly placeholders: string;
+}
+
+/**
+ * 不需翻譯、原樣保留的單位，單位表沒有這一欄，用存下的原文與佔位符算，跟遮蔽時的判斷相同（ADR-0111）。
+ * 範圍的判定見 `scopeOf`。
+ */
+function scopedUnits(rows: readonly UnitRow[], inScope: ((blockId: string) => boolean) | null): ScopedUnit[] {
+  return rows.map(({ block_id, state, source, placeholders }) => ({
+    state,
+    kept: !needsLlm(source, JSON.parse(placeholders) as Placeholder[]),
+    inScope: inScope === null || inScope(block_id),
+  }));
 }
 
 export function bookStatus(home: string, slug: string, offsetOf: ZoneOffset = localOffset): PlanOutcome {
@@ -105,19 +181,25 @@ export function bookStatus(home: string, slug: string, offsetOf: ZoneOffset = lo
   try {
     const units = unitCounts(store.all('SELECT state, COUNT(*) AS count FROM unit GROUP BY state'));
     const total = Object.values(units).reduce((sum, count) => sum + count, 0);
-    const kept = keptUnits(store);
+    const inScope = scopeOf(home, slug, book.config.chapters ?? null);
+    const chapters = inScope === null ? null : (book.config.chapters ?? null);
+    const rows = store.all<UnitRow>('SELECT block_id, state, source, placeholders FROM unit');
+    const scoped = scopeCounts(scopedUnits(rows, inScope));
+    const buckets = bucketCounts(scoped.states);
     const spent = spentUsd(store);
     const budget = book.config.budget_usd ?? null;
-    const rows = store.all<BatchRow>(
+    const batchRows = store.all<BatchRow>(
       'SELECT remote_id, state, requests, submitted_at, expires_at, deleted_at FROM batch ORDER BY id',
     );
     const data = {
       book: slug,
       units,
-      kept,
+      kept: scoped.kept,
+      // 訊息裡的數字：範圍內，範圍外沒完成的另算（ADR-0114）。`units` 是整本書各狀態的原值。
+      scope: { chapters, total: scoped.total, kept: scoped.kept, ...buckets, outside: scoped.outside },
       spent_usd: spent,
       budget_usd: budget,
-      batches: rows.map(({ remote_id, state, requests, submitted_at, expires_at, deleted_at }) => ({
+      batches: batchRows.map(({ remote_id, state, requests, submitted_at, expires_at, deleted_at }) => ({
         remote_id,
         state,
         requests,
@@ -126,14 +208,22 @@ export function bookStatus(home: string, slug: string, offsetOf: ZoneOffset = lo
         deleted: deleted_at !== null,
       })),
     };
-    const batches = batchFindings(rows, offsetOf);
+    const batches = batchFindings(batchRows, offsetOf);
     if (total === 0) return { data, findings: [finding('status.no_units', 'info', { book: slug }), ...batches] };
-    const params = { total: String(total), kept: String(kept), ...bucketParams(units) };
+    const params = asText({ total: scoped.total, kept: scoped.kept, ...buckets });
     const money =
       budget === null
         ? finding('status.no_budget', 'info', { spent: usd(spent) })
         : finding('status.spent', 'info', { spent: usd(spent), budget: usd(budget) });
-    return { data, findings: [finding('status.units', 'info', params), money, ...batches] };
+    return {
+      data,
+      findings: [
+        finding('status.units', 'info', params),
+        ...outsideFindings(slug, chapters, scoped.outside),
+        money,
+        ...batches,
+      ],
+    };
   } finally {
     store.close();
   }

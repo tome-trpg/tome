@@ -17,7 +17,7 @@ import type { MessagesBody } from '../../src/core/request.ts';
 const BODY: MessagesBody = { model: 'm', max_tokens: 1024, system: 's', messages: [{ role: 'user', content: 'u' }] };
 
 const USAGE = { input_tokens: 10, output_tokens: 5, cache_read_tokens: 0, cache_write_tokens: 0 };
-const OK: RequestResult = { outcome: 'ok', requestId: 'msg_1', text: 'done', usage: USAGE };
+const OK: RequestResult = { outcome: 'ok', requestId: 'msg_1', stopReason: 'end_turn', text: 'done', usage: USAGE };
 
 function failure(status: number | null, retryAfter: number | null = null): RequestResult {
   return { outcome: 'error', status, retryAfter };
@@ -100,7 +100,7 @@ describe('sendWithRetry (ADR-0104)', () => {
   });
 
   it('does not retry a refusal, which is not a failure of the connection', async () => {
-    const refused: RequestResult = { outcome: 'refused', requestId: 'msg_2', category: null, usage: USAGE };
+    const refused: RequestResult = { outcome: 'refused', requestId: 'msg_2', stopReason: 'refusal', category: null, usage: USAGE };
     const { provider, sent } = scripted([refused]);
     expect(await sendWithRetry(provider, BODY, clock().sleep)).toEqual(refused);
     expect(sent()).toBe(1);
@@ -127,7 +127,7 @@ describe('messageResult (ADR-0104)', () => {
       ],
       usage,
     });
-    expect(result).toEqual({ outcome: 'ok', requestId: 'msg_1', text: 'onetwo', usage: USAGE });
+    expect(result).toEqual({ outcome: 'ok', requestId: 'msg_1', stopReason: 'end_turn', text: 'onetwo', usage: USAGE });
   });
 
   it('counts the cache tokens', () => {
@@ -145,6 +145,14 @@ describe('messageResult (ADR-0104)', () => {
     expect(result.outcome).toBe('truncated');
   });
 
+  // 帳本要存原值，之後才分得出截斷與漏段（ADR-0114）。
+  it.each([['end_turn'], ['max_tokens'], ['refusal'], ['stop_sequence'], [null]])(
+    'keeps the stop reason %s as the provider gave it',
+    (reason) => {
+      expect(messageResult({ id: 'msg_1', stop_reason: reason, content: [], usage }).stopReason).toBe(reason);
+    },
+  );
+
   // Batch 回 `succeeded` 的結果也是這個形狀，要看 `stop_reason`（白皮書 §5.7）。
   it('sees a refusal in a reply that otherwise looks successful', () => {
     const result = messageResult({
@@ -154,7 +162,13 @@ describe('messageResult (ADR-0104)', () => {
       content: [{ type: 'text', text: 'partial' }],
       usage,
     });
-    expect(result).toEqual({ outcome: 'refused', requestId: 'msg_1', category: 'general_harms', usage: USAGE });
+    expect(result).toEqual({
+      outcome: 'refused',
+      requestId: 'msg_1',
+      stopReason: 'refusal',
+      category: 'general_harms',
+      usage: USAGE,
+    });
   });
 
   it('keeps a refusal that names no category', () => {
@@ -174,7 +188,7 @@ describe('batchItem (ADR-0107 item 19)', () => {
     });
     expect(item).toEqual({
       customId: 'tome-0123456789abcdef-1',
-      result: { outcome: 'refused', requestId: 'msg_1', category: 'bio', usage: USAGE },
+      result: { outcome: 'refused', requestId: 'msg_1', stopReason: 'refusal', category: 'bio', usage: USAGE },
     });
   });
 

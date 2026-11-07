@@ -10,6 +10,8 @@ const opus = findModel(profile, 'claude-opus-5-5');
 const haiku = findModel(profile, 'claude-haiku-5-5');
 
 const MILLION: Usage = { input_tokens: 1_000_000, output_tokens: 1_000_000, cache_read_tokens: 0, cache_write_tokens: 0 };
+/** 回覆的 `stop_reason` 與請求的 `max_tokens`（ADR-0114）。 */
+const REPLY = { stop_reason: 'end_turn', max_tokens: 1024 } as const;
 
 function store(): Store {
   return openBookStore(join(tempDir(), 'home'), 'book');
@@ -51,6 +53,7 @@ describe('recordUsage (ADR-0081 item 12)', () => {
         { unit_id: 'a', chars: 100 },
         { unit_id: 'b', chars: 200 },
       ],
+      ...REPLY,
     });
   }
 
@@ -87,6 +90,7 @@ describe('recordUsage (ADR-0081 item 12)', () => {
         { unit_id: 'b', chars: 1 },
         { unit_id: 'c', chars: 1 },
       ],
+      ...REPLY,
     });
     const total = database.get<{ input: number }>('SELECT SUM(input_tokens) AS input FROM ledger');
     database.close();
@@ -102,6 +106,7 @@ describe('recordUsage (ADR-0081 item 12)', () => {
       mode: 'batch',
       usage: { input_tokens: 7, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 },
       units,
+      ...REPLY,
     });
     const rows = database.all<{ input_tokens: number }>('SELECT input_tokens FROM ledger');
     database.close();
@@ -117,10 +122,54 @@ describe('recordUsage (ADR-0081 item 12)', () => {
       mode: 'realtime',
       usage: { input_tokens: 100, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 },
       units: [{ unit_id: 'a', chars: 0 }],
+      ...REPLY,
     });
     const spent = spentUsd(database);
     database.close();
     expect(spent).toBeCloseTo((4 * 100) / 1_000_000);
+  });
+
+  // 截斷的回覆沒有段落，`response` 裡什麼都沒有，帳本才記得到（ADR-0114）。
+  it('keeps the stop reason and max_tokens of the request on every unit', () => {
+    const database = store();
+    recordUsage(database, {
+      request_id: 'r1',
+      model: opus,
+      mode: 'batch',
+      usage: { input_tokens: 900, output_tokens: 1658, cache_read_tokens: 0, cache_write_tokens: 0 },
+      units: [
+        { unit_id: 'a', chars: 1 },
+        { unit_id: 'b', chars: 2 },
+      ],
+      stop_reason: 'max_tokens',
+      max_tokens: 1658,
+    });
+    const rows = database.all<{ stop_reason: string | null; max_tokens: number | null }>(
+      'SELECT stop_reason, max_tokens FROM ledger ORDER BY unit_id',
+    );
+    database.close();
+    expect(rows).toEqual([
+      { stop_reason: 'max_tokens', max_tokens: 1658 },
+      { stop_reason: 'max_tokens', max_tokens: 1658 },
+    ]);
+  });
+
+  it('stores null when the provider gave no stop reason or the limit is unknown', () => {
+    const database = store();
+    recordUsage(database, {
+      request_id: 'r1',
+      model: opus,
+      mode: 'batch',
+      usage: MILLION,
+      units: [{ unit_id: 'a', chars: 1 }],
+      stop_reason: null,
+      max_tokens: null,
+    });
+    const row = database.get<{ stop_reason: string | null; max_tokens: number | null }>(
+      'SELECT stop_reason, max_tokens FROM ledger',
+    );
+    database.close();
+    expect(row).toEqual({ stop_reason: null, max_tokens: null });
   });
 
   it('starts at zero', () => {

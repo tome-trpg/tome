@@ -242,6 +242,26 @@ describe('migrations', () => {
       MIGRATIONS[kind].map((_item, index) => index + 1),
     );
   });
+
+  // M2 的帳本已經有列，升級之後要留著，新的兩欄是 NULL（ADR-0114）。
+  it('adds the stop reason and max_tokens to a ledger that already has rows', () => {
+    const path = join(tempDir(), 'book.db');
+    openStore(path, 'book', MIGRATIONS.book.slice(0, 6)).close();
+    const old = new DatabaseSync(path);
+    old
+      .prepare(
+        `INSERT INTO ledger (request_id, unit_id, model, mode, input_tokens, output_tokens,
+           cache_read_tokens, cache_write_tokens, cost_usd, created_at)
+         VALUES ('r1', 'a', 'm', 'batch', 1, 2, 0, 0, 0.5, '2026-11-08T00:00:00.000Z')`,
+      )
+      .run();
+    old.close();
+    const store = openStore(path, 'book');
+    const rows = store.all('SELECT request_id, output_tokens, stop_reason, max_tokens FROM ledger');
+    store.close();
+    expect(pragma(path, 'user_version')).toBe(7);
+    expect(rows).toEqual([{ request_id: 'r1', output_tokens: 2, stop_reason: null, max_tokens: null }]);
+  });
 });
 
 describe('sqliteVersion', () => {

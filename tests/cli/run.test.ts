@@ -39,7 +39,8 @@ describe('the command line', () => {
     [['nope'], 'cli.unknown_command'],
     [['provider', 'auth'], 'cli.unknown_command'],
     [['init', '--nope'], 'cli.unknown_option'],
-    [['init', 'extra'], 'cli.bad_args'],
+    [['init', 'extra'], 'cli.no_arguments'],
+    [['add', 'a.pdf', 'b'], 'cli.extra_arguments'],
     [['init', '--vault'], 'cli.bad_args'],
     [['provider', 'auth', 'set'], 'cli.missing_argument'],
   ])('exits 2 on %j', async (argv, code) => {
@@ -57,6 +58,37 @@ describe('the command line', () => {
     const { io, stderr } = capture();
     await run(['provider', 'auth', 'set'], io);
     expect(stderr()).toContain('<供應商>');
+  });
+
+  // 路徑有空格沒加引號時，`parseArgs` 把它切成好幾個參數（ADR-0114）。
+  it('says how many arguments came and how many the command takes, and asks for quotes around a path', async () => {
+    const { io, stderr } = capture();
+    expect(await run(['add', 'C:\\My', 'Books\\Some', 'Title.pdf'], io)).toBe(2);
+    expect(stderr()).toContain('tome add 只接受 1 個參數，這次收到 3 個');
+    expect(stderr()).toContain('引號');
+    const json = capture();
+    await run(['add', 'C:\\My', 'Books\\Some', 'Title.pdf', '--json'], json.io);
+    expect(envelope(json.stdout()).findings[0]?.params).toEqual({ command: 'tome add', expected: '1', received: '3' });
+  });
+
+  it('says a command takes no arguments at all', async () => {
+    const { io, stderr } = capture();
+    expect(await run(['provider', 'list', 'extra'], io)).toBe(2);
+    expect(stderr()).toContain('tome provider list 不接受參數，這次收到 1 個');
+  });
+
+  // 金鑰貼在多出來的參數裡，不能印出來，`--json` 也一樣（ADR-0034、ADR-0114）。
+  it('never echoes the extra arguments, where a key may have been pasted', async () => {
+    const key = SYNTHETIC_KEY;
+    const { io, stdout, stderr } = capture();
+    expect(await run(['provider', 'auth', 'set', 'anthropic', key], io)).toBe(2);
+    const json = capture();
+    await run(['provider', 'auth', 'set', 'anthropic', key, '--json'], json.io);
+    for (const text of [stdout(), stderr(), json.stdout(), json.stderr()]) {
+      expect(text).not.toContain(key);
+      expect(text).not.toContain('anthropic');
+    }
+    expect(stderr()).toContain('tome provider auth set 只接受 1 個參數，這次收到 2 個');
   });
 
   it('takes --json before the command too', async () => {

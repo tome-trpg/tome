@@ -3,7 +3,7 @@ import { checkBudget } from './budget.ts';
 import { EgressBlocked, egressRecorder, guardedFetch } from './egress/client.ts';
 import { hitCount, type PiiHit, type PiiRules } from './egress/gate.ts';
 import { finding, type Finding } from './findings.ts';
-import { recordUsage, spentUsd, type Usage } from './ledger.ts';
+import { recordUsage, spentUsd } from './ledger.ts';
 import {
   sendWithRetry,
   sleepSeconds,
@@ -35,6 +35,7 @@ import {
   type SizedRequest,
 } from './request.ts';
 import { failureEvent, nextState, type UnitEvent, type UnitState } from './state.ts';
+import { outsideFindings, scopeCounts, type ScopeCounts } from './status.ts';
 import { openBookStore, openSeriesStore, type Store } from './store.ts';
 import { parseUnits } from './tags.ts';
 import type { TranslationUnit } from './units.ts';
@@ -294,13 +295,15 @@ export function prepareWork(run: Run, work: Work): { readonly work: Work; readon
   return { work: { request, model: work.model }, sized };
 }
 
-function charge(run: Run, { request, model }: Work, requestId: string, usage: Usage): void {
+function charge(run: Run, { request, model }: Work, result: Answer, limit: number | null): void {
   recordUsage(run.store, {
-    request_id: requestId,
+    request_id: result.requestId,
     model,
     mode: run.plan.mode,
-    usage,
+    usage: result.usage,
     units: request.units.map(({ unit_id, source }) => ({ unit_id, chars: source.length })),
+    stop_reason: result.stopReason,
+    max_tokens: limit,
   });
 }
 
@@ -419,11 +422,18 @@ function replied(run: Run, { request, model }: Work, text: string, ids: readonly
 
 /**
  * 模型有回覆的請求，即時與批次共用。不管回應用不用得上都先記帳，
- * 否則預算會少算已經付的錢（ADR-0104 第 43 項）。`ids` 是每個單位在回應裡的 `<s id>`，
+ * 否則預算會少算已經付的錢（ADR-0104 第 43 項）。`limit` 是送出時的 `max_tokens`，跟 `stop_reason`
+ * 一起記進帳本（ADR-0114）。`ids` 是每個單位在回應裡的 `<s id>`，
  * 批次收回時照送出時的位置給，中間有單位不在了也對得上（ADR-0107 第 11 項）。
  */
-export function answered(run: Run, work: Work, result: Answer, ids: readonly string[] = numbered(work.request.units)): Step {
-  charge(run, work, result.requestId, result.usage);
+export function answered(
+  run: Run,
+  work: Work,
+  result: Answer,
+  limit: number | null,
+  ids: readonly string[] = numbered(work.request.units),
+): Step {
+  charge(run, work, result, limit);
   if (result.outcome === 'refused') return refused(run, work, result.category);
   return result.outcome === 'truncated' ? truncated(run, work) : replied(run, work, result.text, ids);
 }
@@ -458,7 +468,7 @@ async function sendWork(run: Run, planned: Work): Promise<Step> {
     moveAll(store, fresh, 'requeue');
     return stopAt(providerFailed(result));
   }
-  return answered(run, work, result);
+  return answered(run, work, result, sized.body.max_tokens);
 }
 
 /** `PENDING`、`QUEUED` 的單位照閱讀順序組成請求。`exclude` 是已經排好要重送的單位。 */
@@ -469,18 +479,22 @@ export function queuedWork({ store, plan }: Run, exclude: ReadonlySet<string> = 
   return planRequests(plan.units, plan.chapterOf, wanted).map((request) => ({ request, model: plan.model }));
 }
 
-function unitCounts({ store }: Run): (state: UnitState) => number {
-  const rows = store.all<{ state: UnitState; count: number }>('SELECT state, COUNT(*) AS count FROM unit GROUP BY state');
-  const counts = new Map(rows.map(({ state, count }) => [state, count]));
-  return (state) => counts.get(state) ?? 0;
-}
-
-function totalUnits({ store }: Run): number {
-  return store.get<{ count: number }>('SELECT COUNT(*) AS count FROM unit')?.count ?? 0;
+/** 範圍內的數字，範圍外沒完成的另算，跟 `tome status` 用同一套算法（ADR-0114）。 */
+function counts({ store, plan }: Run): ScopeCounts {
+  const rows = store.all<{ unit_id: string; state: UnitState }>('SELECT unit_id, state FROM unit');
+  const states = new Map(rows.map(({ unit_id, state }) => [unit_id, state]));
+  return scopeCounts(
+    plan.units.flatMap((unit) => {
+      const state = states.get(unit.unit_id);
+      return state === undefined ? [] : [{ state, kept: !unit.needs_llm, inScope: plan.inScope(unit) }];
+    }),
+  );
 }
 
 export function reportProgress(run: Run): void {
-  run.onProgress?.(unitCounts(run)('DONE'), totalUnits(run));
+  if (run.onProgress === undefined) return;
+  const { states, total } = counts(run);
+  run.onProgress(states.DONE, total);
 }
 
 /**
@@ -499,16 +513,17 @@ async function drain(run: Run): Promise<Finding | null> {
   return null;
 }
 
+/**
+ * 數字都是範圍內的，跟估價對得起來；範圍外沒完成的另印一行，不算成「尚未完成」（ADR-0114）。
+ * 不需翻譯的單位建立時就原樣完成，算在 `done` 裡（ADR-0111）。
+ */
 export function report(run: Run, stop: Finding | null, findings: readonly Finding[]): PlanOutcome {
-  const of = unitCounts(run);
-  const total = totalUnits(run);
-  const [done, blockedUnits, failed, refusedUnits] = [of('DONE'), of('BLOCKED'), of('FAILED_QA'), of('REFUSED')];
+  const { total, kept, states, outside } = counts(run);
+  const [done, blockedUnits, failed, refusedUnits] = [states.DONE, states.BLOCKED, states.FAILED_QA, states.REFUSED];
   const stuck = blockedUnits + failed + refusedUnits;
   const left = total - done - stuck;
   const spent = spentUsd(run.store);
-  const { mode } = run.plan;
-  // 不需翻譯的單位建立時就原樣完成，算在 `done` 裡，寫出來估價的數字才對得起來（ADR-0111）。
-  const kept = run.plan.units.filter((unit) => !unit.needs_llm).length;
+  const { mode, chapters } = run.plan;
   const params = {
     book: run.slug,
     done: String(done),
@@ -533,11 +548,14 @@ export function report(run: Run, stop: Finding | null, findings: readonly Findin
       failed,
       refused: refusedUnits,
       left,
+      outside,
+      chapters,
       spent_usd: spent,
     },
     findings: [
       ...(stop === null ? [] : [stop]),
       finding('translate.done', stuck > 0 ? 'fail' : 'info', params),
+      ...outsideFindings(run.slug, chapters, outside),
       ...run.notes,
       ...findings,
     ],
