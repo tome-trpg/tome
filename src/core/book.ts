@@ -53,6 +53,8 @@ export interface BookConfig {
   readonly system?: string;
   readonly budget_usd?: number;
   readonly chapters?: string;
+  /** 依第幾層書籤分章，沒寫是 1（ADR-0115）。 */
+  readonly chapter_level?: number;
   readonly pii_exceptions?: readonly string[];
 }
 

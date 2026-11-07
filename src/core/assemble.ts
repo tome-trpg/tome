@@ -17,8 +17,20 @@ import type { PageKind } from './probe.ts';
 // 組裝：把 source 層的區塊變成 document 層（白皮書 §5.2）。這裡沒有輸入輸出，
 // 相同的輸入一定得到相同的結果。語言規則都來自語言設定檔，遊戲概念由規則包另外判定。
 
-/** 規則一改就要重新組裝，document 層的指紋含這個版本。 */
-export const ASSEMBLY_VERSION = 1;
+/** 規則一改就要重新組裝，document 層的指紋含這個版本。2 加了 `index`、`credits` 的判定（ADR-0115）。 */
+export const ASSEMBLY_VERSION = 2;
+
+// 書末索引與版權頁（ADR-0115）。數字都是提案，只用維護者的七本書量過，只寫數字（ADR-0092 第 7 項）。
+/** 判錯成 `index` 的內容不會翻譯、使用者也不會發現，漏判只是多花錢，所以只判書末，寧可少判。 */
+const INDEX_FROM_SHARE = 0.9;
+const INDEX_MIN_LINES = 10;
+const INDEX_LINE_SHARE = 0.5;
+const INDEX_ROLES = new Set<string>(['paragraph', 'list_item', 'toc', 'table']);
+const CREDITS_FIRST_PAGES = 6;
+const CREDITS_LAST_PAGES = 2;
+const CREDITS_ROLES = new Set<string>(['paragraph', 'list_item', 'sidebar']);
+/** 不分語言的版權記號。語言相關的字詞在來源語言設定檔的 `credits_phrases`。 */
+const CREDIT_MARK = /©|\(c\)\s*(?:19|20)\d\d|\bisbn\b/iu;
 
 // 下面的比例已定案（ADR-0098）。
 const MARGIN_SHARE = 0.08;
@@ -52,6 +64,8 @@ export interface AssemblyPage {
 export interface AssembleInput {
   readonly language: SourceLanguage;
   readonly pages: readonly AssemblyPage[];
+  /** `overrides` 放行的頁，頁面索引從 0 起算（ADR-0115）。 */
+  readonly accepted?: ReadonlySet<number>;
 }
 
 export interface Assembled {
@@ -357,7 +371,14 @@ function pageBlocks(
   ];
 }
 
-function statusOf(language: SourceLanguage, item: AssemblyPage): PageStatus {
+/** 放行的頁在 `pages` 的原因代碼（ADR-0115）。 */
+export const ACCEPTED = 'accepted';
+
+/**
+ * 未通過字元守恆的頁預設失敗，`overrides` 放行時照樣收，狀態是 `ok`、原因是 `accepted`，缺字數照留
+ * （ADR-0099 第 11 項、ADR-0115）。引擎沒有輸出的頁沒有區塊可收，放行也沒用。
+ */
+function statusOf(language: SourceLanguage, item: AssemblyPage, accepted: ReadonlySet<number>): PageStatus {
   const { page, kind, source, failure, layout } = item;
   if (kind !== 'native') return { page, status: 'skipped', reason: kind };
   if (source === null || layout === null) {
@@ -369,9 +390,9 @@ function statusOf(language: SourceLanguage, item: AssemblyPage): PageStatus {
     source.blocks.map((block) => block.raw),
     layout.invisibleGlyphs,
   );
-  return passed
-    ? { page, status: 'ok', missing, total }
-    : { page, status: 'failed', reason: 'characters_missing', missing, total };
+  if (passed) return { page, status: 'ok', missing, total };
+  if (accepted.has(page)) return { page, status: 'ok', reason: ACCEPTED, missing, total };
+  return { page, status: 'failed', reason: 'characters_missing', missing, total };
 }
 
 function finish(blocks: readonly Working[]): DocumentBlock[] {
@@ -399,14 +420,110 @@ function finish(blocks: readonly Working[]): DocumentBlock[] {
   });
 }
 
-export function assembleBlocks({ language, pages }: AssembleInput): Assembled {
-  const statuses = pages.map((item) => statusOf(language, item));
+const isSpace = (char: string | undefined): boolean => char !== undefined && /\s/u.test(char);
+const isDigit = (char: string | undefined): boolean => char !== undefined && char >= '0' && char <= '9';
+
+function skipSpaces(line: string, end: number): number {
+  let at = end;
+  while (at > 0 && isSpace(line[at - 1])) at -= 1;
+  return at;
+}
+
+/** `end` 之前的 1 到 4 位數字從哪裡開始，不是就回 -1。 */
+function digitsBefore(line: string, end: number): number {
+  let at = end;
+  while (at > 0 && isDigit(line[at - 1])) at -= 1;
+  const count = end - at;
+  return count >= 1 && count <= 4 ? at : -1;
+}
+
+/** `end` 之前的一個頁碼或範圍（`12`、`12–14`）從哪裡開始，不是就回 -1。 */
+function pageRefBefore(line: string, end: number): number {
+  const last = digitsBefore(line, end);
+  if (last < 0) return -1;
+  const dash = skipSpaces(line, last);
+  if (line[dash - 1] === '-' || line[dash - 1] === '–') {
+    const first = digitsBefore(line, skipSpaces(line, dash - 1));
+    if (first >= 0) return first;
+  }
+  return last;
+}
+
+/**
+ * 一行的結尾是不是頁碼清單（`Armor, 12`、`Combat 12–14, 30`）：前面要有字母，清單前要有空白、逗號或句點。
+ * 從行尾往前掃一次，不用正規表示式，長行也不會回溯（ADR-0115）。
+ */
+export function endsWithPageNumbers(line: string): boolean {
+  let start = pageRefBefore(line, skipSpaces(line, line.length));
+  if (start < 0) return false;
+  for (;;) {
+    const comma = skipSpaces(line, start);
+    if (line[comma - 1] !== ',') break;
+    const previous = pageRefBefore(line, skipSpaces(line, comma - 1));
+    if (previous < 0) break;
+    start = previous;
+  }
+  const before = line[start - 1];
+  if (!(isSpace(before) || before === ',' || before === '.')) return false;
+  return /\p{L}/u.test(line.slice(0, start));
+}
+
+/** 一個區塊的每一行：表格是每一格，其他用引擎給的原文分行，接段之前的樣子。讀不出來的字當空白。 */
+function linesOf(block: Working): string[] {
+  const lines = block.table === undefined ? block.raw.split(/\r?\n/u) : block.table.cells.map(({ text }) => text);
+  return lines.map((line) => line.replace(/[\p{Cc}�]/gu, ' ').trim()).filter((line) => line !== '');
+}
+
+interface PageWork {
+  readonly page: number;
+  readonly blocks: readonly Working[];
+}
+
+function looksLikeIndex(blocks: readonly Working[]): boolean {
+  const lines = blocks.filter(({ role }) => role !== 'furniture' && role !== 'figure').flatMap(linesOf);
+  const hits = lines.filter(endsWithPageNumbers).length;
+  return lines.length >= INDEX_MIN_LINES && hits / lines.length >= INDEX_LINE_SHARE;
+}
+
+/**
+ * 全書 90% 之後、一半以上的行結尾是頁碼的頁是書末索引，夾在兩頁索引之間的一頁也算。
+ * 目錄長得一樣，但都在書的開頭（ADR-0115）。標題、圖、邊欄與頁首頁尾不動。
+ */
+function markIndex(pages: readonly PageWork[], total: number): void {
+  const tail = pages.filter(({ page }) => (page + 1) / total >= INDEX_FROM_SHARE);
+  const hits = new Set(tail.filter(({ blocks }) => looksLikeIndex(blocks)).map(({ page }) => page));
+  for (const { page, blocks } of tail) {
+    if (!hits.has(page) && !(hits.has(page - 1) && hits.has(page + 1))) continue;
+    for (const block of blocks) if (INDEX_ROLES.has(block.role)) block.role = 'index';
+  }
+}
+
+/** 開頭 6 頁與最後 2 頁裡，帶版權記號或語言設定檔字詞的區塊。只改有記號的區塊，不整頁改（ADR-0115）。 */
+function markCredits(language: SourceLanguage, pages: readonly PageWork[], total: number): void {
+  const phrases = (language.credits_phrases ?? []).map((phrase) => phrase.toLowerCase());
+  for (const { page, blocks } of pages) {
+    if (page >= CREDITS_FIRST_PAGES && page < total - CREDITS_LAST_PAGES) continue;
+    for (const block of blocks) {
+      if (!CREDITS_ROLES.has(block.role)) continue;
+      const text = block.text.toLowerCase();
+      if (CREDIT_MARK.test(block.text) || phrases.some((phrase) => text.includes(phrase))) block.role = 'credits';
+    }
+  }
+}
+
+export function assembleBlocks({ language, pages, accepted = new Set() }: AssembleInput): Assembled {
+  const statuses = pages.map((item) => statusOf(language, item, accepted));
   const closed = new Set(statuses.filter(({ status }) => status !== 'ok').map(({ page }) => page));
   const open = pages.filter(({ page }) => !closed.has(page));
   const repeated = repeatedMargins(language, open);
-  const blocks = open.flatMap(({ source, layout }) =>
-    source === null || layout === null ? [] : pageBlocks(language, source, layout, repeated),
-  );
+  const work = open.map(({ page, source, layout }) => ({
+    page,
+    blocks: source === null || layout === null ? [] : pageBlocks(language, source, layout, repeated),
+  }));
+  // 在接段之前判定：索引的條目常以小寫開頭，先判成 `index` 才不會被接成一長段（ADR-0115）。
+  markIndex(work, pages.length);
+  markCredits(language, work, pages.length);
+  const blocks = work.flatMap(({ blocks: list }) => list);
   return { blocks: finish(stitch(language, blocks, closed)), pages: statuses };
 }
 

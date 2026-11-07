@@ -5,6 +5,8 @@ export const ERROR_CODES = [
   'book.pdf_changed',
   'book.pdf_missing',
   'budget.invalid',
+  'chapter_level.invalid',
+  'chapter_level.needs_chapters',
   'chapters.invalid',
   'cli.bad_args',
   'cli.cancelled',

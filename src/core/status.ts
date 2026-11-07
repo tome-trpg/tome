@@ -1,11 +1,12 @@
-import { readBook } from './book.ts';
+import { readBook, type Book } from './book.ts';
+import { chapterCount, chapterMap, checkedLevel, levelOf, parseChapters } from './chapters.ts';
 import { TomeError } from './errors.ts';
 import { readDocument } from './extract.ts';
 import { finding, type Finding } from './findings.ts';
 import { spentUsd } from './ledger.ts';
 import { needsLlm, type Placeholder } from './mask.ts';
 import { usd } from './provider.ts';
-import { chapterCount, chapterMap, parseChapters, type PlanOutcome } from './request.ts';
+import type { PlanOutcome } from './request.ts';
 import { UNIT_STATES, type UnitState } from './state.ts';
 import { openBookStore } from './store.ts';
 
@@ -139,20 +140,22 @@ function asText(counts: Readonly<Record<string, number>>): Record<string, string
 }
 
 /**
- * 區塊在不在範圍內，跟 `planBook` 用同一套章節判定（ADR-0114）。沒設範圍，或 `document.json`
- * 不見了，回傳 null，照整本書算。範圍跟現在的章數對不上時照樣回報 `chapters.invalid`。
+ * 區塊在不在範圍內，跟 `planBook` 用同一套章節判定與層級（ADR-0114、ADR-0115）。沒設範圍，或
+ * `document.json` 不見了，回傳 null，照整本書算。範圍跟現在的章數對不上時照樣回報 `chapters.invalid`。
  */
-function scopeOf(home: string, slug: string, chapters: string | null): ((blockId: string) => boolean) | null {
-  if (chapters === null) return null;
+function scopeOf(home: string, book: Book): ((blockId: string) => boolean) | null {
+  const { chapters } = book.config;
+  if (chapters === undefined) return null;
   let document;
   try {
-    document = readDocument(home, slug);
+    document = readDocument(home, book.slug);
   } catch (error) {
     if (error instanceof TomeError && error.code === 'document.missing') return null;
     throw error;
   }
-  const map = chapterMap(document);
-  const chosen = parseChapters(chapters, chapterCount(document));
+  const level = checkedLevel(document, levelOf(book));
+  const map = chapterMap(document, level);
+  const chosen = parseChapters(chapters, chapterCount(document, level));
   return (blockId) => chosen.has(map.get(blockId) ?? 0);
 }
 
@@ -181,7 +184,7 @@ export function bookStatus(home: string, slug: string, offsetOf: ZoneOffset = lo
   try {
     const units = unitCounts(store.all('SELECT state, COUNT(*) AS count FROM unit GROUP BY state'));
     const total = Object.values(units).reduce((sum, count) => sum + count, 0);
-    const inScope = scopeOf(home, slug, book.config.chapters ?? null);
+    const inScope = scopeOf(home, book);
     const chapters = inScope === null ? null : (book.config.chapters ?? null);
     const rows = store.all<UnitRow>('SELECT block_id, state, source, placeholders FROM unit');
     const scoped = scopeCounts(scopedUnits(rows, inScope));

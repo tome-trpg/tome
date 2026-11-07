@@ -5,6 +5,8 @@ import { openPdf, type PageFacts, type PdfHandle } from '../../src/core/pdf.ts';
 import {
   classifyPage,
   detectGpu,
+  PAGE_KINDS,
+  PROBE_VERSION,
   probePdf,
   summarizeProbe,
   type PageProbe,
@@ -55,15 +57,23 @@ describe('classifyPage', () => {
     expect(classifyPage(facts({ imageLargest: 1, imageTotal: 1 })).kind).toBe('native');
   });
 
-  it('calls a full-page image scan, even under one line of footer', () => {
+  // 原本叫 scan，整頁的插圖也在這一類，名稱不準（ADR-0115）。
+  it('calls a page under one large image full_image, even under one line of footer', () => {
     const footer = [{ text: 'Licensed to Someone', bbox: [0, 0, 1, 1] as const, font: 'f' }];
-    expect(classifyPage(facts({ runs: [], visibleGlyphs: 0, imageLargest: 1, imageTotal: 1 })).kind).toBe('scan');
-    expect(classifyPage(facts({ runs: footer, visibleGlyphs: 17, imageLargest: 0.9, imageTotal: 0.9 })).kind).toBe('scan');
+    expect(classifyPage(facts({ runs: [], visibleGlyphs: 0, imageLargest: 1, imageTotal: 1 })).kind).toBe('full_image');
+    expect(classifyPage(facts({ runs: footer, visibleGlyphs: 17, imageLargest: 0.9, imageTotal: 0.9 })).kind).toBe(
+      'full_image',
+    );
   });
 
   it('sees through a hidden OCR layer', () => {
     const ocr = { visibleGlyphs: 0, invisibleGlyphs: 200, imageLargest: 1, imageTotal: 1 };
-    expect(classifyPage(facts(ocr)).kind).toBe('scan');
+    expect(classifyPage(facts(ocr)).kind).toBe('full_image');
+  });
+
+  it('no longer has a kind named scan', () => {
+    expect(PAGE_KINDS).toEqual(['native', 'full_image', 'broken_text', 'image_only']);
+    expect(PROBE_VERSION).toBe(5);
   });
 
   it('calls a textless page with art image_only and an empty one native', () => {
@@ -166,7 +176,7 @@ describe('probing forged PDFs', () => {
     await pdf.close();
     expect(summarizeProbe(probe)).toEqual({
       pages: 3,
-      kinds: { native: 3, scan: 0, broken_text: 0, image_only: 0 },
+      kinds: { native: 3, full_image: 0, broken_text: 0, image_only: 0 },
       assigned: 0,
       tagged: false,
       spread: false,

@@ -7,11 +7,14 @@ import type { ToolRunner } from './process.ts';
 
 export const PROBE_SCHEMA = 'tome-probe/1';
 
-/** 探測的規則一改，這個數字就要加一，舊的結果才會重算（ADR-0056）。 */
-export const PROBE_VERSION = 4;
+/**
+ * 探測的規則一改，這個數字就要加一，舊的結果才會重算（ADR-0056）。版本不同時舊的 `probe.json` 不會被讀，
+ * 所以 5 改名 `scan` 之後，舊檔裡的舊名稱不會造成格式錯誤（ADR-0115）。
+ */
+export const PROBE_VERSION = 5;
 
 // 下面的數字都是提案，要等本機語料量過才算定案（H-7、H-8、H-10）。
-const SCAN_COVERAGE = 0.6;
+const FULL_IMAGE_COVERAGE = 0.6;
 const SPARSE_TEXT_CHARS = 40;
 const INVISIBLE_SHARE = 0.9;
 const BAD_CHAR_SHARE = 0.05;
@@ -19,9 +22,13 @@ const VECTOR_ART_PATHS = 50;
 const SPREAD_ASPECT = 1.2;
 const SPREAD_PAGE_SHARE = 0.6;
 
-export type PageKind = 'native' | 'scan' | 'broken_text' | 'image_only';
+/**
+ * `full_image` 是一張大圖蓋住整頁，可能是掃描頁，也可能是整頁的插圖，原本叫 `scan`（ADR-0115）。
+ * `image_only` 是沒有文字、有圖或向量圖，但不一定蓋滿。
+ */
+export type PageKind = 'native' | 'full_image' | 'broken_text' | 'image_only';
 
-export const PAGE_KINDS: readonly PageKind[] = ['native', 'scan', 'broken_text', 'image_only'];
+export const PAGE_KINDS: readonly PageKind[] = ['native', 'full_image', 'broken_text', 'image_only'];
 
 export interface PageProbe {
   readonly page: number;
@@ -127,14 +134,14 @@ function kindOf(
   match: number | undefined,
   quality: TextQuality | undefined,
 ): PageKind {
-  const covered = facts.imageLargest >= SCAN_COVERAGE;
+  const covered = facts.imageLargest >= FULL_IMAGE_COVERAGE;
   const glyphs = facts.visibleGlyphs + facts.invisibleGlyphs;
   // OCR 過的掃描檔文字層看不見，字數再多也不是原生頁。
   if (glyphs > 0 && facts.invisibleGlyphs / glyphs >= INVISIBLE_SHARE) {
-    return covered ? 'scan' : 'image_only';
+    return covered ? 'full_image' : 'image_only';
   }
-  // 掃描書常被蓋上一行原生的購買者頁尾，所以字很少時先看圖。
-  if (covered && chars < SPARSE_TEXT_CHARS) return 'scan';
+  // 掃描書與整頁插圖常被蓋上一行原生的購買者頁尾，所以字很少時先看圖。
+  if (covered && chars < SPARSE_TEXT_CHARS) return 'full_image';
   if (chars === 0) {
     return facts.imageTotal > 0 || facts.vectorPaths >= VECTOR_ART_PATHS ? 'image_only' : 'native';
   }
@@ -207,7 +214,7 @@ function flatten(nodes: readonly OutlineNode[]): OutlineNode[] {
 }
 
 export function summarizeProbe(probe: Probe): ProbeSummary {
-  const kinds = { native: 0, scan: 0, broken_text: 0, image_only: 0 };
+  const kinds = { native: 0, full_image: 0, broken_text: 0, image_only: 0 };
   for (const page of probe.pages) kinds[page.kind] += 1;
   const outline = flatten(probe.outline);
   return {

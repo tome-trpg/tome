@@ -109,6 +109,12 @@
             "min_letters": { "type": "integer", "minimum": 1 },
             "min_similarity": { "$ref": "#/$defs/ratio" }
           }
+        },
+        "credits_phrases": {
+          "description": "Words of this language that mark a copyright page, matched without case. The language-neutral marks (the copyright sign, a year after (c), ISBN) need no entry.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
         }
       }
     },

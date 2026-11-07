@@ -99,6 +99,20 @@
         }
       }
     },
+    "accept": {
+      "description": "Lets a page that failed character conservation into the document all the same. It is read at assembly, before the pages that failed are dropped.",
+      "type": "object",
+      "required": ["op", "page"],
+      "additionalProperties": false,
+      "properties": {
+        "op": { "const": "accept" },
+        "page": {
+          "description": "The PDF page number, counted from 1, as tome extract shows it.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
     "operation": {
       "oneOf": [
         { "$ref": "#/$defs/setRole" },
@@ -106,7 +120,8 @@
         { "$ref": "#/$defs/merge" },
         { "$ref": "#/$defs/split" },
         { "$ref": "#/$defs/skip" },
-        { "$ref": "#/$defs/redact" }
+        { "$ref": "#/$defs/redact" },
+        { "$ref": "#/$defs/accept" }
       ]
     }
   }
