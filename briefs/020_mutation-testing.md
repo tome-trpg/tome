@@ -66,8 +66,8 @@ protectedFiles:
 ## Invariants
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses`、`npm audit --audit-level=moderate` 在本機都通過
-- [ ] `specs`、`test` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `specs`、`test` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
 - [x] 新加的套件版本都上架滿 14 天，安全修正除外，例外寫明
 
 ## Acceptance Criteria
@@ -78,7 +78,7 @@ protectedFiles:
 - [x] `stryker.config.mjs` 跑六個模組的 8 個檔案，跟 workflow 的 matrix 一致，有測試
 - [x] `.github/workflows/mutation.yml` 有排程、手動觸發與限定路徑的 `pull_request`，一個模組一個 job
 - [x] 第一次實測在 PR 上跑完，6 個模組的分數、存活與逾時數、每個 job 的時間寫進 ADR-0110
-- [ ] 門檻照維護者的規則加進設定，再跑一次確認過得了
+- [x] 門檻照維護者的規則加進設定，再跑一次確認過得了
 - [x] 白皮書 §7.3、§8.4、附錄 B 與 CONTRIBUTING 更新
 
 ## Measured
@@ -86,6 +86,10 @@ protectedFiles:
 2026-11-07（UTC），Windows 參考機器。Stryker 沒有在本機跑，下表只有不跑 Stryker 就量得到的部分。
 
 變異測試的第一次實測在 CI 上跑：`297d536`，run 42372952460。6 個模組的分數是 85.55 到 100，最長的 job 24 分鐘，各模組的數字見 ADR-0110 第 8 項。門檻 85 由維護者看過數字後確認。
+
+加了門檻的 `4c14457`（run 42375434800）6 個 job 都過了：
+* 對外出口 85.94：殺掉 184、逾時 36、存活 34，job 25.5 分鐘。跟第一次比，逾時與存活的數量有變動，分數離門檻仍然很近。
+* 其他 5 個模組的分數跟第一次相同。
 
 | 檢查 | 怎麼確認會失敗 |
 | :--- | :--- |
