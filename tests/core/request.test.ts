@@ -9,12 +9,15 @@ import {
   BATCH_CHARS,
   chapterMap,
   CONTEXT_CHARS,
+  maxTokens,
   parseChapters,
   planBatches,
   planRequests,
   REQUEST_CHARS,
+  REQUEST_UNITS,
   requestBody,
   splitRequest,
+  UNIT_OUTPUT_TOKENS,
   userMessage,
   type Feedback,
   type PlannedRequest,
@@ -169,6 +172,36 @@ describe('planRequests (ADR-0103)', () => {
     const requests = planRequests(units, ONE_CHAPTER, (item) => item.unit_id === 'b');
     expect(ids(requests)).toEqual([['b']]);
     expect(requests[0]?.context).toBe('Before.');
+  });
+});
+
+describe('the number of units in a request (ADR-0114)', () => {
+  function cells(count: number, prefix: string, extra: Partial<TranslationUnit> = {}): TranslationUnit[] {
+    return Array.from({ length: count }, (_, index) => unit(`${prefix}${index}`, text(10), extra));
+  }
+
+  it('stops at 40 units, even when the characters would still fit', () => {
+    const requests = planRequests(cells(REQUEST_UNITS + 1, 'c'), ONE_CHAPTER);
+    expect(REQUEST_UNITS).toBe(40);
+    expect(requests.map(({ units }) => units.length)).toEqual([40, 1]);
+  });
+
+  it('moves a whole group to the next request rather than pass the limit', () => {
+    const requests = planRequests([...cells(30, 'a'), ...cells(15, 'g', { group: 'g' })], ONE_CHAPTER);
+    expect(requests.map(({ units }) => units.length)).toEqual([30, 15]);
+  });
+
+  it('gives a group of more than 40 units a request of its own, as ADR-0029 keeps a group whole', () => {
+    const units = [unit('a', text(10)), ...cells(45, 'g', { group: 'g' }), unit('d', text(10))];
+    const requests = planRequests(units, ONE_CHAPTER);
+    expect(requests.map(({ units: sent }) => sent.length)).toEqual([1, 45, 1]);
+  });
+
+  it('applies to the units waiting to be resent as well, which are planned the same way', () => {
+    const units = cells(100, 'c');
+    const waiting = new Set(units.filter((_item, index) => index % 2 === 0).map(({ unit_id }) => unit_id));
+    const requests = planRequests(units, ONE_CHAPTER, (item) => waiting.has(item.unit_id));
+    expect(requests.map(({ units: sent }) => sent.length)).toEqual([40, 10]);
   });
 });
 
@@ -421,13 +454,25 @@ describe('requestBody', () => {
   });
 
   it('counts thinking in max_tokens on a model that cannot turn it off (ADR-0103)', () => {
-    // 3000 字元 ÷ 3 × 1.2 = 1200 token，乘 1.5 再取 2 倍。
-    expect(body(3000).max_tokens).toBe(3600);
-    expect(body(3000, sonnet).max_tokens).toBe(2400);
+    // 3000 字元 ÷ 3 × 1.2 = 1200 token，乘 1.5，加上一個單位的 16 token，再取 2 倍。
+    expect(body(3000).max_tokens).toBe(3632);
+    expect(body(3000, sonnet).max_tokens).toBe(2432);
   });
 
   it('has a floor, so a short unit can still finish', () => {
     expect(body(10).max_tokens).toBe(1024);
+  });
+
+  // M2 的規則書：短格子的標籤在輸出也要 token，只看字元時請求被截斷（ADR-0114）。
+  it('leaves room for the tag of every unit, which short cells need most', () => {
+    const cells = Array.from({ length: REQUEST_UNITS }, (_, index) => unit(`c${index}`, text(15)));
+    const [request] = planRequests(cells, ONE_CHAPTER);
+    if (request === undefined) throw new Error('no request');
+    const sent = requestBody(request, { prefix: 'p', user: 'x', model: sonnet, provider });
+    // 600 字元 ÷ 3 × 1.2 = 240 token，加上 40 × 16 = 640，再取 2 倍。只看字元時是 1024 的下限。
+    expect(UNIT_OUTPUT_TOKENS).toBe(16);
+    expect(sent.max_tokens).toBe(1760);
+    expect(maxTokens(provider, sonnet, request.units)).toBe(1760);
   });
 
   it('sends no sampling parameters, the current API refuses them', () => {

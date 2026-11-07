@@ -152,6 +152,17 @@ describe('tome translate --realtime (ADR-0104)', () => {
     expect(output.data['spent_usd']).toBeGreaterThan(0);
   });
 
+  // 分得出截斷與漏段（ADR-0114）。
+  it('keeps the stop reason of the reply and the max_tokens it was sent with', async () => {
+    const lib = await confirmed();
+    const { provider, host } = await fake(GOOD);
+    await translate(lib, host);
+    const sent = provider.requests[0]?.body['max_tokens'];
+    const stored = withStore(lib.home, (store) => store.all('SELECT DISTINCT stop_reason, max_tokens FROM ledger'));
+    expect(typeof sent).toBe('number');
+    expect(stored).toEqual([{ stop_reason: 'end_turn', max_tokens: sent }]);
+  });
+
   it('keeps book text out of what it reports', async () => {
     const lib = await confirmed();
     const { host } = await fake(GOOD);
@@ -584,6 +595,21 @@ describe('a reply that was cut off (ADR-0104 item 15)', () => {
     expect(countRows(lib.home, 'ledger')).toBeGreaterThan(0);
   });
 
+  // `response` 沒有截斷的回覆，帳本是唯一記得它的地方（ADR-0114）。
+  it('says in the ledger that the reply was cut off, though no reply is kept', async () => {
+    const lib = await confirmed();
+    const { provider, host } = await fake((request, index) =>
+      index === 0 ? { text: '<s id="1">', stop_reason: 'max_tokens' } : GOOD(request, index),
+    );
+    await translate(lib, host);
+    const first = provider.requests[0]?.body['max_tokens'];
+    const reasons = withStore(lib.home, (store) =>
+      store.all('SELECT stop_reason, max_tokens, COUNT(*) AS units FROM ledger GROUP BY request_id ORDER BY MIN(id)'),
+    );
+    expect(reasons[0]).toEqual({ stop_reason: 'max_tokens', max_tokens: first, units: 3 });
+    expect(reasons.slice(1).every((row) => (row as { stop_reason: string }).stop_reason === 'end_turn')).toBe(true);
+  });
+
   it('counts what it paid against the budget (ADR-0104 item 43)', async () => {
     const lib = await confirmed({ budget: '1' });
     const { provider, host } = await fake(() => ({
@@ -977,22 +1003,76 @@ describe('--retry-failed (ADR-0104 item 26)', () => {
 });
 
 describe('--chapters', () => {
-  it('sends only the chosen chapters, and finishes there', async () => {
-    const lib = await library();
-    const path = join(lib.home, 'books', 'book', 'ir', 'document.json');
+  /** 第 1 章是前兩個區塊，第 2 章從第三個起。 */
+  function twoChapters(home: string): void {
+    const path = join(home, 'books', 'book', 'ir', 'document.json');
     const document = JSON.parse(readFileSync(path, 'utf8')) as { blocks: { id: string }[]; sections: unknown[] };
     document.sections = [
       { title: 'One', block_id: document.blocks[0]?.id, children: [] },
       { title: 'Two', block_id: document.blocks[2]?.id, children: [] },
     ];
     writeFileSync(path, JSON.stringify(document));
+  }
+
+  it('sends only the chosen chapters, and finishes there', async () => {
+    const lib = await library();
+    twoChapters(lib.home);
     await estimate(lib, '--realtime', '--budget', '100', '--chapters', '1', '--confirm');
     const { provider, host } = await fake(GOOD);
-    const { exit, output } = await translate(lib, host);
+    const { exit } = await translate(lib, host);
     expect(exit).toBe(0);
     expect(provider.requests.map(unitsIn)).toEqual([2]);
     expect(statesOf(lib.home)).toEqual(['DONE', 'DONE', 'PENDING']);
-    expect(output.data).toMatchObject({ done: 2, left: 1 });
+  });
+
+  // 範圍外沒送出的單位不算成「尚未完成」，數字跟估價對得起來（ADR-0114）。
+  it('counts within the range, and says apart how many units outside it are not done', async () => {
+    const lib = await library();
+    twoChapters(lib.home);
+    const estimated = await estimate(lib, '--realtime', '--budget', '100', '--chapters', '1', '--confirm');
+    const { host } = await fake(GOOD);
+    const { output, progress } = await translate(lib, host);
+    const { units, kept } = estimated.data as { units: number; kept: number };
+    expect(output.data).toMatchObject({ total: units + kept, done: 2, left: 0, outside: 1, chapters: '1' });
+    expect(found(output, 'translate.done')?.params).toMatchObject({ total: '2', done: '2', left: '0' });
+    expect(found(output, 'scope.outside')).toMatchObject({ level: 'info', params: { book: 'book', chapters: '1', outside: '1' } });
+    expect(codes(output).indexOf('scope.outside')).toBe(codes(output).indexOf('translate.done') + 1);
+    expect(progress).toContain('已完成 2 個翻譯單位，共 2 個。');
+    const { io, stdout } = lib.session({ llm: host });
+    await run(['translate', 'book', '--realtime'], io);
+    expect(stdout()).toContain('以上是 --chapters 1 範圍內的數字。範圍外另有 1 個翻譯單位尚未完成');
+  });
+
+  it('leaves out a unit outside the range that was kept as it is, since it is done', async () => {
+    const lib = await library();
+    twoChapters(lib.home);
+    addSceneBreak(lib.home);
+    await estimate(lib, '--realtime', '--budget', '100', '--chapters', '1', '--confirm');
+    const { host } = await fake(GOOD);
+    const { output } = await translate(lib, host);
+    expect(output.data).toMatchObject({ total: 2, kept: 0, done: 2, left: 0, outside: 1 });
+  });
+
+  it('says nothing about the outside when no range is set', async () => {
+    const lib = await confirmed();
+    const { host } = await fake(GOOD);
+    const { output } = await translate(lib, host);
+    expect(output.data).toMatchObject({ total: 3, outside: 0, chapters: null });
+    expect(codes(output)).not.toContain('scope.outside');
+  });
+
+  it('does not fail for a unit outside the range that failed before, and counts it outside', async () => {
+    const lib = await library();
+    twoChapters(lib.home);
+    await estimate(lib, '--realtime', '--budget', '100', '--confirm');
+    const { host: failing } = await fake(() => ({ refusal: true }));
+    await translate(lib, failing);
+    await estimate(lib, '--realtime', '--chapters', '1', '--confirm');
+    const { host } = await fake(GOOD);
+    const { exit, output } = await translate(lib, host, '--retry-failed');
+    expect(statesOf(lib.home)).toEqual(['DONE', 'DONE', 'REFUSED']);
+    expect(exit).toBe(0);
+    expect(output.data).toMatchObject({ total: 2, done: 2, refused: 0, outside: 1 });
   });
 });
 

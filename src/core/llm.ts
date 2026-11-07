@@ -12,6 +12,8 @@ export const BACKOFF_SECONDS: readonly number[] = [1, 2, 4, 8, 16];
 interface Answered {
   readonly requestId: string;
   readonly usage: Usage;
+  /** 供應商回的原值，存進帳本（ADR-0114）。 */
+  readonly stopReason: string | null;
 }
 
 export type RequestResult =
@@ -195,6 +197,7 @@ export interface MessageReply {
 export function messageResult({ id, stop_reason, stop_details, content, usage }: MessageReply): Answer {
   const answered = {
     requestId: id,
+    stopReason: stop_reason,
     usage: {
       input_tokens: usage.input_tokens,
       output_tokens: usage.output_tokens,

@@ -583,6 +583,16 @@ function findCommand(argv: readonly string[]): Command | null {
   );
 }
 
+/**
+ * 說收到幾個、只接受幾個，不回顯多出來的值：`tome provider auth set anthropic <金鑰>` 會讓金鑰成為
+ * 多出來的參數，PDF 的路徑也常含書名（ADR-0114）。路徑有空格沒加引號時，就會被切成好幾個參數。
+ */
+function extraArguments(command: Command, received: number): TomeError {
+  const params = { command: ['tome', ...command.path].join(' '), received: String(received) };
+  if (command.positionals === 0) return new TomeError('cli.no_arguments', params);
+  return new TomeError('cli.extra_arguments', { ...params, expected: String(command.positionals) });
+}
+
 function parseCommand(command: Command, argv: readonly string[]): Parsed {
   try {
     const { values, positionals } = parseArgs({
@@ -591,7 +601,7 @@ function parseCommand(command: Command, argv: readonly string[]): Parsed {
       allowPositionals: true,
       strict: true,
     });
-    if (positionals.length > command.positionals) throw new TomeError('cli.bad_args');
+    if (positionals.length > command.positionals) throw extraArguments(command, positionals.length);
     return { values: values as Parsed['values'], positionals };
   } catch (error) {
     if (error instanceof TomeError) throw error;

@@ -17,7 +17,7 @@ import {
   type RemoteBatch,
 } from './llm.ts';
 import { findModel } from './provider.ts';
-import { planBatches, type PlanOutcome } from './request.ts';
+import { maxTokens, planBatches, type PlanOutcome } from './request.ts';
 import { openBookStore, type Store } from './store.ts';
 import {
   GO_ON,
@@ -107,6 +107,8 @@ interface SentRequest {
   readonly model: string;
   /** 計畫裡已經沒有的單位不在這裡，其他單位的位置照送出時的。 */
   readonly units: readonly SentUnit[];
+  /** 送出時有幾個單位。 */
+  readonly sent: number;
 }
 
 /** 依送出的順序，單位依在請求裡的位置。 */
@@ -115,14 +117,15 @@ function sentRequests({ store, byId }: Run, batchId: number): SentRequest[] {
     'SELECT custom_id, position, unit_id, model FROM batch_unit WHERE batch_id = ? ORDER BY rowid',
     batchId,
   );
-  const requests = new Map<string, { model: string; units: SentUnit[] }>();
+  const requests = new Map<string, { model: string; units: SentUnit[]; sent: number }>();
   for (const { custom_id, position, unit_id, model } of rows) {
-    const request = requests.get(custom_id) ?? { model, units: [] };
+    const request = requests.get(custom_id) ?? { model, units: [], sent: 0 };
     requests.set(custom_id, request);
+    request.sent += 1;
     const unit = byId.get(unit_id);
     if (unit !== undefined) request.units.push({ unit, position });
   }
-  return [...requests].map(([id, { model, units }]) => ({ customId: id, model, units }));
+  return [...requests].map(([id, { model, units, sent }]) => ({ customId: id, model, units, sent }));
 }
 
 /** 還在 `IN_FLIGHT` 的。估價確認之後內容改了，文字變了的單位已經回到起點，不能再套用舊的回應。 */
@@ -221,10 +224,13 @@ async function collect(batchRun: BatchRun, row: BatchRow, remoteId: string, unve
     const result: BatchOutcome = results.get(sent.customId) ?? { outcome: 'errored', type: MISSING };
     if (result.outcome === 'ok' || result.outcome === 'truncated' || result.outcome === 'refused') {
       succeeded += 1;
-      const work = { request: { id: sent.customId, units, context: '' }, model: findModel(plan.provider.profile, sent.model) };
+      const model = findModel(plan.provider.profile, sent.model);
+      const work = { request: { id: sent.customId, units, context: '' }, model };
       // 照送出時的位置對 `<s id>`，中間有單位不在了，後面的單位才不會拿到別人的譯文。
       const ids = live.map(({ position }) => String(position + 1));
-      next.push(...answered(run, work, result, ids).next);
+      // 送出時的 `max_tokens` 沒有存，單位都還在才算得回來（ADR-0114）。
+      const limit = live.length === sent.sent ? maxTokens(plan.provider.profile, model, units) : null;
+      next.push(...answered(run, work, result, limit, ids).next);
       continue;
     }
     // 不收費，單位放回佇列，下一批重送（ADR-0107 第 13 項）。

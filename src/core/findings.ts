@@ -112,6 +112,7 @@ export const FINDING_CODES = [
   'provider.test_failed',
   'provider.tested',
   'provider.thinking_mismatch',
+  'scope.outside',
   'sqlite.ok',
   'sqlite.unavailable',
   'status.batch',

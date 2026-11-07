@@ -19,6 +19,10 @@ export interface UsageRecord {
   readonly mode: RequestMode;
   readonly usage: Usage;
   readonly units: readonly { readonly unit_id: string; readonly chars: number }[];
+  /** 供應商回的原值，同一個請求的每一列都一樣（ADR-0114）。 */
+  readonly stop_reason: string | null;
+  /** 請求的上限，算不出來時是 null（ADR-0114）。 */
+  readonly max_tokens: number | null;
 }
 
 export function costOf(usage: Usage, model: ProviderModel, mode: RequestMode): number {
@@ -48,7 +52,8 @@ function split(total: number, weights: readonly number[], sum: number): number[]
  * 同一個 `request_id` 只記一次。批次收回到一半中斷時會再下載一次結果，
  * 同一筆費用不能記兩次（ADR-0107）。即時模式每次送出的 ID 都不同。
  */
-export function recordUsage(store: Store, { request_id, model, mode, usage, units }: UsageRecord): void {
+export function recordUsage(store: Store, record: UsageRecord): void {
+  const { request_id, model, mode, usage, units, stop_reason, max_tokens } = record;
   if (store.get('SELECT 1 FROM ledger WHERE request_id = ? LIMIT 1', request_id) !== undefined) return;
   const weights = units.map(({ chars }) => chars);
   const sum = weights.reduce((total, weight) => total + weight, 0);
@@ -64,8 +69,8 @@ export function recordUsage(store: Store, { request_id, model, mode, usage, unit
       const share = sum === 0 ? (index === units.length - 1 ? 1 : 0) : chars / sum;
       store.run(
         `INSERT INTO ledger (request_id, unit_id, model, mode, input_tokens, output_tokens,
-           cache_read_tokens, cache_write_tokens, cost_usd, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           cache_read_tokens, cache_write_tokens, cost_usd, created_at, stop_reason, max_tokens)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         request_id,
         unit_id,
         model.id,
@@ -76,6 +81,8 @@ export function recordUsage(store: Store, { request_id, model, mode, usage, unit
         writes[index] ?? 0,
         total * share,
         now,
+        stop_reason,
+        max_tokens,
       );
     });
   });

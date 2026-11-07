@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Envelope } from '../../src/cli/output.ts';
@@ -322,6 +322,23 @@ describe('what comes back (ADR-0107 item 13)', () => {
     expect(ledger(lib.home).length).toBeGreaterThan(3);
   });
 
+  // 批次也把 `stop_reason` 與送出時的 `max_tokens` 記進帳本（ADR-0114）。
+  it('keeps the stop reason and the max_tokens of each request in the ledger', async () => {
+    const lib = await confirmed();
+    const { provider, host } = await fake((request, index) =>
+      index === 0 ? { text: '', stop_reason: 'max_tokens' } : GOOD(request, index),
+    );
+    await translate(lib, host);
+    const sent = provider.requests.map(({ body }) => body['max_tokens']);
+    const stored = withStore(lib.home, (store) =>
+      store.all<{ stop_reason: string; max_tokens: number }>(
+        'SELECT stop_reason, max_tokens FROM ledger GROUP BY request_id ORDER BY MIN(id)',
+      ),
+    );
+    expect(stored.map(({ stop_reason }) => stop_reason)).toEqual(['max_tokens', 'end_turn', 'end_turn']);
+    expect(stored.map(({ max_tokens }) => max_tokens)).toEqual(sent);
+  });
+
   it('stops when a whole batch failed, puts the units back and charges nothing (item 14)', async () => {
     const lib = await confirmed();
     const { provider, host } = await fake((request, index) => (index === 0 ? { errored: 'api_error' } : GOOD(request, index)));
@@ -582,6 +599,9 @@ describe('a batch left from before (ADR-0107 items 11, 15 and 16)', () => {
       expect(state).toBe('DONE');
       expect(translation).toBe(`譯：${source}`);
     }
+    // 送出時的上限算不回來，寧可是 NULL 也不記錯的數字（ADR-0114）。
+    const stored = withStore(lib.home, (store) => store.all('SELECT DISTINCT stop_reason, max_tokens FROM ledger'));
+    expect(stored).toEqual([{ stop_reason: 'end_turn', max_tokens: null }]);
   });
 
   it('does not give an old reply to a unit whose text changed before the results came', async () => {
@@ -784,6 +804,83 @@ describe('tome status (ADR-0107 item 18)', () => {
     const { exit, output } = await tome(lib, undefined, 'status', 'book');
     expect(exit).toBe(0);
     expect(found(output, 'status.no_units')?.params).toEqual({ book: 'book' });
+  });
+
+  /** 第 1 章是前兩個區塊，第 2 章從第三個起。 */
+  function twoChapters(home: string): string {
+    const path = join(home, 'books', 'book', 'ir', 'document.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { blocks: { id: string }[]; sections: unknown[] };
+    document.sections = [
+      { title: 'One', block_id: document.blocks[0]?.id, children: [] },
+      { title: 'Two', block_id: document.blocks[2]?.id, children: [] },
+    ];
+    writeFileSync(path, JSON.stringify(document));
+    return path;
+  }
+
+  // 跟 `tome translate` 完成時一樣是範圍內的數字，範圍外沒完成的另印一行（ADR-0114）。
+  it('counts within the range set in book.yaml, as translate does, and says apart what is left outside', async () => {
+    const lib = await library();
+    twoChapters(lib.home);
+    addSceneBreak(lib.home);
+    await run(['estimate', 'book', '--budget', '100', '--chapters', '1', '--confirm'], lib.session().io);
+    const { host } = await fake(GOOD);
+    const translated = await translate(lib, host);
+    const { exit, output, text } = await tome(lib, undefined, 'status', 'book');
+    expect(exit).toBe(0);
+    const params = found(output, 'status.units')?.params;
+    expect(params).toMatchObject({ total: '2', kept: '0', done: '2', left: '0' });
+    expect(found(translated.output, 'translate.done')?.params).toMatchObject({ total: '2', kept: '0', done: '2' });
+    expect(found(output, 'scope.outside')?.params).toEqual({ book: 'book', chapters: '1', outside: '1' });
+    expect(codes(output).slice(0, 2)).toEqual(['status.units', 'scope.outside']);
+    expect(output.data['units']).toMatchObject({ DONE: 3, PENDING: 1 });
+    expect(output.data['kept']).toBe(0);
+    expect(output.data['scope']).toEqual({
+      chapters: '1',
+      total: 2,
+      kept: 0,
+      done: 2,
+      in_flight: 0,
+      blocked: 0,
+      failed: 0,
+      refused: 0,
+      left: 0,
+      outside: 1,
+    });
+    expect(text).not.toContain('One');
+  });
+
+  it('counts the whole book when there is no range', async () => {
+    const lib = await confirmed();
+    const { host } = await fake(GOOD);
+    await translate(lib, host);
+    const { output } = await tome(lib, undefined, 'status', 'book');
+    expect(output.data['scope']).toMatchObject({ chapters: null, total: 3, done: 3, outside: 0 });
+    expect(codes(output)).not.toContain('scope.outside');
+  });
+
+  it('counts the whole book when document.json is gone, rather than fail', async () => {
+    const lib = await library();
+    const path = twoChapters(lib.home);
+    await run(['estimate', 'book', '--budget', '100', '--chapters', '1', '--confirm'], lib.session().io);
+    rmSync(path);
+    const { exit, output } = await tome(lib, undefined, 'status', 'book');
+    expect(exit).toBe(0);
+    expect(found(output, 'status.units')?.params).toMatchObject({ total: '3', left: '3' });
+    expect(output.data['scope']).toMatchObject({ chapters: null, outside: 0 });
+    expect(codes(output)).not.toContain('scope.outside');
+  });
+
+  it('says the range is wrong when the book has fewer chapters now, as estimate does', async () => {
+    const lib = await library();
+    const path = twoChapters(lib.home);
+    await run(['estimate', 'book', '--budget', '100', '--chapters', '2', '--confirm'], lib.session().io);
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { sections: unknown[] };
+    document.sections = document.sections.slice(0, 1);
+    writeFileSync(path, JSON.stringify(document));
+    const { exit, output } = await tome(lib, undefined, 'status', 'book');
+    expect(exit).toBe(2);
+    expect(codes(output)).toEqual(['chapters.invalid']);
   });
 
   it('counts the units, the money and the batches, without the network', async () => {

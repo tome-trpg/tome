@@ -140,6 +140,14 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
         CREATE INDEX batch_unit_unit ON batch_unit (unit_id);
       `,
     },
+    {
+      // 回覆的 `stop_reason` 與請求的 `max_tokens`，分得出截斷與漏段（ADR-0114）。舊的列是 NULL。
+      version: 7,
+      sql: `
+        ALTER TABLE ledger ADD COLUMN stop_reason TEXT;
+        ALTER TABLE ledger ADD COLUMN max_tokens INTEGER;
+      `,
+    },
   ],
   series: [
     { version: 1, sql: metaTable('series') },
