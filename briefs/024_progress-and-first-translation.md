@@ -63,7 +63,9 @@ protectedFiles:
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
 - [x] 新的測試先在舊行為上失敗過，護欄測試故意改壞程式確認會失敗
 - [ ] `specs`、`test`、`mutation` 在 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+
+  **Delegated**：`4057777` 的 `specs`、`test` 在 Windows 與 Ubuntu 第一次跑就通過，`engine` 也是。這個 PR 不會觸發 `mutation`（paths 只有 `stryker.config.mjs` 與 workflow 本身），`mask.ts` 的改動由 Manager 在 024 合併後到 `main` 手動觸發一次，確認仍在門檻 80 之上。
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
 - [x] 進度只走 stderr，`--json` 的 stdout 不變，也不含書本文字
 
 ## Acceptance Criteria
