@@ -63,6 +63,12 @@ brief 020 要照 ADR-0063 與 ADR-0099 第 17、18 項加入 Stryker。`@stryker
    * `coverageAnalysis: 'perTest'`、不用增量模式、並行數 4。
    * 報告用 HTML、JSON 與文字，放 `reports/mutation/`。
    * `tsconfigFile` 指向不存在的檔名，跳過改寫 tsconfig 的步驟。TOME 的 tsconfig 沒有 `extends` 或 `references` 指到專案外，不需要改寫。
+   * vitest 的 `pool` 設成 `forks`，跟 `npm test` 一樣。這是第一次在 PR 上跑時發現的：
+     * vitest-runner 預設用 `threads`，worker thread 裡改 `process.env.TZ` 不會改到 `Date` 的時區。
+     * ADR-0107 第 29 項換時區的那個測試，因此在 UTC 的 CI 上失敗。6 個 job 都在一開始的完整測試停下，還沒開始變異，每個 job 也只有這個測試失敗。
+     * 在本機只跑這一個測試重現過：`TZ=UTC` 時，`--pool threads` 失敗，`--pool forks` 通過。
+
+     不在 workflow 設 `TZ`：設成跟測試相同的時區，換時區沒生效也會通過，遮掉這個測試要檢查的事。不改測試：要動 019 的測試，範圍比較大。
    * `.gitignore` 加 `.stryker-tmp/` 與 `reports/`。
 
 **CI**
@@ -109,6 +115,7 @@ brief 020 要照 ADR-0063 與 ADR-0099 第 17、18 項加入 Stryker。`@stryker
 <!-- @assert-count target="package.json" regex="true" symbol="@isaacs/nonrecursive-glob-match.: .1\.0\.1" expected="1" comments="include" reason="第 2 項：minimatch 的新相依釘在同一次修正的版本" -->
 <!-- @assert-count target="tools/check-licenses.ts" symbol="new Set(['0BSD', 'BlueOak-1.0.0', 'CC-BY-4.0'])" expected="1" reason="第 3 項：開發相依多放行兩種授權" -->
 <!-- @assert-count target="stryker.config.mjs" symbol="tsconfigFile: 'stryker-skips-tsconfig-rewrite.json'" expected="1" comments="include" reason="第 5 項：跳過改寫 tsconfig" -->
+<!-- @assert-count target="stryker.config.mjs" symbol="pool: 'forks'" expected="1" comments="include" reason="第 5 項：跟 npm test 一樣用 forks" -->
 <!-- @assert-count target=".github/workflows/mutation.yml" symbol="cron: '0 18 * * 0'" expected="1" comments="include" reason="第 6 項：每週排程" -->
 <!-- @assert-count target=".github/workflows/mutation.yml" symbol="timeout-minutes: 150" expected="1" comments="include" reason="第 6 項：job 的時限" -->
 <!-- @assert-absence target="package.json" regex="true" symbol=".mutation.:" comments="include" reason="第 11 項：不加 npm run mutation" -->

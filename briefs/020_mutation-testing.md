@@ -91,3 +91,4 @@ protectedFiles:
 | 新增套件版本的冷卻期 | 直接安裝時，37 個間接相依未滿 14 天。改用 `--before` 之後，未滿 14 天的只剩兩個安全修正版本 |
 | `npm run licenses` 與 `tests/tools/check-licenses.test.ts` | 放行之前回報 3 個開發相依：`caniuse-lite`（CC-BY-4.0）、`minimatch`、`@isaacs/nonrecursive-glob-match`（BlueOak-1.0.0） |
 | `tests/tools/mutation.test.ts` | 故意從 workflow 的對外出口拿掉 `anthropic.ts`，1 個失敗，再改回來 |
+| `pool: 'forks'`（第一次 PR 上的實測失敗之後加的） | `9b3b6e1` 上 6 個 job 都在一開始的完整測試停下：vitest-runner 預設的 `threads` 讓換時區的測試在 UTC 失敗。本機只跑那一個測試，`TZ=UTC` 時 `--pool threads` 失敗、`--pool forks` 通過 |

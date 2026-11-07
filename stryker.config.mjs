@@ -22,7 +22,9 @@ export const MUTATED = [
 
 export default {
   testRunner: 'vitest',
-  vitest: { configFile: 'vitest.config.ts' },
+  // vitest-runner 預設用 threads，TOME 的 `npm test` 用 vitest 5 預設的 forks。worker thread 裡改
+  // `process.env.TZ` 不會改到 `Date` 的時區，換時區的測試在 UTC 的 CI 上會失敗。照 `npm test` 用 forks（ADR-0110）。
+  vitest: { configFile: 'vitest.config.ts', pool: 'forks' },
   mutate: MUTATED,
   coverageAnalysis: 'perTest',
   incremental: false,
