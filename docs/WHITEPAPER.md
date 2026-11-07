@@ -984,7 +984,7 @@ tome/
 | `specs` | push 到 `main` 與 PR | spec-guard、`prove`、`cites`、spec-graph、spec-brief、`premises`，Windows 與 Ubuntu。**已實作**：`.github/workflows/specs.yml` |
 | 測試 | push 到 `main` 與 PR | 測試、`npm audit`、相依授權檢查、效能預算、`tome system lint` 與 `test`、測試素材清單檢查。**已實作**：`.github/workflows/test.yml`，檔名是 `test`，`npm audit` 的門檻是 `moderate`（ADR-0082）。`tome system lint` 與 `test` 查內建規則包 `generic` 與測試用的合成包。測試素材清單是 `tests/fixtures/SOURCES.yaml`，由 `tests/tools/fixtures.test.ts` 檢查 |
 | 引擎 | 改到 `engines/`、`tests/engine/`、引擎核心與 schema，或手動 | 安裝 Docling 跑合成 PDF。**已實作**：`.github/workflows/engine.yml`，Ubuntu 與 Windows 都跑，Ubuntu 上把網路拿掉再跑，通過只證明解析不需要網路，不證明沒有嘗試連線。有路徑過濾，不設必要檢查（ADR-0085、ADR-0096、ADR-0097） |
-| 變異 | 排程 | 六個關鍵模組 |
+| 變異 | 每週排程、手動，以及改到設定的 PR | 六個關鍵模組，一個模組一個 job，只跑 Ubuntu。**已實作**：`.github/workflows/mutation.yml`，不設必要檢查，報告保留 30 天。Stryker 只在 CI 跑，不在本機跑（ADR-0110） |
 | 發佈 | `v*` 標籤或手動演練 | 見下節 |
 
 Action 全部釘在 commit，簽出不保留 token，安裝用 `--ignore-scripts`。Dependabot 更新相依與 Action，有冷卻期：npm 的 patch 一週、minor 兩週、major 一個月，uv 的 patch 與 minor 都是兩週、major 一個月，Action 一律一週，安全更新不等。`@spec-family/*` 是維護者自己的工具，不受冷卻期限制（ADR-0082）。`@types/node` 的 major 跟著最低 Node 版本，不走 Dependabot（ADR-0094）。`huggingface-hub` 的 major 等 Docling 放寬限制，也不走 Dependabot（ADR-0095）。`engines/docling/` 另外用 `exclude-newer = "14 days"`，重鎖時只看上架滿 14 天的版本，安全更新用 `exclude-newer-package` 開例外（ADR-0085）。**已驗證**：Dependabot 第一次跑就重鎖得動這份鎖定檔，但安全更新過不了 `exclude-newer`，要手動開例外（ADR-0087）。
@@ -1089,6 +1089,8 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 | 契約 | 真 API 小額跑，防止假供應商跟現實脫節 | 幾個月手動一次 |
 
 CI 跑 Windows 與 Ubuntu。公開 repo 的 CI MUST NOT 放任何 API 金鑰。變異分數的門檻等第一次實測後再定。
+
+**已實作**：變異測試用 Stryker 10.1.1（`stryker.config.mjs`、`.github/workflows/mutation.yml`；`tests/tools/mutation.test.ts` 確認設定與 workflow 一致），跑 8 個檔案、798 個變異。只在 CI 跑，不在本機跑。第一次實測在 brief 020 的 PR 上跑（2026-11-07，GitHub 的 Ubuntu runner），6 個模組的分數是 85.55 到 100，最低的是對外出口；6 個 job 同時跑，最長的是驗證的 24 分鐘。第二次實測時，對外出口的逾時判定浮動了約一個變異，分數變成 85.94。最低分捨去到 5 的倍數是 85，但只剩不到一個變異的空間，所以門檻再往下一格定成 80，每個模組都用它檢查。存活的變異共 58 個，只記數量，這次沒有補測試（ADR-0110）。
 
 **已實作**：單元與性質測試在 `tests/`，用 vitest 與 fast-check，`.github/workflows/test.yml` 在兩個平台都跑。Q-9 的效能預算是 `tests/perf/probe-budget.test.ts`，CI 門檻 120 秒。當機注入在 `tests/cli/crash.test.ts`：`book.db` 的第 N 次寫入時丟出錯誤，交易整個回滾，N 從 1 跑到流程的寫入次數，每次中斷後重跑到完成，檢查已驗證或已付費存下的單位沒有再送出，同一筆費用沒有記兩次。合成書上即時模式有 39 個中斷點，批次模式有 58 個，只用假供應商（ADR-0107）。其他層級等對應的功能完成才加。
 
@@ -1243,6 +1245,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0107](adr/0107-batch-and-resume-decisions.md) | Batch 與續跑的細節 | M2 |
 | [ADR-0108](adr/0108-batch-create-server-errors.md) | 建立批次時收到 5xx | M2 |
 | [ADR-0109](adr/0109-anthropic-adapter-decisions.md) | Anthropic 轉接層的細節 | M2 |
+| [ADR-0110](adr/0110-mutation-testing-decisions.md) | 變異測試的細節 | M2 |
 
 ---
 
@@ -1417,6 +1420,7 @@ M2 已實作的項目：
 | `tome batch status`、`collect`、`cancel` | `src/core/batch.ts` | `tests/cli/batch.test.ts` |
 | `tome status` | `src/core/status.ts` | `tests/cli/batch.test.ts` |
 | 當機注入 | `tests/cli/crash.test.ts` | `npm test` |
+| 變異測試，只在 CI 跑 | `stryker.config.mjs`、`.github/workflows/mutation.yml` | `tests/tools/mutation.test.ts` |
 | Anthropic 轉接層，只跑過假供應商 | `src/core/egress/anthropic.ts` | `tests/core/anthropic.test.ts`、`tests/cli/translate.test.ts`、`tests/cli/batch.test.ts` |
 | `tome provider test` | `src/core/provider-test.ts` | `tests/cli/provider.test.ts` |
 | 契約測試，還沒執行過 | `tests/contract/` | `npm run test:contract` |

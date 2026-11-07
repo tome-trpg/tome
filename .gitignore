@@ -2,6 +2,10 @@ node_modules/
 dist/
 coverage/
 
+# 變異測試的沙箱與報告，只在 CI 產生（ADR-0110）
+.stryker-tmp/
+reports/
+
 # 使用者的書與衍生資料絕不進 repo（ADR-0001）
 *.pdf
 *.db

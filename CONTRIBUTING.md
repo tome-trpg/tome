@@ -25,6 +25,7 @@
 * 使用 `npx` 時，請寫出完整的套件名稱並加上 `--no-install`，例如 `npx --no-install @spec-family/spec-guard`。
 * `node src/cli/main.ts` 不需建置即可執行 CLI。
 * 測試一律使用合成文字。會存取實際憑證庫的測試預設不執行，執行時必須使用假金鑰。
+* 變異測試（Stryker）只在 GitHub Actions 的 `mutation` 工作流程執行，每週排程一次，也可以手動觸發，請勿在本機執行。它會占用所有 CPU，執行時間也很長。設定檔是 `stryker.config.mjs`，各模組的報告會上傳為工作流程的成品（[ADR-0110](docs/adr/0110-mutation-testing-decisions.md)）。
 
 ## 決策紀錄
 
