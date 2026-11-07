@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 const ALLOWED = new Set(['MIT', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause', 'ISC', 'MPL-2.0']);
 
 // 開發相依不進 npm 包，也不進主程式行程，所以多收這些。主程式的白名單不變（ADR-0084）。
-const DEV_ONLY_ALLOWED = new Set(['0BSD']);
+// BlueOak-1.0.0 與 CC-BY-4.0 給 Stryker 的相依用（ADR-0099 第 17 項）。
+const DEV_ONLY_ALLOWED = new Set(['0BSD', 'BlueOak-1.0.0', 'CC-BY-4.0']);
 
 // 沒有 license 欄位、人工讀過 LICENSE 檔的開發相依。綁版本，升級時要重讀（ADR-0084）。
 const DEV_LICENSE_EXCEPTIONS: Readonly<Record<string, string>> = {
