@@ -34,7 +34,7 @@ ADR-0112 第 5 項說規則書有 497 個單位所在的請求「有回覆、有
 
 成熟度：從帳本推算，不是 `stop_reason` 的原值；一本規則書、一篇小說、一個模型（Sonnet 5.5）、批次。
 
-細節與每一項的依據寫在共用筆記 `brief-025-questions.md`，11 項由維護者在 2026-11-08 全部照建議選定。實作時又多了 8 項細節，寫在 `brief-025-details.md`。
+細節與每一項的依據寫在共用筆記 `brief-025-questions.md`，11 項由維護者在 2026-11-08 全部照建議選定。實作時又多了 8 項細節，寫在 `brief-025-details.md`，Manager 同意照實作的做法定案：批次收回時重算 `max_tokens`、進度也是範圍內、範圍外卡住的單位不讓翻譯回 1、`scope.outside` 的字句、`tome status` 遇到對不上的範圍、名稱、`scope.chapters` 與 `{command}` 的寫法。
 
 ## 決定
 
@@ -59,7 +59,8 @@ ADR-0112 第 5 項說規則書有 497 個單位所在的請求「有回覆、有
 
 5. 修改 ADR-0111 第 8 項：`tome translate`、`tome batch collect` 完成的訊息、翻譯中的進度與 `tome status` 的數字都是**範圍內**的，範圍是 `book.yaml` 的 `chapters`；沒設範圍時就是整本書，跟原本一樣。
    * 第一次翻譯時，估價的「要送出」加「不需翻譯」就等於完成訊息的「共」。ADR-0112 那次是 2,274 加 276 等於 2,550，原本的完成訊息寫的是整本書的 2,579。
-   * `translate.done` 與 `status.units` 的文字不變。完成訊息只在範圍內有卡住的單位（`BLOCKED`、`FAILED_QA`、`REFUSED`）時是 fail，結束碼 1。
+   * `translate.done` 與 `status.units` 的文字不變。
+   * **結束碼的語意改變**：完成訊息只在範圍內有卡住的單位（`BLOCKED`、`FAILED_QA`、`REFUSED`）時是 fail，結束碼 1。範圍外的 `BLOCKED`、`FAILED_QA`、`REFUSED` 不再讓 `tome translate` 與 `tome batch collect` 回 1，它們算在第 6 項的 `outside`。
 6. 設了範圍，而範圍外有狀態不是 `DONE` 的單位時，接著印 `scope.outside`（info）：「以上是 --chapters {chapters} 範圍內的數字。範圍外另有 {outside} 個翻譯單位尚未完成，要翻譯請以 tome estimate {book} --chapters <範圍> 調整範圍。」換過範圍之後，舊範圍留下的 `FAILED_QA` 也算在 `outside`。`--retry-failed` 照舊只重試範圍內的。
 7. `tome status` 設了範圍時讀 `ir/document.json`，用 `planBook` 同一套 `chapterMap` 與 `parseChapters` 判斷章節，照舊不拿書的鎖。
    * 單位表的 `section` 存的是書籤標題的路徑，是書本文字，不能拿來判斷。回合 026 要改章節的判定（ADR-0113 第 7 項），每次從 `document.json` 算，就跟 `planBook` 一致，不用遷移資料庫。

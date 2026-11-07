@@ -62,7 +62,7 @@
 - `zh-TW` 的長度下限從 0.3 放寬為 0.2。第一次實際翻譯時，自然的譯文有低於 0.3 而被重送的情形。這個值目前只有一本小說、一個模型的數據。
 - 估價、試算、翻譯完成與 `tome status` 的單位數使用同一種說法，並列出不需翻譯、原樣保留的單位數，`--json` 也新增 `kept` 欄位。
 - 每個請求最多 40 個翻譯單位，`max_tokens` 也為每個單位多留空間。規則書表格的短格子不會再讓回覆被截斷、整個請求重送。這兩個數字依第一次實際翻譯的紀錄提出，尚未再次驗證。
-- `tome translate`、`tome batch collect` 完成時、翻譯中的進度與 `tome status` 的單位數，改為 `--chapters` 範圍內的數字，與估價一致；範圍外尚未完成的單位另列一行。`--json` 的 `total`、`kept`、`done` 等欄位也改為範圍內的數字，並新增 `outside`、`chapters`，`tome status` 另新增 `scope`。範圍外留下的未通過驗證或遭拒答的單位，不再使 `tome translate` 回傳 1。
+- `tome translate`、`tome batch collect` 完成時、翻譯中的進度與 `tome status` 的單位數，改為 `--chapters` 範圍內的數字，與估價一致；範圍外尚未完成的單位另列一行。`--json` 的 `total`、`kept`、`done` 等欄位也改為範圍內的數字，並新增 `outside`、`chapters`，`tome status` 另新增 `scope`。結束碼的意思也跟著改變：範圍外留下的未通過驗證、遭拒答或被個資閘門擋下的單位，不再使 `tome translate` 與 `tome batch collect` 回傳 1。
 - `book.db` 的帳本記錄每個請求回覆的 `stop_reason` 與 `max_tokens`，用來區分回覆被截斷還是漏掉段落。既有的工作區開啟時會自動升級，舊紀錄的這兩欄是空值。
 
 ### 修正
