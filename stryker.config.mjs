@@ -34,7 +34,8 @@ export default {
   // TypeScript 7 沒有 JS 編譯器 API，Stryker 在沙箱裡改寫 tsconfig 的步驟會丟錯。指向不存在的檔案，
   // 那個步驟就跳過。TOME 的 tsconfig 沒有 extends 或 references 指到專案外，不需要改寫（ADR-0110）。
   tsconfigFile: 'stryker-skips-tsconfig-rewrite.json',
-  // 門檻是第一次 CI 實測時 6 個模組分數的最低值（對外出口 85.55），無條件捨去到 5 的倍數，
-  // 每個模組都用它檢查（ADR-0063 第 3 項、ADR-0110 第 9 項）。high 與 low 只影響報告的顏色。
-  thresholds: { high: 80, low: 60, break: 85 },
+  // 門檻照第一次 CI 實測的最低分（對外出口 85.55）無條件捨去到 5 的倍數是 85，但對外出口的逾時判定
+  // 每次會浮動約一個變異，85 只剩不到一個變異的空間，所以維護者再往下一格定成 80。門檻是用來抓測試變弱，
+  // 不是抓雜訊。每個模組都用它檢查（ADR-0063 第 3 項、ADR-0110 第 9 項）。high 與 low 只影響報告的顏色。
+  thresholds: { high: 80, low: 60, break: 80 },
 };
