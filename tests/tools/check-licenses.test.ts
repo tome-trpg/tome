@@ -74,6 +74,16 @@ describe('findViolations', () => {
     ]);
   });
 
+  it.each([
+    ['minimatch', 'BlueOak-1.0.0'],
+    ['caniuse-lite', 'CC-BY-4.0'],
+  ])('takes %s under %s from a development dependency, never from the main program (ADR-0099 item 17)', (name, license) => {
+    const dev = { [`node_modules/${name}`]: { version: '1.0.0', license, dev: true } };
+    const main = { [`node_modules/${name}`]: { version: '1.0.0', license } };
+    expect(findViolations(dev)).toEqual([]);
+    expect(findViolations(main)).toEqual([{ name, version: '1.0.0', license, reason: 'license' }]);
+  });
+
   it('takes the exception for png-js at that version only, and only in development', () => {
     expect(findViolations({ 'node_modules/png-js': { version: '2.0.0', dev: true } })).toEqual([]);
     expect(findViolations({ 'node_modules/png-js': { version: '2.0.1', dev: true } })).toHaveLength(1);

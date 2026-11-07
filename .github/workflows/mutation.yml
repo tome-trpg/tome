@@ -1,0 +1,66 @@
+# 六個關鍵模組的變異測試（docs/adr/0063-mutation-testing.md、docs/adr/0110-mutation-testing-decisions.md）。
+# 只在這裡跑，不在本機跑。一個模組一個 job，同時跑。門檻在 stryker.config.mjs。
+# 公開 repo 的 CI 不放任何金鑰。
+name: mutation
+
+on:
+  schedule:
+    # 每週日 18:00 UTC，台灣時間週一 02:00。
+    - cron: '0 18 * * 0'
+  workflow_dispatch:
+  # 改到設定或這個 workflow 時跑一次。第一次實測也靠它，workflow 還不在 main 時觸發不了排程與手動。
+  pull_request:
+    paths:
+      - stryker.config.mjs
+      - .github/workflows/mutation.yml
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - module: mask
+            files: src/core/mask.ts
+          - module: verify
+            files: src/core/verify.ts
+          - module: memory
+            files: src/core/memory.ts
+          - module: budget
+            files: src/core/budget.ts
+          - module: egress
+            files: src/core/egress/gate.ts,src/core/egress/client.ts,src/core/egress/anthropic.ts
+          - module: state
+            files: src/core/state.ts
+    runs-on: ubuntu-24.04
+    # 約是估計時間的 2 倍，第一次實測之後照實際時間調整（ADR-0110）。
+    timeout-minutes: 150
+    steps:
+      # 釘在 commit，旁邊註明標籤：標籤被移動就是進入這條流程的路。
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Mutation testing
+        env:
+          MUTATE: ${{ matrix.files }}
+        run: npx --no-install @stryker-mutator/core run --mutate "$MUTATE"
+
+      - name: Upload the report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutation-${{ matrix.module }}
+          path: reports/mutation/
+          retention-days: 30
