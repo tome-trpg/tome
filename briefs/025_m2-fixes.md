@@ -60,8 +60,12 @@ M2 的重送其實是 `max_tokens` 截斷：維護者 `book.db` 的帳本裡，1
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
 - [x] 新的測試先在舊行為上失敗過，護欄測試故意改壞程式確認會失敗
-- [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
+
+  `f836555` 與 `40b4cd6` 的 `specs`、`test` 在 Windows 與 Ubuntu 都是第一次跑就通過。這個 PR 不會觸發 `engine` 與 `mutation`。
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+
+  兩個 commit 的 `CodeQL` 都是 success、0 個 annotation。三個 `Analyze` 工作各有 1 個 notice，是 `ubuntu-latest` 要換成 Ubuntu 26 的執行環境通知，不是程式掃描的警示。
 - [x] 訊息、`--json` 與帳本都不含書本文字，多餘參數的值不回顯
 
 ## Acceptance Criteria
