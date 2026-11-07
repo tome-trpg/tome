@@ -128,6 +128,9 @@ export function isApiError(value: unknown): value is ApiError {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && (value as ApiError).outcome === 'error';
 }
 
+/** 重試之前通知呼叫端，CLI 印進度（ADR-0111）。`attempt` 從 1 起算，`max` 是最多重試幾次。 */
+export type OnRetry = (status: number | null, seconds: number, attempt: number, max: number) => void;
+
 /**
  * 只重試 429、5xx 與網路錯誤，有 `retry-after` 時用它（ADR-0104 第 11 項、ADR-0107 第 12 項）。
  * `again` 換掉哪些狀態要重試，建立批次時用得到。
@@ -136,11 +139,14 @@ export async function withRetry<T>(
   call: () => Promise<T>,
   sleep: Sleep = sleepSeconds,
   again: (status: number | null) => boolean = retryable,
+  onRetry?: OnRetry,
 ): Promise<T> {
-  for (const seconds of BACKOFF_SECONDS) {
+  for (const [index, seconds] of BACKOFF_SECONDS.entries()) {
     const result = await call();
     if (!isApiError(result) || !again(result.status)) return result;
-    await sleep(result.retryAfter ?? seconds);
+    const wait = result.retryAfter ?? seconds;
+    onRetry?.(result.status, wait, index + 1, BACKOFF_SECONDS.length);
+    await sleep(wait);
   }
   return call();
 }
@@ -160,8 +166,13 @@ export function retryableSubmit(status: number | null): boolean {
   return submitRejected(status) && retryable(status);
 }
 
-export function sendWithRetry(provider: LLMProvider, body: MessagesBody, sleep: Sleep = sleepSeconds): Promise<RequestResult> {
-  return withRetry(() => provider.send(body), sleep);
+export function sendWithRetry(
+  provider: LLMProvider,
+  body: MessagesBody,
+  sleep: Sleep = sleepSeconds,
+  onRetry?: OnRetry,
+): Promise<RequestResult> {
+  return withRetry(() => provider.send(body), sleep, retryable, onRetry);
 }
 
 export interface MessageReply {

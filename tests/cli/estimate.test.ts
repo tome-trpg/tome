@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import type { Envelope } from '../../src/cli/output.ts';
 import { run } from '../../src/cli/run.ts';
-import { library, MODEL, setWorkspace, type Library } from '../helpers/library.ts';
+import { addSceneBreak, library, MODEL, setWorkspace, type Library } from '../helpers/library.ts';
 
 // 文字都是合成 PDF 的假文字。這一輪不連網，所以每個流程都盯著 fetch。
 
@@ -43,6 +43,18 @@ describe('tome estimate (ADR-0103)', () => {
     expect(output.data['high_usd']).toBeGreaterThan(output.data['low_usd'] as number);
     const done = output.findings.find((item) => item.code === 'estimate.done');
     expect(done?.params).toMatchObject({ model: MODEL, units: '3', requests: '1', retention: '29' });
+  });
+
+  it('counts the units it sends and, apart, the units kept as they are (ADR-0111)', async () => {
+    const lib = await library();
+    addSceneBreak(lib.home);
+    const { output } = await estimate(lib);
+    expect(output.data).toMatchObject({ units: 3, kept: 1 });
+    expect(output.findings.find((item) => item.code === 'estimate.done')?.params).toMatchObject({ units: '3', kept: '1' });
+    const { io, stdout } = lib.session();
+    await run(['estimate', 'book'], io);
+    expect(stdout()).toContain('本次要送出 3 個翻譯單位（1 個請求、');
+    expect(stdout()).toContain('另有 1 個翻譯單位不需翻譯，原樣保留。');
   });
 
   it('says in Chinese that it is an estimate, and keeps book text out', async () => {
@@ -323,8 +335,16 @@ describe('tome translate --dry-run (ADR-0103)', () => {
     const { exit, output } = await dryRun(lib);
     expect(exit).toBe(0);
     expect(spy).not.toHaveBeenCalled();
-    expect(output.data).toMatchObject({ book: 'book', requests: 1, units: 3, model: MODEL });
+    expect(output.data).toMatchObject({ book: 'book', requests: 1, units: 3, kept: 0, model: MODEL });
     expect(codes(output)).toContain('dry_run.done');
+  });
+
+  it('counts the units kept as they are, as the estimate does (ADR-0111)', async () => {
+    const lib = await library();
+    addSceneBreak(lib.home);
+    const { output } = await dryRun(lib);
+    expect(output.data).toMatchObject({ units: 3, kept: 1 });
+    expect(output.findings.find((item) => item.code === 'dry_run.done')?.params).toMatchObject({ kept: '1' });
   });
 
   it('puts no book text in what it reports', async () => {

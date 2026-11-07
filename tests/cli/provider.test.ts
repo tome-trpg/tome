@@ -237,6 +237,7 @@ function matching(model: ProviderModel): ModelReply {
 async function tested(change: (provider: FakeProvider) => void = () => undefined): Promise<{
   exit: number;
   output: Envelope;
+  progress: string;
   provider: FakeProvider;
   host: FakeHost;
 }> {
@@ -244,9 +245,9 @@ async function tested(change: (provider: FakeProvider) => void = () => undefined
   for (const model of profile.models) provider.models.set(model.id, matching(model));
   change(provider);
   const host = adapterHost(provider);
-  const { io, stdout } = capture({ env: {}, secrets: NO_KEYS, llm: host });
+  const { io, stdout, stderr } = capture({ env: {}, secrets: NO_KEYS, llm: host });
   const exit = await run(['provider', 'test', '--json'], io);
-  return { exit, output: JSON.parse(stdout()) as Envelope, provider, host };
+  return { exit, output: JSON.parse(stdout()) as Envelope, progress: stderr(), provider, host };
 }
 
 function codes(output: Envelope): string[] {
@@ -322,12 +323,15 @@ describe('tome provider test (ADR-0103 item 6, ADR-0109 item 9)', () => {
   });
 
   it('retries like everything else, then stops with the status', async () => {
-    const { exit, output, host } = await tested((fake) => {
+    const { exit, output, progress, host } = await tested((fake) => {
       for (const { id } of profile.models) fake.models.set(id, 503);
     });
     expect(exit).toBe(1);
     expect(output.findings.at(-1)).toMatchObject({ code: 'provider.test_failed', params: { status: '503' } });
     expect(host.waits).toEqual([1, 2, 4, 8, 16]);
+    // 每次重試前一行（ADR-0111）。
+    expect(progress.match(/後重試/g)).toHaveLength(5);
+    expect(progress).toContain('（狀態碼 503，- 表示沒有收到回應），8 秒後重試（第 4 次，最多 5 次）。\n');
   });
 
   it('asks for a key first, and connects nowhere without one', async () => {

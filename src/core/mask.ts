@@ -29,7 +29,7 @@ export interface TermMatch {
   readonly roles?: readonly string[];
 }
 
-const LETTER = /\p{L}/u;
+const LETTERS = /\p{L}/gu;
 const WORD_START = /^[\p{L}\p{N}]/u;
 const WORD_END = /[\p{L}\p{N}]$/u;
 
@@ -49,23 +49,30 @@ function chooseRanges(ranges: readonly MaskRange[]): MaskRange[] {
   return chosen;
 }
 
+function letters(text: string): number {
+  return text.match(LETTERS)?.length ?? 0;
+}
+
+/**
+ * 佔位符以外還有字母才要送 LLM（ADR-0100）。用跳脫前的文字判斷：`&amp;` 裡的字母不是書的內容。
+ * 佔位符是原文裡不重疊的片段，所以比字母數就夠，`tome status` 從 `book.db` 也算得出來（ADR-0111）。
+ */
+export function needsLlm(text: string, placeholders: readonly Pick<Placeholder, 'text'>[]): boolean {
+  return letters(text) > placeholders.reduce((total, hidden) => total + letters(hidden.text), 0);
+}
+
 /** 佔位符編號在單位內從 1 起算，依出現順序，翻譯記憶的鍵才穩定。 */
 export function maskText(text: string, ranges: readonly MaskRange[]): MaskedText {
   const placeholders: Placeholder[] = [];
   let masked = '';
-  let visible = '';
   let cursor = 0;
   for (const { start, end, kind } of chooseRanges(ranges)) {
-    const before = text.slice(cursor, start);
     const id = placeholders.length + 1;
     placeholders.push({ id, kind, text: text.slice(start, end) });
-    masked += escapeText(before) + placeholderTag(id, kind);
-    visible += before;
+    masked += escapeText(text.slice(cursor, start)) + placeholderTag(id, kind);
     cursor = end;
   }
-  const rest = text.slice(cursor);
-  // 用跳脫前的文字判斷：`&amp;` 裡的字母不是書的內容。
-  return { masked: masked + escapeText(rest), placeholders, needs_llm: LETTER.test(visible + rest) };
+  return { masked: masked + escapeText(text.slice(cursor)), placeholders, needs_llm: needsLlm(text, placeholders) };
 }
 
 /** 把解析出的片段還原成文字。佔位符對不上要先由驗證擋下，走到這裡是程式錯誤。 */

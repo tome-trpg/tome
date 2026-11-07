@@ -158,7 +158,15 @@ export interface ExtractOptions {
   readonly platform?: NodeJS.Platform;
   readonly tool?: ToolRunner;
   readonly stream?: StreamRunner;
+  /** 引擎啟動前叫一次。引擎載入模型時沒有事件，先讓使用者知道在做什麼（ADR-0111）。 */
+  readonly onEngineStart?: (engine: { readonly name: string; readonly device: Device; readonly pages: number }) => void;
   readonly onPage?: (done: number, total: number) => void;
+  /** 引擎結束時叫一次，不論成敗。 */
+  readonly onEngineEnd?: () => void;
+  /** document 層要重新組裝時叫一次，沿用時不叫（ADR-0111）。 */
+  readonly onAssemble?: () => void;
+  /** 探測要重新跑時叫一次，帶頁數（ADR-0111）。 */
+  readonly onProbe?: (pages: number) => void;
 }
 
 async function chooseDevice(engine: InstalledEngine, options: ExtractOptions): Promise<Device> {
@@ -216,6 +224,7 @@ async function runEngine(
   const reported = new Map<number, string>();
   let done = 0;
   const { command, args, cwd } = engineCommand(home, spec, platform);
+  options.onEngineStart?.({ name: spec.name, device, pages: pending.length });
   const outcome = await stream(command, [...args, '--manifest', manifestPath], env, {
     cwd,
     extraEnv: spec.env ?? {},
@@ -229,7 +238,7 @@ async function runEngine(
       done += 1;
       onPage?.(done, pending.length);
     },
-  });
+  }).finally(() => options.onEngineEnd?.());
 
   // 事件只是進度，算數的是檔案。
   const failed = pending.flatMap((page) => {
@@ -424,6 +433,7 @@ async function buildDocument(
   book: Book,
   probe: Probe,
   results: readonly EngineResult[],
+  onAssemble: ExtractOptions['onAssemble'],
 ): Promise<DocumentResult> {
   const language = loadSourceLanguage(book.config.source_lang);
   const overrides = readOverrides(home, slug);
@@ -442,6 +452,7 @@ async function buildDocument(
       return { data: documentData(previous, true), findings: [finding('extract.document_reused', 'info', params)] };
     }
 
+    onAssemble?.();
     const native = probe.pages.filter(({ kind }) => kind === 'native').map(({ page }) => page);
     const layouts = await readLayouts(book.config.pdf.path, native);
     const pages = assemblyPages(probe, results, layouts);
@@ -504,7 +515,7 @@ export function extractBook(options: ExtractOptions): Promise<ExtractResult> {
 async function extractLocked(options: ExtractOptions): Promise<ExtractResult> {
   const { home, slug } = options;
   const book = readBook(home, slug);
-  const { probe, summary } = await probeBook(home, slug);
+  const { probe, summary } = await probeBook(home, slug, options.onProbe);
   const skipped = summary.pages - summary.kinds.native;
   const warnings = skipped > 0 ? [finding('probe.pages_skipped', 'warn', { count: String(skipped) })] : [];
   const groups = pagesByEngine(probe);
@@ -537,7 +548,7 @@ async function extractLocked(options: ExtractOptions): Promise<ExtractResult> {
     }
   }
   const sum = (key: 'ran' | 'reused'): number => results.reduce((total, item) => total + item[key], 0);
-  const document = await buildDocument(home, slug, book, probe, results);
+  const document = await buildDocument(home, slug, book, probe, results, options.onAssemble);
   return {
     data: {
       pages,

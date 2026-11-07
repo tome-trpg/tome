@@ -11,6 +11,7 @@ import {
   type ApiError,
   type LLMHost,
   type LLMProvider,
+  type OnRetry,
   type RequestResult,
   type Sleep,
 } from './llm.ts';
@@ -55,6 +56,9 @@ export interface TranslateOptions {
   readonly host: LLMHost;
   readonly retryFailed: boolean;
   readonly onProgress?: (done: number, total: number) => void;
+  /** 要送出請求之前，說要送幾個（ADR-0111）。沒有要送的就不叫。 */
+  readonly onStart?: (mode: RequestMode, requests: number) => void;
+  readonly onRetry?: OnRetry;
 }
 
 /** 一次翻譯流程要的東西，即時與批次共用。 */
@@ -75,6 +79,7 @@ export interface TranslationRun {
   /** 閱讀順序上前一個單位的遮蔽後文字，翻譯記憶的鍵要用。 */
   readonly previous: ReadonlyMap<string, string>;
   readonly onProgress: TranslateOptions['onProgress'];
+  readonly onRetry: TranslateOptions['onRetry'];
   /** 不會讓流程停下的發現，最後一起回報。 */
   readonly notes: Finding[];
   /** 這次送出了幾個請求。 */
@@ -426,7 +431,7 @@ export function answered(run: Run, work: Work, result: Answer, ids: readonly str
 /** 閘門擋下不是錯誤，單位要標成 `BLOCKED`。其他錯誤照樣丟出去，單位留在 `IN_FLIGHT`，下次會重送。 */
 async function exchange(run: Run, body: MessagesBody): Promise<RequestResult | EgressBlocked> {
   try {
-    return await sendWithRetry(run.llm, body, run.sleep);
+    return await sendWithRetry(run.llm, body, run.sleep, run.onRetry);
   } catch (error) {
     if (error instanceof EgressBlocked) return error;
     throw error;
@@ -502,8 +507,12 @@ export function report(run: Run, stop: Finding | null, findings: readonly Findin
   const left = total - done - stuck;
   const spent = spentUsd(run.store);
   const { mode } = run.plan;
+  // 不需翻譯的單位建立時就原樣完成，算在 `done` 裡，寫出來估價的數字才對得起來（ADR-0111）。
+  const kept = run.plan.units.filter((unit) => !unit.needs_llm).length;
   const params = {
+    book: run.slug,
     done: String(done),
+    kept: String(kept),
     total: String(total),
     blocked: String(blockedUnits),
     failed: String(failed),
@@ -518,6 +527,7 @@ export function report(run: Run, stop: Finding | null, findings: readonly Findin
       requests: run.sent,
       ...(mode === 'batch' ? { batches: run.batches } : {}),
       done,
+      kept,
       total,
       blocked: blockedUnits,
       failed,
@@ -561,7 +571,7 @@ export async function withRun(
   setup: RunSetup,
   work: (run: Run, findings: readonly Finding[]) => Promise<PlanOutcome>,
 ): Promise<PlanOutcome> {
-  const { home, slug, host, onProgress } = options;
+  const { home, slug, host, onProgress, onRetry } = options;
   const book = readBook(home, slug);
   const store = openBookStore(home, slug);
   const series = openSeriesStore(home, slug);
@@ -598,6 +608,7 @@ export async function withRun(
         return before === undefined ? [] : [[unit_id, before.masked] as const];
       })),
       onProgress,
+      onRetry,
       notes: [],
       sent: 0,
       batches: 0,
@@ -609,6 +620,12 @@ export async function withRun(
   }
 }
 
+/** 開始送之前說要送幾個請求，送出前常有一段時間沒有輸出（ADR-0111）。 */
+export function announce(run: Run, options: TranslateOptions): void {
+  const requests = queuedWork(run).length;
+  if (requests > 0) options.onStart?.(run.plan.mode, requests);
+}
+
 /** `tome translate --realtime`。一本書同時只跑一個流程（ADR-0054）。 */
 export function translateBook(options: TranslateOptions): Promise<PlanOutcome> {
   const setup = { mode: 'realtime', confirm: true, refusePending: true } as const;
@@ -616,6 +633,7 @@ export function translateBook(options: TranslateOptions): Promise<PlanOutcome> {
     withRun(options, setup, async (run, findings) => {
       recover(run);
       if (options.retryFailed) requeueStuck(run);
+      announce(run, options);
       return report(run, await drain(run), findings);
     }),
   );

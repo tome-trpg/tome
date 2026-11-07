@@ -14,7 +14,7 @@ import { addEngine, listEngines, removeEngine } from '../core/engine.ts';
 import { TomeError } from '../core/errors.ts';
 import { extractBook } from '../core/extract.ts';
 import { exitCodeOf, finding, type Finding } from '../core/findings.ts';
-import type { LLMHost } from '../core/llm.ts';
+import type { LLMHost, OnRetry } from '../core/llm.ts';
 import { lintPack } from '../core/pack-lint.ts';
 import { testPack } from '../core/pack-test.ts';
 import { createPack, listPacks, locatePack } from '../core/pack.ts';
@@ -55,6 +55,7 @@ import {
   type ArgumentKey,
 } from './messages.ts';
 import { errorEnvelope, renderFinding, successEnvelope } from './output.ts';
+import { EngineProgress, systemClock, type Clock } from './progress.ts';
 import { readSecret, type SecretInput } from './read-secret.ts';
 
 export interface Writable {
@@ -72,6 +73,8 @@ export interface Io {
   readonly stream?: StreamRunner;
   /** 測試才給，把端點指到本機的假供應商。沒給就用使用者的金鑰接 Anthropic（ADR-0109 第 5 項）。 */
   readonly llm?: LLMHost;
+  /** 進度依時間印，測試注入自己的時鐘（ADR-0111）。 */
+  readonly clock?: Clock;
 }
 
 interface Result {
@@ -167,7 +170,23 @@ async function gpuFinding(io: Io): Promise<Finding> {
   return finding('probe.gpu', 'info', { name: gpu.name, vram: String(gpu.vram_mb) });
 }
 
-const PROGRESS_EVERY = 10;
+/** 探測要跑一陣子，先說要探測幾頁（ADR-0111）。 */
+function probeProgress(io: Io): (pages: number) => void {
+  return (pages) => io.stderr.write(progressText('probe', { pages: String(pages) }));
+}
+
+/** 重試之前說幾秒後重試、第幾次，退避時才不會整段沒有輸出（ADR-0111）。 */
+function retryProgress(io: Io): OnRetry {
+  return (status, seconds, attempt, max) =>
+    io.stderr.write(
+      progressText('retry', {
+        status: String(status ?? '-'),
+        seconds: String(seconds),
+        attempt: String(attempt),
+        max: String(max),
+      }),
+    );
+}
 
 /**
  * 要連網的指令一開始先取金鑰，沒有就停下，不開書也不連網（ADR-0034、ADR-0109 第 5 項）。
@@ -195,8 +214,11 @@ async function withHost(io: Io, data: Result['data'], work: (host: LLMHost) => P
 }
 
 /** 進度走 stderr，`--json` 的 stdout 不受影響。 */
-function progressOf(io: Io): Pick<BatchOptions, 'onProgress' | 'onBatchSent' | 'onBatchWait'> {
+function progressOf(io: Io): Pick<BatchOptions, 'onProgress' | 'onBatchSent' | 'onBatchWait' | 'onStart' | 'onRetry'> {
   return {
+    onStart: (mode, requests) =>
+      io.stderr.write(progressText(mode === 'realtime' ? 'translate_realtime' : 'translate_batch', { requests: String(requests) })),
+    onRetry: retryProgress(io),
     onProgress: (done, total) => io.stderr.write(progressText('unit', { done: String(done), total: String(total) })),
     onBatchSent: (batch, requests) =>
       io.stderr.write(progressText('batch_sent', { batch: String(batch), requests: String(requests) })),
@@ -213,7 +235,9 @@ async function withBook(
 ): Promise<Result> {
   const slug = positionals[0];
   if (slug === undefined) throw missing('book');
-  return withHost(io, { book: slug }, (host) => work({ home: resolveHome(io.env, io.platform), slug, host }));
+  return withHost(io, { book: slug }, (host) =>
+    work({ home: resolveHome(io.env, io.platform), slug, host, onRetry: retryProgress(io) }),
+  );
 }
 
 const COMMANDS: readonly Command[] = [
@@ -267,6 +291,7 @@ const COMMANDS: readonly Command[] = [
         name: stringValue(parsed, 'as'),
         system: stringValue(parsed, 'system'),
         sourceLang: stringValue(parsed, 'source-lang'),
+        onProbe: probeProgress(io),
       });
       if (result.probe === undefined) {
         return { data: { book: result.book ?? null }, findings: result.findings };
@@ -284,7 +309,7 @@ const COMMANDS: readonly Command[] = [
     run: async ({ positionals }, io) => {
       const book = positionals[0];
       if (book === undefined) throw missing('book');
-      const outcome = await probeBook(resolveHome(io.env, io.platform), book);
+      const outcome = await probeBook(resolveHome(io.env, io.platform), book, probeProgress(io));
       return {
         data: { book, probe: probeData(outcome) },
         findings: [...probeFindings(outcome), await gpuFinding(io)],
@@ -298,18 +323,24 @@ const COMMANDS: readonly Command[] = [
     run: async ({ positionals }, io) => {
       const slug = positionals[0];
       if (slug === undefined) throw missing('book');
-      const { data, findings } = await extractBook({
-        ...hostOptions(io),
-        home: resolveHome(io.env, io.platform),
-        slug,
-        onPage: (done, total) => {
-          // 進度走 stderr，`--json` 的 stdout 不受影響。
-          if (done % PROGRESS_EVERY === 0 || done === total) {
-            io.stderr.write(progressText('page', { done: String(done), total: String(total) }));
-          }
-        },
-      });
-      return { data: { book: slug, ...data }, findings };
+      // 進度走 stderr，`--json` 的 stdout 不受影響（ADR-0111）。
+      const write = (text: string): unknown => io.stderr.write(text);
+      const engine = new EngineProgress(io.clock ?? systemClock, write);
+      try {
+        const { data, findings } = await extractBook({
+          ...hostOptions(io),
+          home: resolveHome(io.env, io.platform),
+          slug,
+          onProbe: probeProgress(io),
+          onEngineStart: ({ name, device, pages }) => engine.start(name, device, pages),
+          onPage: (done, total) => engine.page(done, total),
+          onEngineEnd: () => engine.end(),
+          onAssemble: () => write(progressText('assemble')),
+        });
+        return { data: { book: slug, ...data }, findings };
+      } finally {
+        engine.end();
+      }
     },
   },
   {
@@ -542,7 +573,7 @@ const COMMANDS: readonly Command[] = [
     path: ['provider', 'test'],
     options: {},
     positionals: 0,
-    run: (_parsed, io) => withHost(io, { provider: 'anthropic' }, (host) => testProvider(host)),
+    run: (_parsed, io) => withHost(io, { provider: 'anthropic' }, (host) => testProvider(host, retryProgress(io))),
   },
 ];
 

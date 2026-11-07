@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { findTerm, maskText, restoreSegments, type MaskRange } from '../../src/core/mask.ts';
+import { findTerm, maskText, needsLlm, restoreSegments, type MaskRange } from '../../src/core/mask.ts';
 import { parseUnits, unitTag } from '../../src/core/tags.ts';
 
 // 文字都是這裡編的。
@@ -97,6 +97,22 @@ describe('whether a unit needs the LLM (ADR-0100)', () => {
 
   it('is not fooled by the entities that escaping adds', () => {
     expect(maskText('1 & 2 < 3', []).needs_llm).toBe(false);
+  });
+
+  it('gives the same answer from the source and the placeholders alone, as book.db keeps them (ADR-0111)', () => {
+    expect(needsLlm('1D100', [{ text: '1D100' }])).toBe(false);
+    expect(needsLlm('1D6 damage', [{ text: '1D6' }])).toBe(true);
+    expect(needsLlm('d6 d6', [{ text: 'd6' }])).toBe(true);
+    expect(needsLlm('d6 d6', [{ text: 'd6' }, { text: 'd6' }])).toBe(false);
+    fc.assert(
+      fc.property(fc.string(), fc.array(fc.tuple(fc.nat(), fc.nat())), (text, pairs) => {
+        const ranges = pairs.map(([a, b]) => DICE(Math.min(a, b) % (text.length + 1), Math.max(a, b) % (text.length + 1)));
+        const { placeholders, needs_llm } = maskText(text, ranges);
+        expect(needsLlm(text, placeholders)).toBe(needs_llm);
+        const visible = placeholders.reduce((rest, { text: hidden }) => rest.replace(hidden, ''), text);
+        expect(needs_llm).toBe(/\p{L}/u.test(visible));
+      }),
+    );
   });
 });
 

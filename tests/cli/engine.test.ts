@@ -114,6 +114,30 @@ describe('tome extract', () => {
     expect(extracted.stderr()).toContain('已解析 3/3 頁。');
   });
 
+  it('says what it is doing before the engine, during it, and before assembly (ADR-0111)', async () => {
+    const { env, session } = await workspace();
+    await run(['engine', 'add', FAKE_ENGINE], session().io);
+    const added = session();
+    await run(['add', await forgeFile('plain', tempDir()), '--as', 'book'], added.io);
+    expect(added.stderr()).toBe('正在探測 3 頁的文件結構……\n');
+    // 時間停在 0：第二頁離第一頁不到 5 秒，不印。
+    const clock = { now: () => 0, every: () => () => undefined };
+    const first = capture({ env, tool: async () => null, clock });
+    expect(await run(['extract', 'book', '--json'], first.io)).toBe(0);
+    expect(first.stderr()).toBe(
+      [
+        '正在啟動解析引擎 fake（cpu），本次要解析 3 頁。第一次載入模型可能需要一段時間。\n',
+        '已解析 1/3 頁。\n',
+        '已解析 3/3 頁。\n',
+        '正在組裝文件並檢查字元是否遺失……\n',
+      ].join(''),
+    );
+    // 探測、引擎、document 層都沿用時，什麼都不印。
+    const second = capture({ env, tool: async () => null, clock });
+    expect(await run(['extract', 'book', '--json'], second.io)).toBe(0);
+    expect(second.stderr()).toBe('');
+  });
+
   it('shows how the engine ended, in the message and in --json (ADR-0101)', async () => {
     const { env, session } = await workspace();
     await run(['engine', 'add', FAKE_ENGINE], session().io);
