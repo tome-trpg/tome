@@ -263,8 +263,17 @@ describe('length (ADR-0102)', () => {
   });
 
   it('accepts the edges of the range', () => {
-    expect(codes(verifyFragment(unit(source), `<s id="1">${'字'.repeat(12)}</s>`, context()))).toEqual([]);
+    expect(codes(verifyFragment(unit(source), `<s id="1">${'字'.repeat(8)}</s>`, context()))).toEqual([]);
     expect(codes(verifyFragment(unit(source), `<s id="1">${'字'.repeat(60)}</s>`, context()))).toEqual([]);
+  });
+
+  it('accepts a natural translation at 0.27, which the old floor of 0.3 sent back (ADR-0111)', () => {
+    const long = 'a '.repeat(149);
+    expect(codes(verifyFragment(unit(long), `<s id="1">${'字'.repeat(40)}</s>`, context()))).toEqual([]);
+  });
+
+  it('still sends back one that lost half its words, below 0.2 (ADR-0111)', () => {
+    expect(codes(verifyFragment(unit(source), `<s id="1">${'字'.repeat(7)}</s>`, context()))).toEqual(['too_short']);
   });
 
   it('leaves short sources alone, since Yes may well become one character', () => {

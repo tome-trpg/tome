@@ -18,7 +18,7 @@ import {
   type FakeRequest,
   type FakeScript,
 } from '../helpers/fake-provider.ts';
-import { library, MODEL, setWorkspace, type Library } from '../helpers/library.ts';
+import { addSceneBreak, library, MODEL, setWorkspace, type Library } from '../helpers/library.ts';
 
 // 文字都是合成 PDF 的假文字，模型的回覆都是這裡寫的。請求只到本機的假供應商，
 // 連到別的主機時對外出口會擋下來，這一輪沒有金鑰，也沒有連到本機以外的地方（ADR-0104）。
@@ -175,6 +175,43 @@ describe('tome translate --realtime (ADR-0104)', () => {
     expect(exit).toBe(0);
     expect(provider.requests).toHaveLength(1);
     expect(output.data).toMatchObject({ requests: 0, done: 3 });
+  });
+
+  it('says how many requests it is about to send, and nothing when there are none (ADR-0111)', async () => {
+    const lib = await confirmed();
+    const { host } = await fake(GOOD);
+    const first = await translate(lib, host);
+    expect(first.progress.startsWith('開始翻譯：即時模式，共 1 個請求。\n')).toBe(true);
+    const second = await translate(lib, host);
+    expect(second.progress).toBe('');
+  });
+
+  it('says before each retry how long it waits, and which try it is (ADR-0111)', async () => {
+    const lib = await confirmed();
+    const { host } = await fake((request, index) => {
+      if (index === 0) return { status: 429, retryAfter: 7 };
+      if (index === 1) return { drop: true };
+      return GOOD(request, index);
+    });
+    const { exit, progress } = await translate(lib, host);
+    expect(exit).toBe(0);
+    expect(progress).toContain('供應商暫時無法完成請求（狀態碼 429，- 表示沒有收到回應），7 秒後重試（第 1 次，最多 5 次）。\n');
+    expect(progress).toContain('供應商暫時無法完成請求（狀態碼 -，- 表示沒有收到回應），2 秒後重試（第 2 次，最多 5 次）。\n');
+  });
+
+  it('counts the units kept as they are apart, and points to the preview (ADR-0111)', async () => {
+    const lib = await library();
+    addSceneBreak(lib.home);
+    await estimate(lib, '--realtime', '--budget', '100', '--confirm');
+    const { provider, host } = await fake(GOOD);
+    const { output } = await translate(lib, host);
+    expect(provider.requests.map(unitsIn)).toEqual([3]);
+    expect(output.data).toMatchObject({ done: 4, kept: 1, total: 4, left: 0 });
+    expect(found(output, 'translate.done')?.params).toMatchObject({ book: 'book', done: '4', kept: '1', total: '4' });
+    const { io, stdout } = lib.session({ llm: host });
+    expect(await run(['translate', 'book', '--realtime'], io)).toBe(0);
+    expect(stdout()).toContain('共 4 個翻譯單位，其中 1 個不需翻譯、原樣保留：完成 4 個（含原樣保留的）');
+    expect(stdout()).toContain('請執行 tome preview book，在本機產生原文與譯文的對照檔。');
   });
 
   it('asks for a key before anything else, and sends nothing (ADR-0109 item 5)', async () => {

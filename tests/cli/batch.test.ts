@@ -18,7 +18,7 @@ import {
   type FakeProvider,
   type FakeScript,
 } from '../helpers/fake-provider.ts';
-import { library, MODEL, type Library } from '../helpers/library.ts';
+import { addSceneBreak, library, MODEL, type Library } from '../helpers/library.ts';
 
 // 批次模式（ADR-0107）。文字都是合成 PDF 的假文字，模型的回覆都是這裡寫的。
 // 請求只到本機的假供應商，這一輪沒有金鑰，也沒有連到本機以外的地方。
@@ -179,6 +179,7 @@ describe('tome translate in batches (ADR-0107)', () => {
     const { exit, progress } = await translate(lib, host);
     expect(exit).toBe(0);
     expect(host.waits).toEqual([POLL_SECONDS, POLL_SECONDS]);
+    expect(progress.startsWith('開始翻譯：批次模式，共 1 個請求。\n')).toBe(true);
     expect(progress).toContain('已送出第 1 批，含 1 個請求。');
     expect(progress).toContain('第 1 批處理中，已等待 1 分鐘。');
     expect(progress).toContain('第 1 批處理中，已等待 2 分鐘。');
@@ -188,10 +189,11 @@ describe('tome translate in batches (ADR-0107)', () => {
     const lib = await confirmed();
     const { provider, host } = await fake(GOOD);
     await translate(lib, host);
-    const { exit, output } = await translate(lib, host);
+    const { exit, output, progress } = await translate(lib, host);
     expect(exit).toBe(0);
     expect(provider.batches).toHaveLength(1);
     expect(output.data).toMatchObject({ requests: 0, batches: 0, done: 3 });
+    expect(progress).toBe('');
   });
 
   it('needs the estimate confirmed in batch mode', async () => {
@@ -407,9 +409,12 @@ describe('sending a batch (ADR-0107 item 8, ADR-0108)', () => {
   it('retries a 429 on create, as a 4xx made nothing, then gives the units back', async () => {
     const lib = await confirmed();
     const { provider, host } = await fake(GOOD, { createStatus: 429 });
-    const { exit, output } = await translate(lib, host);
+    const { exit, output, progress } = await translate(lib, host);
     expect(exit).toBe(1);
     expect(host.waits).toEqual([1, 2, 4, 8, 16]);
+    // 每次重試前一行，說幾秒後重試、第幾次（ADR-0111）。
+    expect(progress.match(/供應商暫時無法完成請求（狀態碼 429/g)).toHaveLength(5);
+    expect(progress).toContain('供應商暫時無法完成請求（狀態碼 429，- 表示沒有收到回應），16 秒後重試（第 5 次，最多 5 次）。\n');
     expect(found(output, 'translate.provider_failed')?.params).toEqual({ status: '429' });
     expect(provider.batches).toHaveLength(0);
     expect(batchRows(lib.home)[0]?.state).toBe('abandoned');
@@ -698,12 +703,22 @@ describe('tome batch status|collect|cancel (ADR-0107 item 17)', () => {
     const waited = host.waits.length;
     const processing = await tome(lib, host, 'batch', 'status', 'book');
     expect(found(processing.output, 'batch.processing')?.params).toEqual({ id: provider.batches[0]?.id });
+    expect(processing.progress).toBe('');
     expect(processing.output.data['batches']).toMatchObject([{ status: 'in_progress' }]);
     provider.batches.forEach((batch) => (batch.polls = 0));
     const ended = await tome(lib, host, 'batch', 'status', 'book');
     expect(found(ended.output, 'batch.ended')?.params).toMatchObject({ succeeded: '1', errored: '0', book: 'book' });
     expect(host.waits).toHaveLength(waited);
     expect(statesOf(lib.home)).toEqual(['IN_FLIGHT', 'IN_FLIGHT', 'IN_FLIGHT']);
+  });
+
+  it('says before each retry how long it waits, here too (ADR-0111)', async () => {
+    const { lib, provider, host } = await submitted(5);
+    provider.batch.pollStatus = 503;
+    const { exit, progress } = await tome(lib, host, 'batch', 'status', 'book');
+    expect(exit).toBe(1);
+    expect(progress).toContain('供應商暫時無法完成請求（狀態碼 503，- 表示沒有收到回應），1 秒後重試（第 1 次，最多 5 次）。\n');
+    expect(progress.match(/後重試/g)).toHaveLength(5);
   });
 
   it('collects without sending new batches or a confirmed estimate', async () => {
@@ -748,6 +763,22 @@ describe('tome batch status|collect|cancel (ADR-0107 item 17)', () => {
 });
 
 describe('tome status (ADR-0107 item 18)', () => {
+  it('counts the units kept as they are, from book.db, as translate does (ADR-0111)', async () => {
+    const lib = await library();
+    addSceneBreak(lib.home);
+    await run(['estimate', 'book', '--budget', '100', '--confirm'], lib.session().io);
+    const { host } = await fake(GOOD);
+    const translated = await translate(lib, host);
+    expect(found(translated.output, 'translate.done')?.params).toMatchObject({ total: '4', kept: '1', done: '4' });
+    const { output, text } = await tome(lib, undefined, 'status', 'book');
+    expect(output.data['kept']).toBe(1);
+    expect(found(output, 'status.units')?.params).toMatchObject({ total: '4', kept: '1', done: '4' });
+    const { io, stdout } = lib.session();
+    await run(['status', 'book'], io);
+    expect(stdout()).toContain('共 4 個翻譯單位，其中 1 個不需翻譯、原樣保留：完成 4 個（含原樣保留的）');
+    expect(text).not.toContain('* * *');
+  });
+
   it('says to estimate first when there are no units yet', async () => {
     const lib = await library();
     const { exit, output } = await tome(lib, undefined, 'status', 'book');

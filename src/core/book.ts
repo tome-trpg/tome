@@ -256,8 +256,11 @@ async function verifiedPdf(book: Book): Promise<void> {
   if ((await hashFile(path)) !== sha256) throw new TomeError('book.pdf_changed', { path });
 }
 
-/** 輸入的內容指紋沒變就沿用（ADR-0056）。PDF 被換掉時不靜默重算。 */
-export async function probeBook(home: string, slug: string): Promise<ProbeOutcome> {
+/**
+ * 輸入的內容指紋沒變就沿用（ADR-0056）。PDF 被換掉時不靜默重算。
+ * `onProbe` 在要重新探測時叫一次，帶頁數，大檔要跑一陣子（ADR-0111）。
+ */
+export async function probeBook(home: string, slug: string, onProbe?: (pages: number) => void): Promise<ProbeOutcome> {
   const book = readBook(home, slug);
   await verifiedPdf(book);
   const { path, sha256 } = book.config.pdf;
@@ -273,6 +276,7 @@ export async function probeBook(home: string, slug: string): Promise<ProbeOutcom
     // 雜湊對得上卻變成加密，只有 book.yaml 被手改才會發生。
     if (opened.status === 'encrypted') throw new TomeError('book.pdf_changed', { path });
     try {
+      onProbe?.(opened.pdf.pageCount);
       const texts: string[] = [];
       const probed = await probePdf(
         opened.pdf,
@@ -300,6 +304,7 @@ export interface AddOptions {
   readonly name?: string | undefined;
   readonly system?: string | undefined;
   readonly sourceLang?: string | undefined;
+  readonly onProbe?: (pages: number) => void;
 }
 
 export interface AddResult {
@@ -373,7 +378,7 @@ export async function addBook(options: AddOptions): Promise<AddResult> {
     ...(options.system === undefined ? {} : { system: options.system }),
   };
   writeBook(home, slug, config, 'wx');
-  const probe = await probeBook(home, slug);
+  const probe = await probeBook(home, slug, options.onProbe);
   return {
     book: slug,
     probe,

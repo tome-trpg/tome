@@ -566,7 +566,7 @@ flowchart LR
 | 機翻腔訊號、長度過長、代名詞與實體卡不符 | 列報告 |
 | 輸出的標題與表格結構跟 IR 不符 | 輸出失敗，這是程式錯誤 |
 
-機翻腔訊號、代名詞與實體卡不符、輸出的標題與表格結構排到 M3（ADR-0102）。混入簡體字沿用 repo 的判定：標準 Big5 以外的漢字，加上 Big5 也收錄的簡體字形，字表是語言資料，鎖定譯名裡的字不算。OpenCC 只用在只報告的用語檢查。數字比原文有沒有都出現，少了重送，譯文多出來的只報告，`three` 譯成 `3` 不是錯。
+長度過短的比例，`zh-TW` 是 0.2，`too_short` 照舊重送（ADR-0111）。這是第一筆數據：第一次真實翻譯自然的譯文有低於 0.3 的，少了一半的摘要約 0.19；只有一本小說、一個模型，規則書的表格與短標籤沒有數據。機翻腔訊號、代名詞與實體卡不符、輸出的標題與表格結構排到 M3（ADR-0102）。混入簡體字沿用 repo 的判定：標準 Big5 以外的漢字，加上 Big5 也收錄的簡體字形，字表是語言資料，鎖定譯名裡的字不算。OpenCC 只用在只報告的用語檢查。數字比原文有沒有都出現，少了重送，譯文多出來的只報告，`three` 譯成 `3` 不是錯。
 
 失敗時只重送失敗的單位並附上原因，預設最多 3 次。到達上限標成 `FAILED_QA`，列入交付報告，輸出時保留原文，MUST NOT 靜默略過。查到的 BabelDOC、PDFMathTranslate v1 都沒有這個保證（[佐證 §1.9](research/2026-10-31-landscape.md#19-標籤協定與佔位符的前例)）。
 
@@ -940,7 +940,7 @@ tome backup|purge <book>               備份與刪除
 
 `tome assemble` 偵測到未回收的 vault 修改就拒絕輸出，列出檔案，要求先跑 `tome sync`，人工譯文不會被覆蓋。
 
-**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。`tome verify <書>` 也已實作（`tests/cli/verify.test.ts`），全部通過回 0，有失敗回 1（ADR-0102）。`tome estimate <書> [--budget <美元>] [--chapters <範圍>] [--realtime] [--confirm]`、`tome translate <書> --dry-run [--realtime]` 也已實作（`tests/cli/estimate.test.ts`），`--confirm` 沒有預算或超過預算時回 1，不在表上的模型回 2（ADR-0103）。`tome preview <書>` 也已實作（`tests/cli/preview.test.ts`），在 `books/<slug>/review/` 產生原文與譯文對照（ADR-0104）。`tome translate <書> [--realtime] [--retry-failed]`、`tome batch status|collect|cancel <書>` 也已實作（`tests/cli/translate.test.ts`、`tests/cli/batch.test.ts`），接上 Anthropic 轉接層，一開始先取金鑰，沒有金鑰回 `key.missing`，不開書也不連網（ADR-0109）。`tome provider test` 也已實作（`tests/cli/provider.test.ts`），只查 Models API，不消耗 token，對照模型資料的 Batch、思考參數、伺服器端回退與淘汰，對不上只警告，不改設定檔（ADR-0109）。這兩組都只跟本機的假供應商跑過。`tome status <書>` 也已實作（`tests/cli/batch.test.ts`），只讀本機資料，不連網。`tome provider list` 也已實作（`tests/cli/provider.test.ts`），不連網，不讀金鑰與 `tome.yaml`，還沒 `tome init` 也能用，價目表過期時警告，結束碼仍是 0（ADR-0106）。其他指令還沒有。
+**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。`tome verify <書>` 也已實作（`tests/cli/verify.test.ts`），全部通過回 0，有失敗回 1（ADR-0102）。`tome estimate <書> [--budget <美元>] [--chapters <範圍>] [--realtime] [--confirm]`、`tome translate <書> --dry-run [--realtime]` 也已實作（`tests/cli/estimate.test.ts`），`--confirm` 沒有預算或超過預算時回 1，不在表上的模型回 2（ADR-0103）。`tome preview <書>` 也已實作（`tests/cli/preview.test.ts`），在 `books/<slug>/review/` 產生原文與譯文對照（ADR-0104）。`tome translate <書> [--realtime] [--retry-failed]`、`tome batch status|collect|cancel <書>` 也已實作（`tests/cli/translate.test.ts`、`tests/cli/batch.test.ts`），接上 Anthropic 轉接層，一開始先取金鑰，沒有金鑰回 `key.missing`，不開書也不連網（ADR-0109）。`tome provider test` 也已實作（`tests/cli/provider.test.ts`），只查 Models API，不消耗 token，對照模型資料的 Batch、思考參數、伺服器端回退與淘汰，對不上只警告，不改設定檔（ADR-0109）。這兩組都只跟本機的假供應商跑過。`tome status <書>` 也已實作（`tests/cli/batch.test.ts`），只讀本機資料，不連網。`tome provider list` 也已實作（`tests/cli/provider.test.ts`），不連網，不讀金鑰與 `tome.yaml`，還沒 `tome init` 也能用，價目表過期時警告，結束碼仍是 0（ADR-0106）。跑得久的指令在 stderr 印進度（ADR-0111）：`tome extract` 啟動引擎前印一行，頁的進度依時間印，引擎 30 秒沒有事件時說它仍在執行，組裝 document 層前也印一行；重新探測前說要探測幾頁；`tome translate` 送出前說模式與請求數；連到供應商重試前說幾秒後重試、第幾次。估價、翻譯完成與 `tome status` 都寫出不需翻譯、原樣保留的單位數，翻譯完成時提示用 `tome preview` 看譯文。其他指令還沒有。
 
 ---
 
@@ -1246,6 +1246,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0108](adr/0108-batch-create-server-errors.md) | 建立批次時收到 5xx | M2 |
 | [ADR-0109](adr/0109-anthropic-adapter-decisions.md) | Anthropic 轉接層的細節 | M2 |
 | [ADR-0110](adr/0110-mutation-testing-decisions.md) | 變異測試的細節 | M2 |
+| [ADR-0111](adr/0111-progress-and-first-translation.md) | 長時間指令的進度與第一次真實翻譯的回饋 | M2 |
 
 ---
 

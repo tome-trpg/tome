@@ -1,6 +1,6 @@
 import { guardedFetch } from './egress/client.ts';
 import { finding, type Finding } from './findings.ts';
-import { isApiError, sleepSeconds, withRetry, type ApiError, type LLMHost, type ModelFacts } from './llm.ts';
+import { isApiError, sleepSeconds, withRetry, type ApiError, type LLMHost, type ModelFacts, type OnRetry } from './llm.ts';
 import { loadProvider, type ProviderModel } from './provider.ts';
 
 // `tome provider test`（ADR-0103 第 6 項、ADR-0109 第 9 項）：用 Models API 對照模型資料，
@@ -83,7 +83,7 @@ function stopOn(error: ApiError): Finding | null {
 /** 這個指令沒有書，請求也沒有本文，所以不寫外送紀錄，白名單照樣檢查（ADR-0109 第 9 項）。 */
 const NO_PII = { pii: [], exceptions: [] };
 
-export async function testProvider(host: LLMHost): Promise<{ data: Record<string, unknown>; findings: Finding[] }> {
+export async function testProvider(host: LLMHost, onRetry?: OnRetry): Promise<{ data: Record<string, unknown>; findings: Finding[] }> {
   const { profile } = loadProvider('anthropic');
   const endpoint = host.endpoint ?? profile.endpoint;
   const fetcher = guardedFetch({ endpoint, provider: profile.id, rules: NO_PII, record: () => undefined });
@@ -91,7 +91,7 @@ export async function testProvider(host: LLMHost): Promise<{ data: Record<string
   const models: TestedModel[] = [];
   const findings: Finding[] = [];
   for (const model of profile.models) {
-    const facts = await withRetry(() => llm.describeModel(model.id), host.sleep ?? sleepSeconds);
+    const facts = await withRetry(() => llm.describeModel(model.id), host.sleep ?? sleepSeconds, undefined, onRetry);
     if (isApiError(facts)) {
       const stop = stopOn(facts);
       if (stop !== null) return { data: { provider: profile.id, models }, findings: [...findings, stop] };

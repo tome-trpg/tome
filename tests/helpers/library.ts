@@ -1,4 +1,5 @@
-import { writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { Io } from '../../src/cli/run.ts';
 import { run } from '../../src/cli/run.ts';
@@ -18,6 +19,18 @@ export interface Library {
 
 export function setWorkspace(home: string, extra: string): void {
   writeFileSync(join(home, 'tome.yaml'), `schema: tome-workspace/1\nengines: [fake]\n${extra}`);
+}
+
+/** 在 document 層最後加一行沒有字母的分隔線。它不需要翻譯，建立時就原樣完成（ADR-0100）。 */
+export function addSceneBreak(home: string): void {
+  const path = join(home, 'books', 'book', 'ir', 'document.json');
+  const document = JSON.parse(readFileSync(path, 'utf8')) as { blocks: Record<string, unknown>[] };
+  const last = document.blocks.at(-1);
+  if (last === undefined) throw new Error('the book has no blocks');
+  const text = '* * *';
+  const content_hash = createHash('sha256').update(text).digest('hex');
+  document.blocks.push({ ...last, id: 'p0009-000000', content_hash, text, ...('raw' in last ? { raw: text } : {}) });
+  writeFileSync(path, JSON.stringify(document));
 }
 
 export async function library(options: { extract?: boolean; config?: string } = {}): Promise<Library> {

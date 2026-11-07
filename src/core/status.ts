@@ -1,10 +1,11 @@
 import { readBook } from './book.ts';
 import { finding, type Finding } from './findings.ts';
 import { spentUsd } from './ledger.ts';
+import { needsLlm, type Placeholder } from './mask.ts';
 import { usd } from './provider.ts';
 import type { PlanOutcome } from './request.ts';
 import { UNIT_STATES, type UnitState } from './state.ts';
-import { openBookStore } from './store.ts';
+import { openBookStore, type Store } from './store.ts';
 
 // `tome status`（ADR-0099 第 2 項、ADR-0107 第 18 項）。只讀 `book.db` 與 `book.yaml`，不連網，
 // 不拿書的鎖，`tome translate` 在等批次時也能用。只有數字，不含書本文字。
@@ -92,12 +93,19 @@ function bucketParams(units: Readonly<Record<UnitState, number>>): Record<string
   );
 }
 
+/** 不需翻譯、原樣保留的單位。單位表沒有這一欄，用存下的原文與佔位符算，跟遮蔽時的判斷相同（ADR-0111）。 */
+function keptUnits(store: Store): number {
+  const rows = store.all<{ source: string; placeholders: string }>('SELECT source, placeholders FROM unit');
+  return rows.filter(({ source, placeholders }) => !needsLlm(source, JSON.parse(placeholders) as Placeholder[])).length;
+}
+
 export function bookStatus(home: string, slug: string, offsetOf: ZoneOffset = localOffset): PlanOutcome {
   const book = readBook(home, slug);
   const store = openBookStore(home, slug);
   try {
     const units = unitCounts(store.all('SELECT state, COUNT(*) AS count FROM unit GROUP BY state'));
     const total = Object.values(units).reduce((sum, count) => sum + count, 0);
+    const kept = keptUnits(store);
     const spent = spentUsd(store);
     const budget = book.config.budget_usd ?? null;
     const rows = store.all<BatchRow>(
@@ -106,6 +114,7 @@ export function bookStatus(home: string, slug: string, offsetOf: ZoneOffset = lo
     const data = {
       book: slug,
       units,
+      kept,
       spent_usd: spent,
       budget_usd: budget,
       batches: rows.map(({ remote_id, state, requests, submitted_at, expires_at, deleted_at }) => ({
@@ -119,7 +128,7 @@ export function bookStatus(home: string, slug: string, offsetOf: ZoneOffset = lo
     };
     const batches = batchFindings(rows, offsetOf);
     if (total === 0) return { data, findings: [finding('status.no_units', 'info', { book: slug }), ...batches] };
-    const params = { total: String(total), ...bucketParams(units) };
+    const params = { total: String(total), kept: String(kept), ...bucketParams(units) };
     const money =
       budget === null
         ? finding('status.no_budget', 'info', { spent: usd(spent) })

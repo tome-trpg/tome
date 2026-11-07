@@ -390,6 +390,8 @@ export interface BookPlan {
   readonly requests: readonly PlannedRequest[];
   readonly bodies: readonly MessagesBody[];
   readonly unitCount: number;
+  /** 範圍內不需翻譯、原樣保留的單位，跟 `tome translate` 的總數對得起來（ADR-0111）。 */
+  readonly keptCount: number;
   readonly chars: number;
   readonly estimate: Estimate;
   /** 單位、模型、回退模型、價格、範圍、預算、提示、規則包、來源語言與模式的內容指紋（ADR-0103、ADR-0104、ADR-0106）。 */
@@ -473,6 +475,7 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
       requests,
       bodies: sized.map(({ body }) => body),
       unitCount: planned.length,
+      keptCount: units.filter((unit) => !unit.needs_llm && inScope(unit)).length,
       chars: sized.reduce((total, { sourceChars }) => total + sourceChars, 0),
       estimate: sumEstimates(sized.map(({ estimate }) => estimate)),
       fingerprint,
@@ -493,6 +496,7 @@ function planData(plan: BookPlan): Readonly<Record<string, unknown>> {
     model: plan.model.id,
     requests: plan.requests.length,
     units: plan.unitCount,
+    kept: plan.keptCount,
     chars: plan.chars,
     low_usd: plan.estimate.low_usd,
     high_usd: plan.estimate.high_usd,
@@ -505,6 +509,7 @@ function planParams(plan: BookPlan): Readonly<Record<string, string>> {
     model: plan.model.id,
     requests: String(plan.requests.length),
     units: String(plan.unitCount),
+    kept: String(plan.keptCount),
     chars: String(plan.chars),
     low: usd(plan.estimate.low_usd),
     high: usd(plan.estimate.high_usd),

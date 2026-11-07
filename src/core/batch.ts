@@ -13,6 +13,7 @@ import {
   type BatchOutcome,
   type LLMHost,
   type LLMProvider,
+  type OnRetry,
   type RemoteBatch,
 } from './llm.ts';
 import { findModel } from './provider.ts';
@@ -21,6 +22,7 @@ import { openBookStore, type Store } from './store.ts';
 import {
   GO_ON,
   OUTSTANDING,
+  announce,
   answered,
   blockedStop,
   connect,
@@ -147,7 +149,7 @@ function giveBack(run: Run, batchId: number, state: 'abandoned' | 'collected'): 
  * 404 也可能是換了金鑰，資料還在原本的帳號，所以照樣警告（ADR-0109 第 24 項）。
  */
 function remove(run: Run, remoteId: string): Promise<void> {
-  return withRetry(() => run.llm.deleteRemote(remoteId), run.sleep).then((error) => {
+  return withRetry(() => run.llm.deleteRemote(remoteId), run.sleep, undefined, run.onRetry).then((error) => {
     if (error !== null && error.status !== 404) {
       run.notes.push(finding('batch.delete_failed', 'warn', { id: remoteId }));
       return;
@@ -161,7 +163,7 @@ function remove(run: Run, remoteId: string): Promise<void> {
 async function waitFor({ run, options }: BatchRun, row: BatchRow, remoteId: string): Promise<RemoteBatch | Finding> {
   let waited = 0;
   for (;;) {
-    const remote = await withRetry(() => run.llm.pollBatch(remoteId), run.sleep);
+    const remote = await withRetry(() => run.llm.pollBatch(remoteId), run.sleep, undefined, run.onRetry);
     if (isApiError(remote)) return providerFailed(remote);
     if (remote.status === 'ended') return remote;
     await run.sleep(POLL_SECONDS);
@@ -198,7 +200,7 @@ async function collect(batchRun: BatchRun, row: BatchRow, remoteId: string, unve
     await remove(run, remoteId);
     return { ...GO_ON, foreign: false };
   }
-  const items = await withRetry(() => run.llm.collectBatch(remoteId), run.sleep);
+  const items = await withRetry(() => run.llm.collectBatch(remoteId), run.sleep, undefined, run.onRetry);
   if (isApiError(items)) return { ...stopAt(providerFailed(items)), foreign: false };
   const prefix = `tome-${row.nonce}-`;
   if (unverified && (items.length === 0 || items.some(({ customId: id }) => !id.startsWith(prefix)))) return FOREIGN;
@@ -263,7 +265,7 @@ async function findCandidate(run: Run, row: BatchRow, rejected: ReadonlySet<stri
   let best: RemoteBatch | null = null;
   let after: string | null = null;
   for (;;) {
-    const page = await withRetry(() => run.llm.listBatches(after), run.sleep);
+    const page = await withRetry(() => run.llm.listBatches(after), run.sleep, undefined, run.onRetry);
     if (isApiError(page)) return providerFailed(page);
     let older = false;
     for (const remote of page.batches) {
@@ -381,7 +383,7 @@ async function sendBatch(batchRun: BatchRun, works: readonly Work[]): Promise<St
   const requests = prepared.map(({ sized }, index) => ({ customId: customId(nonce, index), body: sized.body }));
   let remote: RemoteBatch | ApiError;
   try {
-    remote = await withRetry(() => run.llm.submitBatch(requests), run.sleep, retryableSubmit);
+    remote = await withRetry(() => run.llm.submitBatch(requests), run.sleep, retryableSubmit, run.onRetry);
   } catch (error) {
     if (!(error instanceof EgressBlocked)) throw error;
     // 對外出口是最後一關，在那裡才擋下時整批的單位都標成 `BLOCKED`。
@@ -440,6 +442,7 @@ export function translateInBatches(options: BatchOptions): Promise<PlanOutcome> 
       const settled = await settleOutstanding(batchRun);
       if (settled.stop !== null) return report(run, settled.stop, findings);
       if (options.retryFailed) requeueStuck(run);
+      announce(run, options);
       return report(run, await drainBatches(batchRun, settled.next), findings);
     }),
   );
@@ -465,6 +468,7 @@ export interface BatchCommandOptions {
   readonly home: string;
   readonly slug: string;
   readonly host: LLMHost;
+  readonly onRetry?: OnRetry;
 }
 
 /** 沒有遠端 ID 或還沒確認的批次：不知道是不是這本書的，不查也不取消（ADR-0107 第 9 項）。 */
@@ -512,7 +516,7 @@ function batchData(remote: RemoteBatch): Readonly<Record<string, unknown>> {
 /** `tome batch status`：查供應商那邊的狀態，不等待，不改本機狀態（ADR-0107 第 17 項）。 */
 export function batchStatus(options: BatchCommandOptions): Promise<PlanOutcome> {
   return withBatches(options, async (llm, row) => {
-    const remote = await withRetry(() => llm.pollBatch(row.remote_id), options.host.sleep);
+    const remote = await withRetry(() => llm.pollBatch(row.remote_id), options.host.sleep, undefined, options.onRetry);
     if (isApiError(remote)) return { finding: providerFailed(remote), data: { id: row.remote_id } };
     const params = { id: remote.id, book: options.slug };
     if (remote.status === 'in_progress') return { finding: finding('batch.processing', 'info', { id: remote.id }), data: batchData(remote) };
@@ -526,7 +530,7 @@ export function batchStatus(options: BatchCommandOptions): Promise<PlanOutcome> 
 /** `tome batch cancel`：要求取消，不等待。之後收回時，處理完的照常套用，取消的放回佇列（ADR-0107 第 17 項）。 */
 export function cancelBatches(options: BatchCommandOptions): Promise<PlanOutcome> {
   return withBatches(options, async (llm, row) => {
-    const remote = await withRetry(() => llm.cancelBatch(row.remote_id), options.host.sleep);
+    const remote = await withRetry(() => llm.cancelBatch(row.remote_id), options.host.sleep, undefined, options.onRetry);
     if (isApiError(remote)) return { finding: providerFailed(remote), data: { id: row.remote_id } };
     return { finding: finding('batch.canceling', 'info', { id: remote.id, book: options.slug }), data: batchData(remote) };
   });
