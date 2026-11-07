@@ -12,7 +12,7 @@ date: 2026-11-01
 | 文件控制 | |
 | :--- | :--- |
 | 版本 | 1.0.0 |
-| 狀態 | 已定案。九輪討論已完成，決策見 [§9](#9-架構決策)。M0 的基礎與 M1 的解析已實作，還沒有翻譯功能，之後的改動走 ADR |
+| 狀態 | 已定案。九輪討論已完成，決策見 [§9](#9-架構決策)。M0 的基礎、M1 的解析與 M2 的翻譯核心已實作，還沒有可直接閱讀的輸出，之後的改動走 ADR |
 | 日期 | 2026-11-01 |
 | 結構 | [arc42](https://arc42.org) 範本加 [C4](https://c4model.com) 視圖 |
 | 正式語言 | 繁體中文（ADR-0003）。README 另有英文版 |
@@ -72,7 +72,7 @@ TOME 是在使用者自己電腦上執行的 CLI，把使用者擁有的 TRPG �
 
 主程式是 TypeScript，Node 24 以上。解析引擎是獨立行程，預設用 Docling。遊戲系統是資料形式的規則包，第一版附 `generic` 與 `d100-orc`。第一版只接 Anthropic，路線見[附錄 B](#附錄-b討論順序與路線圖)。
 
-這份摘要的內容都已定案，依據見 [§9](#9-架構決策) 的 ADR 索引。目前完成 M0 的基礎與 M1 的解析，見[附錄 B](#路線圖)，還沒有翻譯功能。所有品質數字都是目標，量測狀況見 [§10](#10-品質需求)。
+這份摘要的內容都已定案，依據見 [§9](#9-架構決策) 的 ADR 索引。目前完成 M0 的基礎、M1 的解析與 M2 的翻譯核心，見[附錄 B](#路線圖)，還沒有可直接閱讀的輸出。所有品質數字都是目標，量測狀況見 [§10](#10-品質需求)。
 
 ---
 
@@ -1248,6 +1248,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0110](adr/0110-mutation-testing-decisions.md) | 變異測試的細節 | M2 |
 | [ADR-0111](adr/0111-progress-and-first-translation.md) | 長時間指令的進度與第一次真實翻譯的回饋 | M2 |
 | [ADR-0112](adr/0112-m2-closeout.md) | M2 收尾與真實翻譯的數字 | M2 |
+| [ADR-0113](adr/0113-m3-decisions.md) | M3 的範圍、回合與開工前的決定 | M3 |
 
 ---
 
@@ -1392,7 +1393,7 @@ Gemini 顯式快取也算過：Flash-Lite 上 8k 前綴省下約 0.13，但排�
 | M3 譯名與輸出 | Pass 0、審定、`tome glossary import`、數值塊欄位化、vault、`tome sync`、`tome run`、交付報告、一致性報告、`tome purge`、`tome backup` | 能帶團閱讀的成品 |
 | M4 首版 | `d100-orc`、試翻校準、盲評、發佈流程、著作權律師審查（ADR-0105） | Q-1 到 Q-8 達標，發佈 0.1.0 |
 
-**目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。M2 已完成（ADR-0099、ADR-0112）：維護者用自己的金鑰翻過一篇公有領域短篇與一本規則書的第 3 到 108 頁，兩次第一輪的花費都在估價區間內，規則書因為重送比估價上限多 $0.0047；估價比例仍是未校準，只有 Sonnet 5.5、批次的兩筆數據。下一個階段是 M3。
+**目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。M2 已完成（ADR-0099、ADR-0112）：維護者用自己的金鑰翻過一篇公有領域短篇與一本規則書的第 3 到 108 頁，兩次第一輪的花費都在估價區間內，規則書因為重送比估價上限多 $0.0047；估價比例仍是未校準，只有 Sonnet 5.5、批次的兩筆數據。目前在 M3，範圍、10 個回合與開工前的決定見 ADR-0113。
 
 M2 已實作的項目：
 
@@ -1423,11 +1424,11 @@ M2 已實作的項目：
 | `tome status` | `src/core/status.ts` | `tests/cli/batch.test.ts` |
 | 當機注入 | `tests/cli/crash.test.ts` | `npm test` |
 | 變異測試，只在 CI 跑 | `stryker.config.mjs`、`.github/workflows/mutation.yml` | `tests/tools/mutation.test.ts` |
-| Anthropic 轉接層，只跑過假供應商 | `src/core/egress/anthropic.ts` | `tests/core/anthropic.test.ts`、`tests/cli/translate.test.ts`、`tests/cli/batch.test.ts` |
+| Anthropic 轉接層，用真的 API 跑過兩次翻譯（ADR-0112） | `src/core/egress/anthropic.ts` | `tests/core/anthropic.test.ts`、`tests/cli/translate.test.ts`、`tests/cli/batch.test.ts` |
 | `tome provider test` | `src/core/provider-test.ts` | `tests/cli/provider.test.ts` |
 | 契約測試，還沒執行過 | `tests/contract/` | `npm run test:contract` |
 
-轉接層只跟本機的假供應商跑過，契約測試這個回合沒有執行。認回批次的做法依賴 H-17，`results_url` 的主機與即時模式 5xx 的計費也沒確認，要等第一次真實請求（ADR-0107、ADR-0109）。
+轉接層已用真的 API 跑過兩次翻譯，`results_url` 的主機也確認在白名單內（ADR-0112）。契約測試還沒執行過。認回批次的做法依賴 H-17，即時模式 5xx 的計費也沒確認，兩次翻譯都沒有走到（ADR-0107、ADR-0109）。
 
 M1 已實作的項目：
 
