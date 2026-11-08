@@ -460,18 +460,24 @@ function writeCard(store: Store, id: number, card: ProposedCard): void {
   );
 }
 
+/** 還要送：送出前與批次裡（`sent`）的候選詞。 */
+function open(status: string | undefined): boolean {
+  return status === 'candidate' || status === 'sent';
+}
+
 /**
  * 每個候選詞恰好一個 `<card>` 或 `<skip>`。少了、標籤壞了、譯名是空的或混入簡體字的，下次再送，
- * 用完 3 次就是 `failed`，留給人填（ADR-0118 第 6 項）。
+ * 用完 3 次就是 `failed`，留給人填（ADR-0118 第 9 項）。`ids` 是每個詞在回應裡的 `<card id>`：
+ * 批次收回時照送出時的位置給，中間有詞不在了，後面的詞才不會拿到別人的卡，跟翻譯一樣（ADR-0107 第 11 項）。
  */
-function applyTerms(run: ScanRun, items: readonly ScanItem[], text: string, model: ProviderModel): void {
+function applyTerms(run: ScanRun, items: readonly ScanItem[], text: string, model: ProviderModel, ids: readonly string[]): void {
   const { store } = run;
   const { replies } = parseCards(text);
   store.transaction(() => {
     items.forEach((item, index) => {
-      if (statusOf(store, item.id) !== 'candidate') return;
+      if (!open(statusOf(store, item.id))) return;
       const key = termKey(item.id);
-      const reply = replies.get(String(index + 1));
+      const reply = replies.get(ids[index] ?? '');
       const attempts = bumpAttempts(store, item.id);
       store.run('DELETE FROM issue WHERE unit_id = ?', key);
       if (reply !== undefined) saveResponse(store, key, attempts, reply.raw, model.id);
@@ -486,8 +492,29 @@ function applyTerms(run: ScanRun, items: readonly ScanItem[], text: string, mode
         return;
       }
       recordIssue(store, key, checked === null ? 'card_missing' : checked.reason, null);
-      if (attempts >= MAX_ATTEMPTS) setStatus(store, item.id, 'failed');
+      setStatus(store, item.id, attempts >= MAX_ATTEMPTS ? 'failed' : 'candidate');
     });
+  });
+}
+
+/** 收不到結果或沒有送到的詞放回佇列，下一批重送（ADR-0107 第 13 項）。 */
+function requeue(store: Store, ids: readonly number[]): void {
+  for (const id of ids) {
+    if (statusOf(store, id) === 'sent') setStatus(store, id, 'candidate');
+  }
+}
+
+function sentIds(store: Store, batchId: number): number[] {
+  return store
+    .all<{ unit_id: string }>("SELECT unit_id FROM batch_unit WHERE batch_id = ? AND unit_id LIKE 'term:%'", batchId)
+    .map(({ unit_id }) => Number(unit_id.slice('term:'.length)));
+}
+
+/** 整批沒有送到供應商，或結果拿不回來。 */
+function giveBack(store: Store, batchId: number, state: 'abandoned' | 'collected'): void {
+  store.transaction(() => {
+    store.run('UPDATE batch SET state = ?, collected_at = ? WHERE id = ?', state, new Date().toISOString(), batchId);
+    requeue(store, sentIds(store, batchId));
   });
 }
 
@@ -530,18 +557,25 @@ function halves(work: Extract<ScanWork, { kind: 'terms' }>): ScanWork[] {
   return [work.items.slice(0, middle), work.items.slice(middle)].map((items) => ({ ...work, items }));
 }
 
+/** 要重送的請求：詞放回佇列，下一批送出時再標成 `sent`。 */
+function again(run: ScanRun, works: readonly ScanWork[]): readonly ScanWork[] {
+  const ids = works.flatMap((work) => (work.kind === 'terms' ? work.items.map(({ id }) => id) : []));
+  run.store.transaction(() => requeue(run.store, ids));
+  return works;
+}
+
 /** 先對半拆，拆到底才換 `fallback_model`，都不行就放棄，跟翻譯一樣（ADR-0104 第 12 項）。 */
 function refused(run: ScanRun, work: ScanWork): readonly ScanWork[] {
-  if (work.kind === 'terms' && work.items.length > 1) return halves(work);
+  if (work.kind === 'terms' && work.items.length > 1) return again(run, halves(work));
   const { fallback } = run.plan;
-  if (fallback !== null && fallback.id !== work.model.id) return [{ ...work, model: fallback }];
+  if (fallback !== null && fallback.id !== work.model.id) return again(run, [{ ...work, model: fallback }]);
   giveUp(run, work, 'refused');
   return [];
 }
 
 /** 同樣大小再送也是被截斷，所以對半拆；沒得拆就放棄（ADR-0104 第 15 項）。 */
 function truncated(run: ScanRun, work: ScanWork): readonly ScanWork[] {
-  if (work.kind === 'terms' && work.items.length > 1) return halves(work);
+  if (work.kind === 'terms' && work.items.length > 1) return again(run, halves(work));
   if (work.kind === 'summary') {
     run.summaryAttempts += 1;
     return [];
@@ -555,8 +589,19 @@ function unitsOf(work: ScanWork): { unit_id: string; chars: number }[] {
   return [{ unit_id: SUMMARY_KEY, chars: work.input.toc.length + work.input.opening.length }];
 }
 
+/** 送出時 `<term id>` 從 1 依序編號。 */
+function numbered(work: ScanWork): string[] {
+  return work.kind === 'terms' ? work.items.map((_item, index) => String(index + 1)) : [];
+}
+
 /** 不管回應用不用得上都先記帳，否則預算會少算已經付的錢（ADR-0104 第 43 項）。 */
-function answered(run: ScanRun, work: ScanWork, result: Answer, limit: number | null): readonly ScanWork[] {
+function answered(
+  run: ScanRun,
+  work: ScanWork,
+  result: Answer,
+  limit: number | null,
+  ids: readonly string[] = numbered(work),
+): readonly ScanWork[] {
   recordUsage(run.store, {
     request_id: result.requestId,
     model: work.model,
@@ -568,7 +613,7 @@ function answered(run: ScanRun, work: ScanWork, result: Answer, limit: number | 
   });
   if (result.outcome === 'refused') return refused(run, work);
   if (result.outcome === 'truncated') return truncated(run, work);
-  if (work.kind === 'terms') applyTerms(run, work.items, result.text, work.model);
+  if (work.kind === 'terms') applyTerms(run, work.items, result.text, work.model, ids);
   else applySummary(run, work.input, result.text, work.model);
   return [];
 }
@@ -600,7 +645,7 @@ function pendingWorks(run: ScanRun, exclude: ReadonlySet<number> = new Set(), su
 
 function reportProgress(run: ScanRun): void {
   if (run.onProgress === undefined) return;
-  const done = run.plan.items.filter(({ id }) => statusOf(run.store, id) !== 'candidate').length;
+  const done = run.plan.items.filter(({ id }) => !open(statusOf(run.store, id))).length;
   run.onProgress(done, run.plan.items.length);
 }
 
@@ -660,14 +705,40 @@ function sentScans(store: Store, batchId: number): SentScan[] {
   return [...requests].map(([id, { model, keys }]) => ({ customId: id, model, keys }));
 }
 
-/** 送出時的請求，換成目前的計畫。候選詞換了文字、提要的輸入變了，就不在這裡。 */
-function workOf(run: ScanRun, sent: SentScan): ScanWork | null {
-  const model = findModel(run.plan.provider.profile, sent.model);
+/** 收回時要套用的請求與每個詞的 `<card id>`。沒有要套用的是 null。 */
+interface Collectible {
+  readonly work: ScanWork;
+  readonly ids: readonly string[];
+  /** 送出時的詞都還在，`max_tokens` 才算得回來（ADR-0114）。 */
+  readonly whole: boolean;
+}
+
+/**
+ * 送出時的請求，換成目前的計畫。只套用還在批次裡（`sent`）的詞：中斷在收回到一半時，套用過的
+ * 不再套用，也不會多算一次（ADR-0107 第 11 項）。重新解析後文件裡沒有的詞不套用，放回佇列。
+ * 每個詞帶著送出時的位置，`<card id>` 是它加 1。
+ */
+function collectible(run: ScanRun, sent: SentScan): Collectible | null {
+  const { plan, store } = run;
+  const model = findModel(plan.provider.profile, sent.model);
   if (sent.keys.includes(SUMMARY_KEY)) {
-    return run.plan.summary === null ? null : { kind: 'summary', input: run.plan.summary, model };
+    const work = plan.summary === null ? null : live(run, { kind: 'summary', input: plan.summary, model });
+    return work === null ? null : { work, ids: [], whole: true };
   }
-  const items = sent.keys.flatMap((key) => run.plan.byId.get(Number(key.slice('term:'.length))) ?? []);
-  return items.length === 0 ? null : { kind: 'terms', items, model };
+  const placed = sent.keys.map((key, position) => ({ id: Number(key.slice('term:'.length)), position }));
+  const inFlight = placed.filter(({ id }) => statusOf(store, id) === 'sent');
+  const gone = inFlight.filter(({ id }) => !plan.byId.has(id)).map(({ id }) => id);
+  if (gone.length > 0) store.transaction(() => requeue(store, gone));
+  const kept = inFlight.flatMap(({ id, position }) => {
+    const item = plan.byId.get(id);
+    return item === undefined ? [] : [{ item, position }];
+  });
+  if (kept.length === 0) return null;
+  return {
+    work: { kind: 'terms', items: kept.map(({ item }) => item), model },
+    ids: kept.map(({ position }) => String(position + 1)),
+    whole: kept.length === sent.keys.length,
+  };
 }
 
 interface Collected extends Step {
@@ -683,7 +754,7 @@ async function collect(run: ScanRun, row: BatchRow, remoteId: string, unverified
   if ('level' in ended) return { ...stopAt(ended), foreign: false };
   if (ended.archivedAt !== null) {
     if (unverified) return FOREIGN;
-    store.run("UPDATE batch SET state = 'collected', collected_at = ? WHERE id = ?", new Date().toISOString(), row.id);
+    giveBack(store, row.id, 'collected');
     run.notes.push(finding('batch.archived', 'warn', { id: remoteId }));
     await remove(run, remoteId);
     return { ...GO_ON, foreign: false };
@@ -700,19 +771,20 @@ async function collect(run: ScanRun, row: BatchRow, remoteId: string, unverified
   let failed = 0;
   let fatal = false;
   for (const sent of sentScans(store, row.id)) {
-    const planned = workOf(run, sent);
-    const work = planned === null ? null : live(run, planned);
-    if (work === null) continue;
+    const found = collectible(run, sent);
+    if (found === null) continue;
+    const { work, ids, whole } = found;
     applied += 1;
     const result: BatchOutcome = results.get(sent.customId) ?? { outcome: 'errored', type: 'missing' };
     if (result.outcome === 'ok' || result.outcome === 'truncated' || result.outcome === 'refused') {
       succeeded += 1;
-      // 送出時的 `max_tokens` 沒有存，單位都還在才算得回來（ADR-0114）。
-      const whole = work.kind === 'summary' || work.items.length === sent.keys.length;
-      next.push(...answered(run, work, result, whole ? sizeWork(run.plan, work).body.max_tokens : null));
+      // 送出時的 `max_tokens` 沒有存，詞都還在才算得回來（ADR-0114）。照送出時的位置對 `<card id>`。
+      next.push(...answered(run, work, result, whole ? sizeWork(run.plan, work).body.max_tokens : null, ids));
       continue;
     }
+    // 不收費，詞放回佇列，下一批重送（ADR-0107 第 13 項）。
     failed += 1;
+    if (work.kind === 'terms') store.transaction(() => requeue(store, work.items.map(({ id }) => id)));
     const type = result.outcome === 'errored' ? result.type : result.outcome;
     if (!failures.includes(type)) failures.push(type);
     if (result.outcome === 'errored' && type !== 'missing' && !RETRYABLE_BATCH_ERRORS.includes(type)) fatal = true;
@@ -750,7 +822,7 @@ async function settleOutstanding(run: ScanRun): Promise<Step> {
       const found = await findCandidate(run, row, rejected);
       if (found !== null && typeof found !== 'string') return stopAt(found);
       if (found === null) {
-        store.run("UPDATE batch SET state = 'abandoned', collected_at = ? WHERE id = ?", new Date().toISOString(), row.id);
+        giveBack(store, row.id, 'abandoned');
         run.notes.push(finding('batch.not_sent', 'info', { requests: String(row.requests) }));
         continue;
       }
@@ -808,6 +880,8 @@ async function sendBatch(run: ScanRun, works: readonly ScanWork[]): Promise<Step
           work.model.id,
         );
       });
+      // 跟意圖紀錄同一個交易標成 `sent`，收回時只套用還在批次裡的詞（ADR-0107 第 8 項）。
+      if (work.kind === 'terms') for (const item of work.items) setStatus(store, item.id, 'sent');
     });
     return { id, nonce, remote_id: null, state: 'intent', requests: prepared.length, created_at: createdAt };
   });
@@ -820,12 +894,12 @@ async function sendBatch(run: ScanRun, works: readonly ScanWork[]): Promise<Step
     remote = await withRetry(() => run.llm.submitBatch(requests), run.sleep, retryableSubmit, run.onRetry);
   } catch (error) {
     if (!(error instanceof EgressBlocked)) throw error;
-    store.run("UPDATE batch SET state = 'abandoned' WHERE id = ?", row.id);
+    giveBack(store, row.id, 'abandoned');
     return blocked(hitCount(error.hits));
   }
   if (isApiError(remote)) {
     // 4xx 代表沒有建立。5xx 與沒有收到回應就不知道，留著意圖紀錄，下次執行時去認（ADR-0108）。
-    if (submitRejected(remote.status)) store.run("UPDATE batch SET state = 'abandoned' WHERE id = ?", row.id);
+    if (submitRejected(remote.status)) giveBack(store, row.id, 'abandoned');
     return stopAt(providerFailed(remote));
   }
   store.run(
@@ -871,7 +945,8 @@ function countEntities(store: Store, plan: ScanPlan): EntityCounts {
     proposed: of('proposed'),
     skipped: of('skipped'),
     failed: of('failed'),
-    left: of('candidate'),
+    // 還在批次裡沒收回的也算尚未處理。
+    left: of('candidate') + of('sent'),
   };
 }
 

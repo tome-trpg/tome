@@ -319,7 +319,9 @@ describe('tome scan-terms in batches (ADR-0118)', () => {
     const { provider, host } = await fake(GOOD, { polls: 5, pollStatus: 500 });
     const broken = await confirmed(lib, host);
     expect(broken.exit).toBe(1);
-    expect(entities(lib.home).every(({ status }) => status === 'candidate')).toBe(true);
+    // 還在批次裡，下次只收不重送。
+    expect(entities(lib.home).every(({ status }) => status === 'sent')).toBe(true);
+    expect(broken.output.data).toMatchObject({ proposed: 0, left: 3 });
     provider.batch.pollStatus = null;
     provider.batch.polls = 0;
     const { exit, output } = await tome(lib, host, 'batch', 'collect', 'book');
@@ -355,6 +357,56 @@ describe('tome scan-terms in batches (ADR-0118)', () => {
     const { host } = await fake(({ user }) => ({ text: translated(user) }));
     const { output } = await tome(lib, host, 'batch', 'collect', 'book');
     expect(codes(output)).toContain('batch.none');
+  });
+
+  // 回覆的 `<card id>` 是送出時在請求裡的位置。收第二次時，中間有詞不在了，後面的詞也不能拿到別人的卡。
+  it('gives each candidate its own card when the same batch is collected again after part of it was applied', async () => {
+    const lib = await book();
+    const script: FakeScript = ({ user }) =>
+      user.includes('<term ')
+        ? { text: '<card id="1" class="place">鹽沼</card><card id="2" class="place">鹽沼守望者</card>' }
+        : { text: FAKE_BRIEF };
+    const { provider, host } = await fake(script, { polls: 5, pollStatus: 500 });
+    await confirmed(lib, host);
+    // 第一次收回時，前兩個詞已經套用、批次還沒記成收回就中斷了。
+    withStore(lib.home, (store) =>
+      store.run("UPDATE entity SET status = 'proposed', target = 'x', attempts = 1 WHERE source IN ('Salt Marsh', 'Salt Marsh Wardens')"),
+    );
+    provider.batch.pollStatus = null;
+    provider.batch.polls = 0;
+    await tome(lib, host, 'batch', 'collect', 'book');
+    const [, , warden] = entities(lib.home);
+    expect(warden).toMatchObject({ source: 'Grey Warden', target: null });
+    expect(warden?.target).not.toBe('鹽沼');
+  });
+
+  it('gives each candidate its own card when a term left the book before its batch came back', async () => {
+    const lib = await book();
+    const { provider, host } = await fake(GOOD, { polls: 5, pollStatus: 500 });
+    await confirmed(lib, host);
+    setDocument(lib.home, BLOCKS.filter(({ role }) => role !== 'heading'));
+    provider.batch.pollStatus = null;
+    provider.batch.polls = 0;
+    await tome(lib, host, 'batch', 'collect', 'book');
+    const targets = Object.fromEntries(entities(lib.home).map(({ source, target }) => [source, target]));
+    expect(targets['Grey Warden']).toBe('譯：Grey Warden');
+    expect(targets['Salt Marsh']).toBe('譯：Salt Marsh');
+  });
+
+  it('counts a reply once when the same batch is collected again', async () => {
+    const lib = await book();
+    const script: FakeScript = ({ user }) =>
+      user.includes('<term ') ? { text: '<card id="1" class="place">鹽沼</card>' } : { text: FAKE_BRIEF };
+    const { provider, host } = await fake(script, { polls: 5, pollStatus: 500, deleteStatus: 500 });
+    await confirmed(lib, host);
+    provider.batch.pollStatus = null;
+    provider.batch.polls = 0;
+    await tome(lib, host, 'batch', 'collect', 'book');
+    const after = entities(lib.home).map(({ attempts }) => attempts);
+    // 刪除失敗的批次再記回沒收，模擬收到一半中斷，同一批再收一次。
+    withStore(lib.home, (store) => store.run("UPDATE batch SET state = 'submitted', collected_at = NULL WHERE stage = 'scan'"));
+    await tome(lib, host, 'batch', 'collect', 'book');
+    expect(entities(lib.home).map(({ attempts }) => attempts)).toEqual(after);
   });
 
   it('stops --realtime while a Pass 0 batch is out', async () => {

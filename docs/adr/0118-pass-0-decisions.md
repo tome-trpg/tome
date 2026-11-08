@@ -47,7 +47,7 @@ ADR-0113 第 13–15、22 項把回合 027「實體卡與 Pass 0」排在 026 �
 **儲存**
 
 12. `book.db` 遷移第 9 版：
-    * **`entity`**：`source`（原文，唯一）、`target`、`class`、`gender`、`pronoun`、`register`、`keep_source`、`match`（JSON，NULL 是預設的區分大小寫、全字）、`status`、`origin`、`sources`（JSON）、`occurrences`、`first_block`、`attempts`、時間。027 的 `status` 是 `candidate`、`proposed`、`skipped`、`failed`，`origin` 是 `pass0`；028 再加 `locked`、`rejected`、`import`、`new_term`。
+    * **`entity`**：`source`（原文，唯一）、`target`、`class`、`gender`、`pronoun`、`register`、`keep_source`、`match`（JSON，NULL 是預設的區分大小寫、全字）、`status`、`origin`、`sources`（JSON）、`occurrences`、`first_block`、`attempts`、時間。027 的 `status` 是 `candidate`、`sent`（在批次裡還沒收回）、`proposed`、`skipped`、`failed`，`origin` 是 `pass0`；028 再加 `locked`、`rejected`、`import`、`new_term`。
     * **`summary`**：一列，`era`、`tone`、`factions`、輸入的雜湊、模型、時間。
     * 請求、回應、帳本、外送紀錄與批次**沿用現有的表**，鍵用 `term:<id>`、`summary`。`batch` 加一欄 **`stage`**（`translate` 或 `scan`，舊的列是 `translate`）：翻譯收批次的程式只看自己的，否則 Pass 0 的批次會被當成翻譯的收掉，結果就不見了。
     * 重新解析後再跑：已有的列不刪；文件裡找不到的候選詞出現次數改成 0；新的加進來，只送 `candidate`。
@@ -59,6 +59,7 @@ ADR-0113 第 13–15、22 項把回合 027「實體卡與 Pass 0」排在 026 �
     * 指紋含全部候選詞與上下文、提要的輸入、`scanner_model`、`fallback_model`、兩份提示、規則包、來源與目標語言、模式與預算，跟翻譯一樣算全部，送到一半中斷時續跑不用重新確認。
     * 預算跟翻譯共用 `book.yaml` 的 `budget_usd`，`--budget` 跟 `tome estimate` 一樣可以改；送出前檢查已花加進行中加這次的上限。Pass 0 一律跑全書，不吃 `--chapters`。
     * **更正**：批次模式跟 `tome translate` 一樣，送出後在同一個指令裡每 60 秒查一次，等批次結束、收回、套用才結束（ADR-0107 第 12 項）；問題清單第 8 項寫的「送出後就結束」是錯的。中斷時留下的批次，再跑一次或 `tome batch collect` 收回。`--realtime` 遇到還沒收回的 Pass 0 批次就停（`batch.pending`）。
+    * 收回比照翻譯的批次（ADR-0107 第 8、11、13 項）：送出時跟意圖紀錄同一個交易把詞標成 `sent`；收回時只套用還是 `sent` 的詞，中斷在收回到一半時，套用過的不再套用，同一份回覆也不會多算一次嘗試；每個詞帶著送出時在請求裡的位置，`<card id>` 照那個位置對，中間有詞不在了，後面的詞才不會拿到別人的卡。重新解析後文件裡沒有的詞不套用。沒有送到、拿不回結果、單筆錯誤、取消或過期的詞放回 `candidate`，下一批重送。Manager 審 PR 67 時找到第一版用過濾後的位置對卡的錯，這一段是修正。
     * 個資閘門、外送紀錄與帳本走跟翻譯一樣的路（ADR-0039、ADR-0104）：即時模式每個請求在對外出口檢查，批次模式送出前逐一掃描整批，命中就不送。
 14. `tome.yaml` 的 **`scanner_model`** 必填，用到時才檢查，沒設回 `scanner_model.missing`（結束碼 2），不在模型表上回 2。拒答時改送 `fallback_model`，思考參數照 `translator_model` 的規則。
 15. `tome batch status|collect|cancel` 也管 Pass 0 的批次。沒有 Pass 0 的批次時，`tome batch collect` 跟以前一模一樣；有的話先收它，也有翻譯的批次就接著收翻譯的，`--json` 的 `data` 照舊是翻譯的，多一個 `scan`。
@@ -82,6 +83,8 @@ ADR-0113 第 13–15、22 項把回合 027「實體卡與 Pass 0」排在 026 �
 <!-- @assert-count target="src/core/scan.ts" symbol="export const CARD_OUTPUT_TOKENS = 32;" expected="1" reason="第 10 項：每個候選詞 32 token" -->
 <!-- @assert-count target="src/core/scan.ts" symbol="export const TOC_CHARS = 2000;" expected="1" reason="第 8 項：目錄最多 2,000 字元" -->
 <!-- @assert-count target="src/core/scan.ts" symbol="if (shown !== plan.fingerprint) {" expected="1" reason="第 13 項：要跟上次顯示的估價相同才送" -->
+<!-- @assert-count target="src/core/scan.ts" symbol="ids: kept.map(({ position }) => String(position + 1))," expected="1" reason="第 13 項：批次收回時照送出時的位置對 card id" -->
+<!-- @assert-count target="src/core/scan.ts" symbol="const inFlight = placed.filter(({ id }) => statusOf(store, id) === 'sent');" expected="1" reason="第 13 項：只套用還在批次裡的詞" -->
 <!-- @assert-count target="src/core/scan.ts" symbol="throw new TomeError('scanner_model.missing');" expected="1" reason="第 14 項：scanner_model 必填" -->
 <!-- @assert-count target="src/core/scan.ts" symbol="const level = counts.failed > 0 || counts.left > 0 ? 'warn' : 'info';" expected="1" reason="第 16 項：沒拿到提議不讓結束碼變 1" -->
 
