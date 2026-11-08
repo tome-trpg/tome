@@ -60,8 +60,12 @@ protectedFiles:
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
 - [x] 新的測試先在舊行為上失敗過，護欄測試故意改壞程式確認會失敗
-- [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
+
+  `6864c57`、`3a98329`、Manager 審查後的修正 `8b5f78b`、`f76d287`、`e9ebdfa` 的 `specs`、`test` 在 Windows 與 Ubuntu 都是第一次跑就通過。
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+
+  `e9ebdfa` 的 `CodeQL` 是 success、0 個 annotation，三個 `Analyze` 都在 attempt 1 通過。之前的四個 commit 各有一個 `Analyze` 在 init 下載 `codeql-bundle-v2.27.4` 時拿到 HTTP 504 而失敗，是基礎設施的錯，沒有掃描，**都沒有重跑**：`6864c57` 與 `8b5f78b` 是 `actions`，`3a98329` 與 `f76d287` 是 `javascript-typescript`；那四次的 `CodeQL` 都是 neutral、0 個 annotation。其餘 `Analyze` 工作的 notice 是 `ubuntu-latest` 要換成 Ubuntu 26 的執行環境通知。
 - [x] 訊息、`--json` 與紀錄都不含書本文字
 
   `tests/cli/glossary.test.ts` 確認 `tome glossary review` 與 `import` 的輸出不含原文、譯名與上下文，填錯的值也不回顯。
