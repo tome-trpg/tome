@@ -69,8 +69,12 @@ protectedFiles:
 - [x] 本機單一變異的小工具對改過的函式跑過一輪，存活的補上測試或說明是等價變異
 
   270 個變異，沒有存活，10 個等價變異寫在 Measured。
-- [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
+
+  `e9d1d39` 的 `specs`、`test` 在 Windows 與 Ubuntu 都是第一次跑就通過。
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+
+  `e9d1d39` 的 `CodeQL` 是 success、0 個 annotation，三個 `Analyze` 都在 attempt 1 通過；notice 只有 `ubuntu-latest` 要換成 Ubuntu 26 的執行環境通知。
 - [x] 訊息、`--json` 與紀錄都不含書本文字
 
   `tests/cli/fields.test.ts` 確認估價的輸出不含本機的譯文與名字，lint 的提醒不印標籤。
