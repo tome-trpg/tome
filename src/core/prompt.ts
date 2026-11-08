@@ -2,8 +2,10 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
+import type { BookSummary } from './entities.ts';
 import type { TargetLanguage } from './language.ts';
 import type { ResolvedPack } from './pack.ts';
+import { escapeText } from './tags.ts';
 
 // 靜態前綴（白皮書 §5.7、ADR-0103）。指令是英文，風格指南與範例是繁體中文（ADR-0099）。
 // 這段同一本書位元組一致，不放任何會變的東西（ADR-0036）。文字都是資料檔，由維護者審過。
@@ -66,8 +68,22 @@ function styleGuideOf(language: TargetLanguage): string {
   return language.style_guide.map((line) => `- ${line}`).join('\n');
 }
 
-export function staticPrefix(language: TargetLanguage, pack: ResolvedPack): string {
-  const parts = [readInstructions().trim(), styleGuideOf(language), packText(pack, PERSONA_FILE), packText(pack, FEW_SHOTS_FILE)];
+/** 全書提要，放靜態前綴的最後（ADR-0120）。是模型從書寫的，先跳脫，沒有提要就不放。 */
+function bookBlock(summary: BookSummary | null): string {
+  if (summary === null) return '';
+  const { era, tone, factions } = summary;
+  return `<book>\n<era>${escapeText(era)}</era>\n<tone>${escapeText(tone)}</tone>\n<factions>${escapeText(factions)}</factions>\n</book>`;
+}
+
+/** 同一本書位元組一致：提要只有重新掃描才會變（ADR-0036、ADR-0120）。 */
+export function staticPrefix(language: TargetLanguage, pack: ResolvedPack, summary: BookSummary | null = null): string {
+  const parts = [
+    readInstructions().trim(),
+    styleGuideOf(language),
+    packText(pack, PERSONA_FILE),
+    packText(pack, FEW_SHOTS_FILE),
+    bookBlock(summary),
+  ];
   return parts.filter((part) => part !== '').join('\n\n');
 }
 

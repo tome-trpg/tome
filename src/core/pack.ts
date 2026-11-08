@@ -64,10 +64,19 @@ export interface GlossaryTerm {
   readonly match?: TermMatch;
 }
 
+/** 實體卡的屬性，翻譯時寫在 `<term>` 上，也進翻譯記憶的鍵（ADR-0120）。規則包的詞條沒有。 */
+export interface TermAttributes {
+  readonly gender?: string;
+  readonly pronoun?: string;
+  readonly register?: string;
+}
+
 export interface LocalizedTerm {
   /** 詞條在這個來源語言的寫法。 */
   readonly text: string;
   readonly term: GlossaryTerm;
+  /** 只有實體卡、而且至少有一項時才有（ADR-0120）。 */
+  readonly attributes?: TermAttributes;
 }
 
 export interface PackContent {

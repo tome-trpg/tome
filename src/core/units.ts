@@ -78,11 +78,15 @@ function termRanges(terms: readonly LocalizedTerm[], { source, role }: UnitSourc
   });
 }
 
-/** 依閱讀順序產生單位。模式逾時就不產生單位，回報是哪個模式（ADR-0049）。 */
+/**
+ * 依閱讀順序產生單位。模式逾時就不產生單位，回報是哪個模式（ADR-0049）。`terms` 是這本書的詞條，
+ * 含鎖定的實體卡（ADR-0120），`keep_source` 的遮蔽起來；沒給就只用規則包的。
+ */
 export async function buildUnits(
   document: IrDocument,
   pack: ResolvedPack,
   sourceLang: string,
+  terms: readonly LocalizedTerm[] = termsFor(pack, sourceLang),
 ): Promise<UnitResult> {
   const sources = document.blocks.flatMap(sourcesOf);
   const masks = pack.patterns.filter(({ use }) => use === 'mask');
@@ -93,12 +97,12 @@ export async function buildUnits(
   if (outcome.status !== 'ok') {
     return { units: [], findings: [finding('pack.slow_regex', 'fail', { pattern: outcome.pattern })] };
   }
-  const terms = termsFor(pack, sourceLang).filter(({ term }) => term.keep_source === true);
+  const kept = terms.filter(({ term }) => term.keep_source === true);
   const units = sources.map(({ runs, ...source }, index) => {
     const patternRanges = masks.flatMap(({ id, kind }) =>
       (outcome.matches[id]?.[index] ?? []).map(([start, end]) => ({ start, end, kind: kind ?? id })),
     );
-    return { ...source, ...maskText(source.source, [...patternRanges, ...termRanges(terms, source)], runs) };
+    return { ...source, ...maskText(source.source, [...patternRanges, ...termRanges(kept, source)], runs) };
   });
   return { units, findings: [] };
 }

@@ -1,11 +1,20 @@
 import { readBook, systemOf, withBookLock, type Book } from './book.ts';
+import { entityCards, type EntityCard } from './entities.ts';
 import { TomeError } from './errors.ts';
 import { finding, type Finding } from './findings.ts';
 import { formatSegments } from './format.ts';
 import { loadTargetLanguage, scriptViolations, type TargetLanguage } from './language.ts';
 import { findTerm, pairedJson, restoreSegments, type PairedOffset, type Placeholder } from './mask.ts';
 import { loadPhraseCheck, type PhraseCheck } from './opencc.ts';
-import { findPack, resolvePack, termsFor, type LocalizedTerm, type ResolvedPack } from './pack.ts';
+import {
+  findPack,
+  resolvePack,
+  termsFor,
+  type GlossaryTerm,
+  type LocalizedTerm,
+  type ResolvedPack,
+  type TermAttributes,
+} from './pack.ts';
 import { failureEvent, nextState, type UnitState } from './state.ts';
 import { openBookStore, type Store } from './store.ts';
 import { parseUnits, unitTag, type ParsedReply, type ParsedUnit, type Segment } from './tags.ts';
@@ -312,6 +321,8 @@ const LATEST_RESPONSES = `
 export interface VerifyContextOptions {
   readonly home: string;
   readonly slug: string;
+  /** 這本書的 `book.db`，讀鎖定的實體卡。 */
+  readonly store: Store;
 }
 
 export interface BookPack {
@@ -321,17 +332,48 @@ export interface BookPack {
   readonly findings: readonly Finding[];
 }
 
+/** 實體卡的屬性，至少有一項才回傳（ADR-0120）。沒有屬性的卡跟規則包詞條一樣，翻譯記憶的鍵才不變。 */
+function attributesOf(card: EntityCard): TermAttributes | undefined {
+  const attributes: TermAttributes = {
+    ...(card.gender === null ? {} : { gender: card.gender }),
+    ...(card.pronoun === null ? {} : { pronoun: card.pronoun }),
+    ...(card.register === null ? {} : { register: card.register }),
+  };
+  return Object.keys(attributes).length === 0 ? undefined : attributes;
+}
+
+/**
+ * 這本書的詞條：鎖定的實體卡加上規則包的詞條（ADR-0026 第 4 項、ADR-0120）。只有 `locked` 的卡算數，
+ * 還沒鎖定的提議不進翻譯；同一個原文，實體卡優先於規則包。
+ */
+export function bookTerms(packTerms: readonly LocalizedTerm[], cards: readonly EntityCard[]): LocalizedTerm[] {
+  const own = cards.flatMap((card): LocalizedTerm[] => {
+    if (card.status !== 'locked' || card.target === null) return [];
+    const attributes = attributesOf(card);
+    const term: GlossaryTerm = {
+      source: {},
+      target: card.target,
+      ...(card.class === null ? {} : { class: card.class }),
+      ...(card.keep_source ? { keep_source: true } : {}),
+      ...(card.match === null ? {} : { match: card.match }),
+    };
+    return [{ text: card.source, term, ...(attributes === undefined ? {} : { attributes }) }];
+  });
+  const taken = new Set(own.map(({ text }) => text));
+  return [...own, ...packTerms.filter(({ text }) => !taken.has(text))];
+}
+
 /**
  * 這本書的規則包與詞條。規則包讀不全時詞條會少掉，譯名驗證就默默不做了，
- * 所以不給規則包，由呼叫端停下來（ADR-0102）。
+ * 所以不給規則包，由呼叫端停下來（ADR-0102）。`cards` 是 `book.db` 的實體卡，要翻譯或驗證時才給。
  */
-export function loadBookPack(home: string, book: Book): BookPack {
+export function loadBookPack(home: string, book: Book, cards: readonly EntityCard[] = []): BookPack {
   const id = systemOf(book);
   const location = findPack(home, id);
   if (location === null) throw new TomeError('pack.not_found', { id });
   const { pack, findings } = resolvePack(home, location);
   if (pack === null || findings.some(({ level }) => level === 'fail')) return { pack: null, terms: [], findings };
-  return { pack, terms: termsFor(pack, book.config.source_lang), findings };
+  return { pack, terms: bookTerms(termsFor(pack, book.config.source_lang), cards), findings };
 }
 
 export interface BookVerifyContext {
@@ -340,9 +382,9 @@ export interface BookVerifyContext {
   readonly findings: readonly Finding[];
 }
 
-/** 這本書驗證要用的語言、詞條與片語表。 */
-export async function bookVerifyContext({ home, slug }: VerifyContextOptions): Promise<BookVerifyContext> {
-  const { pack, terms, findings } = loadBookPack(home, readBook(home, slug));
+/** 這本書驗證要用的語言、詞條與片語表。詞條含 `store` 裡鎖定的實體卡（ADR-0120）。 */
+export async function bookVerifyContext({ home, slug, store }: VerifyContextOptions): Promise<BookVerifyContext> {
+  const { pack, terms, findings } = loadBookPack(home, readBook(home, slug), entityCards(store));
   if (pack === null) return { context: null, findings };
   const { profile: language } = loadTargetLanguage(workspaceTargetLang(home));
   return { context: { language, terms, phraseCheck: await loadPhraseCheck(language) }, findings };
@@ -361,7 +403,7 @@ async function verifyLocked(home: string, slug: string): Promise<VerifyBookResul
     const rows = store.all<VerifyRow>(LATEST_RESPONSES);
     if (rows.length === 0) return { data: EMPTY_RUN, findings: [finding('verify.nothing', 'info')] };
     // 片語表約 6 MB，有東西要驗證才載入。
-    const { context, findings } = await bookVerifyContext({ home, slug });
+    const { context, findings } = await bookVerifyContext({ home, slug, store });
     if (context === null) return { data: EMPTY_RUN, findings };
     const states = store.transaction(() =>
       rows.map((row) => {

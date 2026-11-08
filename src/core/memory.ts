@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { PairedOffset } from './mask.ts';
 import type { LocalizedTerm } from './pack.ts';
 import type { Store } from './store.ts';
+import { escapeText } from './tags.ts';
 import {
   hitTerms,
   verifyFragment,
@@ -53,8 +54,16 @@ export function styleVersion(style: string | undefined): string {
   return sha256(style ?? '');
 }
 
+/**
+ * 命中詞條的摘要。實體卡的性別、代名詞、語域改了，同樣的原文要翻成不同的譯文，所以進鍵（ADR-0120）；
+ * 只在有屬性時才加，只有規則包詞條的單位，鍵跟以前逐字相同，已存的翻譯記憶照樣命中。
+ */
 function termDigest(unit: Pick<VerifiableUnit, 'source' | 'role'>, terms: readonly LocalizedTerm[]): string {
-  const hits = hitTerms(unit, terms).map(({ text, term }) => [text, term.target]);
+  const hits = hitTerms(unit, terms).map(({ text, term, attributes }) =>
+    attributes === undefined
+      ? [text, term.target]
+      : [text, term.target, attributes.gender ?? null, attributes.pronoun ?? null, attributes.register ?? null],
+  );
   return sha256(JSON.stringify(hits.sort()));
 }
 
@@ -94,6 +103,49 @@ export function remember(
     new Date().toISOString(),
   );
   return true;
+}
+
+export interface Replaced {
+  readonly fragment: string;
+  /** 換了幾處。 */
+  readonly count: number;
+}
+
+/** `at` 在標籤裡面。書本文字已經跳脫，`<`、`>` 只會是標籤的邊界。 */
+function insideTag(fragment: string, at: number): boolean {
+  return fragment.lastIndexOf('<', at) > fragment.lastIndexOf('>', at);
+}
+
+function rangesOf(fragment: string, needle: string): (readonly [number, number])[] {
+  const ranges: (readonly [number, number])[] = [];
+  for (let at = fragment.indexOf(needle); at >= 0; at = fragment.indexOf(needle, at + 1)) {
+    ranges.push([at, at + needle.length]);
+  }
+  return ranges;
+}
+
+/**
+ * S-16：把回應片段裡的舊譯名換成新譯名（白皮書 §5.6、ADR-0026 第 7 項、ADR-0120）。片段是跳脫過的
+ * `<s>...</s>`，譯名也先跳脫再找；標籤裡的不換。`longer` 是其他較長的譯名，舊譯名落在它們裡面的那一處
+ * 不換，「鹽沼」才不會把「鹽沼守衛」改壞。只掃原本的片段，新譯名含舊譯名時也不會一直換下去。
+ */
+export function replaceTarget(fragment: string, before: string, after: string, longer: readonly string[]): Replaced {
+  const needle = escapeText(before);
+  if (needle === '') return { fragment, count: 0 };
+  const shielded = longer
+    .filter((target) => target !== before && target.includes(before))
+    .flatMap((target) => rangesOf(fragment, escapeText(target)));
+  let text = '';
+  let cursor = 0;
+  let count = 0;
+  for (let at = fragment.indexOf(needle); at >= 0; at = fragment.indexOf(needle, at + needle.length)) {
+    const end = at + needle.length;
+    if (insideTag(fragment, at) || shielded.some(([start, stop]) => start <= at && end <= stop)) continue;
+    text += fragment.slice(cursor, at) + escapeText(after);
+    cursor = end;
+    count += 1;
+  }
+  return { fragment: text + fragment.slice(cursor), count };
 }
 
 /** 命中後重跑驗證，規則或譯名可能變了，不過就當沒命中（ADR-0102）。 */

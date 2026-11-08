@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { loadTargetLanguage } from '../../src/core/language.ts';
 import { maskText } from '../../src/core/mask.ts';
-import { memoryKey, recall, remember, styleVersion, type KeyContext } from '../../src/core/memory.ts';
+import { memoryKey, recall, remember, replaceTarget, styleVersion, type KeyContext } from '../../src/core/memory.ts';
 import type { LocalizedTerm } from '../../src/core/pack.ts';
 import { openSeriesStore } from '../../src/core/store.ts';
 import type { VerifyContext } from '../../src/core/verify.ts';
@@ -96,6 +96,111 @@ describe('the memory key (ADR-0102)', () => {
   it('does not depend on the model', () => {
     expect(key(LONG)).toBe(key(LONG));
     expect(Object.keys(keyContext())).not.toContain('model');
+  });
+});
+
+describe('the memory key with entity cards (ADR-0120)', () => {
+  const key = (terms: readonly LocalizedTerm[]): string => memoryKey(unit(LONG), null, keyContext({ terms }));
+  const card = (attributes: LocalizedTerm['attributes']): LocalizedTerm => ({
+    ...term('warden', '守望者'),
+    ...(attributes === undefined ? {} : { attributes }),
+  });
+
+  it('is the same as before 037 when only pack terms hit, so stored translations still match', () => {
+    // 照 037 之前的算法在測試外算好的值：命中詞條的摘要只有 [原文, 譯名]。
+    expect(key([term('warden', '守望者')])).toBe('f810fdfd7754fb47e6384b8c305008756867a5eb920549331b72cb37ebfc32b3');
+  });
+
+  it('treats a card without attributes like a pack term', () => {
+    expect(key([card(undefined)])).toBe(key([term('warden', '守望者')]));
+  });
+
+  it.each([
+    ['gender', { gender: 'female' }, { gender: 'male' }],
+    ['pronoun', { pronoun: '她' }, { pronoun: '祂' }],
+    ['register', { register: 'formal' }, { register: 'archaic' }],
+  ] as const)('changes with the %s of a card the text hits', (_name, one, other) => {
+    expect(key([card(one)])).not.toBe(key([card(other)]));
+    expect(key([card(one)])).not.toBe(key([term('warden', '守望者')]));
+  });
+
+  it('keeps each attribute in its own place, so a pronoun is not read as a gender', () => {
+    expect(key([card({ gender: '她' })])).not.toBe(key([card({ pronoun: '她' })]));
+    expect(key([card({ pronoun: 'formal' })])).not.toBe(key([card({ register: 'formal' })]));
+  });
+
+  it('ignores the attributes of a card the text does not hit', () => {
+    const marsh = { ...term('Marsh', '鹽沼'), attributes: { pronoun: '它' } };
+    expect(key([marsh])).toBe(key([]));
+  });
+
+  it('does not care in which order cards with attributes are listed', () => {
+    const terms = [card({ pronoun: '她' }), { ...term('lantern', '提燈'), attributes: { register: 'plain' } }];
+    expect(key(terms)).toBe(key([...terms].reverse()));
+  });
+});
+
+describe('replaceTarget (S-16, ADR-0120)', () => {
+  it('replaces every whole occurrence and counts them', () => {
+    expect(replaceTarget('<s id="1">鹽沼的風吹過鹽沼。</s>', '鹽沼', '鹽澤', [])).toEqual({
+      fragment: '<s id="1">鹽澤的風吹過鹽澤。</s>',
+      count: 2,
+    });
+  });
+
+  it('replaces occurrences that touch each other', () => {
+    expect(replaceTarget('<s id="1">鹽沼鹽沼</s>', '鹽沼', '鹽澤', [])).toEqual({ fragment: '<s id="1">鹽澤鹽澤</s>', count: 2 });
+  });
+
+  it('leaves the old name alone inside a longer locked name, and changes it outside', () => {
+    expect(replaceTarget('<s id="1">鹽沼守衛巡過鹽沼。</s>', '鹽沼', '鹽澤', ['鹽沼守衛'])).toEqual({
+      fragment: '<s id="1">鹽沼守衛巡過鹽澤。</s>',
+      count: 1,
+    });
+    expect(replaceTarget('<s id="1">鹽沼。鹽沼守衛</s>', '鹽沼', '鹽澤', ['鹽沼守衛']).fragment).toBe('<s id="1">鹽澤。鹽沼守衛</s>');
+  });
+
+  it('protects a longer name that ends with the old one', () => {
+    expect(replaceTarget('<s id="1">大鹽沼與鹽沼</s>', '鹽沼', '鹽澤', ['大鹽沼'])).toEqual({
+      fragment: '<s id="1">大鹽沼與鹽澤</s>',
+      count: 1,
+    });
+  });
+
+  it('works on text without tags, with the old name or a longer name at the very start', () => {
+    expect(replaceTarget('鹽沼與潮石', '鹽沼', '鹽澤', [])).toEqual({ fragment: '鹽澤與潮石', count: 1 });
+    expect(replaceTarget('鹽沼守衛與鹽沼', '鹽沼', '鹽澤', ['鹽沼守衛'])).toEqual({ fragment: '鹽沼守衛與鹽澤', count: 1 });
+  });
+
+  it('protects only the longer names that contain the old one', () => {
+    expect(replaceTarget('<s id="1">鹽沼</s>', '鹽沼', '鹽澤', ['鹽沼', '守衛', '沼']).fragment).toBe('<s id="1">鹽澤</s>');
+  });
+
+  it('stops after one pass when the new name contains the old one, and keeps the new one already there', () => {
+    expect(replaceTarget('<s id="1">鹽沼與鹽沼地</s>', '鹽沼', '鹽沼地', ['鹽沼地'])).toEqual({
+      fragment: '<s id="1">鹽沼地與鹽沼地</s>',
+      count: 1,
+    });
+  });
+
+  it('does not touch tag attributes, only the text', () => {
+    const fragment = '<s id="1"><new-term source="鹽沼">鹽沼</new-term></s>';
+    expect(replaceTarget(fragment, '鹽沼', '鹽澤', [])).toEqual({
+      fragment: '<s id="1"><new-term source="鹽沼">鹽澤</new-term></s>',
+      count: 1,
+    });
+  });
+
+  it('finds and writes names with characters that are escaped in the fragment', () => {
+    expect(replaceTarget('<s id="1">甲&amp;乙，甲&amp;乙</s>', '甲&乙', '丙<丁', [])).toEqual({
+      fragment: '<s id="1">丙&lt;丁，丙&lt;丁</s>',
+      count: 2,
+    });
+  });
+
+  it('changes nothing when the old name is empty or not there', () => {
+    expect(replaceTarget('<s id="1">鹽沼</s>', '', '鹽澤', [])).toEqual({ fragment: '<s id="1">鹽沼</s>', count: 0 });
+    expect(replaceTarget('<s id="1">潮石</s>', '鹽沼', '鹽澤', [])).toEqual({ fragment: '<s id="1">潮石</s>', count: 0 });
   });
 });
 

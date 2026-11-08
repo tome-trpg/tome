@@ -296,6 +296,7 @@ export function prepareWork(run: Run, work: Work): { readonly work: Work; readon
     prefix: plan.prefix,
     terms: plan.terms,
     pack: plan.pack,
+    recent: plan.recent,
     feedback: feedbackOf(store, fresh),
     model: work.model,
     provider: plan.provider.profile,
@@ -615,7 +616,7 @@ export async function withRun(
       return { data: { book: slug }, findings: [unconfirmed, ...findings] };
     }
     // 片語表約 6 MB，確認過才載入。
-    const { context, findings: loaded } = await bookVerifyContext({ home, slug });
+    const { context, findings: loaded } = await bookVerifyContext({ home, slug, store });
     if (context === null) return { data: { book: slug }, findings: loaded };
     const run: Run = {
       slug,

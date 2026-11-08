@@ -52,6 +52,8 @@ export const FINDING_CODES = [
   'glossary.diverged',
   'glossary.file_invalid',
   'glossary.imported',
+  'glossary.pending',
+  'glossary.renamed',
   'glossary.reviewed',
   'extract.accepted',
   'extract.assembled',
