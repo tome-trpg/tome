@@ -193,6 +193,15 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
         ALTER TABLE batch ADD COLUMN stage TEXT NOT NULL DEFAULT 'translate';
       `,
     },
+    {
+      // 審定（ADR-0119）：誰決定、何時決定，鎖定後改譯名時記下上一個譯名，037 的 S-16 要用。
+      version: 10,
+      sql: `
+        ALTER TABLE entity ADD COLUMN decided_by TEXT;
+        ALTER TABLE entity ADD COLUMN decided_at TEXT;
+        ALTER TABLE entity ADD COLUMN previous_target TEXT;
+      `,
+    },
   ],
   series: [
     { version: 1, sql: metaTable('series') },

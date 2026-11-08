@@ -1,4 +1,5 @@
 import { readBook, type Book } from './book.ts';
+import { entityCounts } from './entities.ts';
 import { chapterCount, chapterMap, checkedLevel, levelOf, parseChapters } from './chapters.ts';
 import { TomeError } from './errors.ts';
 import { readDocument } from './extract.ts';
@@ -212,7 +213,11 @@ export function bookStatus(home: string, slug: string, offsetOf: ZoneOffset = lo
       })),
     };
     const batches = batchFindings(batchRows, offsetOf);
-    if (total === 0) return { data, findings: [finding('status.no_units', 'info', { book: slug }), ...batches] };
+    // 實體卡只印數量（ADR-0119 第 12 項）。還沒跑 Pass 0 的書沒有這一行。
+    const cards = entityCounts(store);
+    const entities = cards === null ? [] : [finding('status.entities', 'info', asText({ ...cards }))];
+    if (cards !== null) Object.assign(data, { entities: cards });
+    if (total === 0) return { data, findings: [finding('status.no_units', 'info', { book: slug }), ...entities, ...batches] };
     const params = asText({ total: scoped.total, kept: scoped.kept, ...buckets });
     const money =
       budget === null
@@ -223,6 +228,7 @@ export function bookStatus(home: string, slug: string, offsetOf: ZoneOffset = lo
       findings: [
         finding('status.units', 'info', params),
         ...outsideFindings(slug, chapters, scoped.outside),
+        ...entities,
         money,
         ...batches,
       ],

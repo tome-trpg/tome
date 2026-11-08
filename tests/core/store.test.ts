@@ -300,9 +300,27 @@ describe('migrations', () => {
     );
     const entities = store.all('SELECT source, target, keep_source, attempts FROM entity');
     store.close();
-    expect(pragma(path, 'user_version')).toBe(9);
+    expect(pragma(path, 'user_version')).toBe(LATEST_BOOK);
     expect(batches).toEqual([{ nonce: 'n', stage: 'translate' }]);
     expect(entities).toEqual([{ source: 'Salt Marsh', target: null, keep_source: 0, attempts: 0 }]);
+  });
+
+  it('adds who decided an entity card and when, and its previous translation (ADR-0119)', () => {
+    const path = join(tempDir(), 'book.db');
+    openStore(path, 'book', MIGRATIONS.book.slice(0, 9)).close();
+    const old = new DatabaseSync(path);
+    old
+      .prepare(
+        `INSERT INTO entity (source, target, status, origin, sources, occurrences, created_at, updated_at)
+         VALUES ('Salt Marsh', '鹽沼', 'proposed', 'pass0', '["caps"]', 2, 't', 't')`,
+      )
+      .run();
+    old.close();
+    const store = openStore(path, 'book');
+    const rows = store.all('SELECT source, target, decided_by, decided_at, previous_target FROM entity');
+    store.close();
+    expect(pragma(path, 'user_version')).toBe(10);
+    expect(rows).toEqual([{ source: 'Salt Marsh', target: '鹽沼', decided_by: null, decided_at: null, previous_target: null }]);
   });
 });
 

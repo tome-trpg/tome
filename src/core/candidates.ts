@@ -234,6 +234,27 @@ class Corpus {
   }
 }
 
+export interface Sighting {
+  readonly occurrences: number;
+  readonly firstBlock: string | null;
+  readonly contexts: readonly string[];
+}
+
+/**
+ * 任意的詞在會翻譯的文字裡出現幾次、第一次在哪、上下文，規則跟候選詞一樣。審定檔、`<new-term>` 與匯入的詞
+ * 都用它：上下文不另外存，要用時重算（ADR-0119）。
+ */
+export function sightings(document: IrDocument, language: SourceLanguage, terms: readonly string[]): Map<string, Sighting> {
+  const corpus = new Corpus(passagesOf(document.blocks), language.pass0);
+  return new Map(
+    terms.map((term) => {
+      const hits = corpus.hits(term);
+      const [first] = hits;
+      return [term, { occurrences: hits.length, firstBlock: first === undefined ? null : corpus.blockOf(first), contexts: corpus.contexts(hits) }];
+    }),
+  );
+}
+
 /**
  * 從索引、標題、粗體與大寫片語挖候選詞（白皮書 §5.6 第 1 步、ADR-0118）。`known` 是規則包已有譯名的詞，
  * 翻譯本來就用它，不當候選詞。依第一次出現的順序排，沒出現過的排最後。
