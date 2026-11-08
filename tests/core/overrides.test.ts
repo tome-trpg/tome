@@ -146,6 +146,42 @@ describe('overrides', () => {
 });
 
 // 放行在組裝時就用掉了，組裝之後的操作不碰它（ADR-0115）。
+describe('inline styles follow the edits (ADR-0116)', () => {
+  const styled = [
+    block(A, 'the warden counts', { runs: [{ start: 4, end: 10, marks: ['bold'] }] }),
+    block(B, 'tide stones wait.', { runs: [{ start: 5, end: 11, marks: ['italic'] }] }),
+  ];
+
+  it('shifts the runs of the blocks merged after the first', () => {
+    const { blocks } = applyOverrides(language, styled, [{ op: 'merge', blocks: [A, B] }]);
+    expect(blocks[0]?.text).toBe('the warden counts tide stones wait.');
+    expect(blocks[0]?.runs).toEqual([
+      { start: 4, end: 10, marks: ['bold'] },
+      { start: 23, end: 29, marks: ['italic'] },
+    ]);
+  });
+
+  it('gives each half of a split its own runs', () => {
+    const { blocks } = applyOverrides(language, styled, [{ op: 'split', block: A, before: 'den counts' }]);
+    expect(blocks.slice(0, 2).map(({ text, runs }) => [text, runs])).toEqual([
+      ['the war', [{ start: 4, end: 7, marks: ['bold'] }]],
+      ['den counts', [{ start: 0, end: 3, marks: ['bold'] }]],
+    ]);
+  });
+
+  it('drops the style of redacted text and shifts what comes after', () => {
+    const { blocks } = applyOverrides(language, styled, [{ op: 'redact', block: B, text: 'tide' }]);
+    expect(blocks[1]?.text).toBe('[REDACTED] stones wait.');
+    expect(blocks[1]?.runs).toEqual([{ start: 11, end: 17, marks: ['italic'] }]);
+  });
+
+  it('writes no runs when none are left', () => {
+    const { blocks } = applyOverrides(language, styled, [{ op: 'redact', block: A, text: 'warden' }]);
+    expect(blocks[0]).not.toHaveProperty('runs');
+    expect(apply({ op: 'merge', blocks: [A, B] }).blocks[0]).not.toHaveProperty('runs');
+  });
+});
+
 describe('accept', () => {
   it('leaves the blocks alone after assembly, and reports nothing there', () => {
     const { blocks, findings } = apply({ op: 'accept', page: 2 });

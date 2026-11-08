@@ -89,6 +89,28 @@ describe('tome preview (ADR-0104)', () => {
     expect(review(lib.home, '01.md')).toContain(`<!-- ${first?.block_id} -->\n${first?.source}\n\n> 第一行\n> 第二行\n`);
   });
 
+  it('marks bold and italic in the source and the translation, from the same formats (ADR-0116)', async () => {
+    const lib = await withUnits();
+    const [first] = units(lib.home);
+    const source = first?.source ?? '';
+    const words = source.split(' ');
+    const end = (words[0] ?? '').length;
+    const formats = { whole: { marks: ['italic'] }, paired: [{ id: 1, start: 0, end, marks: ['bold'] }] };
+    update(
+      lib.home,
+      "UPDATE unit SET state = 'DONE', formats = ?, translation = ?, translation_pc = ? WHERE unit_id = ?",
+      JSON.stringify(formats),
+      '甲乙 丙丁。',
+      '[{"id":1,"start":3,"end":5}]',
+      first?.unit_id ?? '',
+    );
+    await preview(lib);
+    const rest = source.slice(end);
+    const restCore = rest.trim().replace(/[^\p{L}\p{N}]+$/u, '');
+    expect(review(lib.home, '01.md')).toContain(`***${words[0]}*** *${restCore}*`);
+    expect(review(lib.home, '01.md')).toContain('> *甲乙* ***丙丁***。');
+  });
+
   it('keeps the order of the book', async () => {
     const lib = await withUnits();
     await preview(lib);

@@ -413,7 +413,9 @@ operations:
     text: "Licensed to"
 ```
 
-**已知限制**：底色用圖片畫的邊欄、四條線畫的方框抓不到。全寬的表格與圖會把欄位切開，文字繞著它們排的版面，順序可能不對。標題轉成外框後文字層沒有東西，那個標題會不見，字元守恆也看不出來。行內 `runs` 排到回合 035，`overrides.yaml` 目前手寫（ADR-0092、ADR-0115）。
+**已知限制**：底色用圖片畫的邊欄、四條線畫的方框抓不到。全寬的表格與圖會把欄位切開，文字繞著它們排的版面，順序可能不對。標題轉成外框後文字層沒有東西，那個標題會不見，字元守恆也看不出來。`overrides.yaml` 目前手寫（ADR-0092）。
+
+**已實作**：行內 `runs`（ADR-0116）。組裝時由 TOME 產生，不靠引擎：粗體、斜體依 pdf.js 讀到的字型名稱，只看最後一個 `-` 或 `,` 之後的樣式段；連結依 PDF 的連結方框。pdf.js 的字只比字母數字，對到區塊的文字，對上的不到 95% 的區塊不給樣式，樣式只放在完整的詞上，詞的邊界用 `Intl.Segmenter` 依來源語言切。表格儲存格、小型大寫與 `ruby` 不做。接段與 `overrides` 的 `merge`、`split`、`redact` 會跟著調整 `runs`。名稱規則與門檻是**提案**，維護者的規則書複本上 98.6% 的段落類區塊對得上。
 
 **已實作**：組裝時判定 `index` 與 `credits`（ADR-0115）。全書 90% 之後、至少 10 行、一半以上的行結尾是頁碼清單的頁是書末索引，夾在兩頁索引之間的一頁也算；開頭 6 頁與最後 2 頁裡帶 `©`、`(c)` 加年份、`ISBN` 或來源語言設定檔 `credits_phrases` 字詞的區塊是 `credits`。判定在跨頁接段之前，`tome extract` 會說哪幾頁判成這兩種、不會翻譯，判錯時用 `overrides` 的 `role` 改回。門檻是**提案**，只用維護者的七本書以 pdf.js 的行量過，Docling 怎麼切書末索引**沒有驗證**。
 
@@ -529,14 +531,14 @@ flowchart LR
 **傳給 LLM 的格式**
 
 ```text
-<s id="12" role="paragraph">Roll <ph id="1" kind="dice"/> against <pc id="2" kind="bold">Spot Hidden</pc>.</s>
+<s id="12" role="paragraph">Roll <ph id="1" kind="dice"/> against <pc id="1">Spot Hidden</pc>.</s>
 ```
 
 | 標記 | 方向 | 意義 |
 | :--- | :--- | :--- |
 | `<s>` | 雙向 | 一個翻譯單位。`id` 是請求內的短編號，由 TOME 對應回 `unit_id` |
 | `<ph>` | 雙向 | 被遮蔽的內容，空元素，`kind` 告訴 LLM 這是什麼，對應 XLIFF 的 `ph` |
-| `<pc>` | 雙向 | 成對的行內格式，可以隨語序移動，對應 XLIFF 的 `pc` |
+| `<pc>` | 雙向 | 成對的行內格式，可以隨語序移動，對應 XLIFF 的 `pc`。只帶編號，樣式記在 `book.db`，編號跟 `<ph>` 分開；整個單位同一種樣式時不送（ADR-0116） |
 | `<new-term>` | 回傳 | LLM 標出實體卡沒有的專有名詞，寫成 `<new-term source="原文">譯文</new-term>`，包在 `<s>` 裡 |
 | `<flag>` | 回傳 | LLM 標出不可譯的內容，如文字謎題、藏頭、雙關，寫成 `<flag reason="原因">譯文</flag>`，包在 `<s>` 裡 |
 
@@ -942,7 +944,7 @@ tome backup|purge <book>               備份與刪除
 
 `tome assemble` 偵測到未回收的 vault 修改就拒絕輸出，列出檔案，要求先跑 `tome sync`，人工譯文不會被覆蓋。
 
-**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。`tome verify <書>` 也已實作（`tests/cli/verify.test.ts`），全部通過回 0，有失敗回 1（ADR-0102）。`tome estimate <書> [--budget <美元>] [--chapters <範圍>] [--chapter-level <層>] [--realtime] [--confirm]`、`tome translate <書> --dry-run [--realtime]` 也已實作（`tests/cli/estimate.test.ts`），`--confirm` 沒有預算或超過預算時回 1，不在表上的模型回 2（ADR-0103）。`--chapter-level` 選依第幾層書籤分章，層數不對或換層級時沒有一起給 `--chapters` 回 2；書籤有兩層以上時，`tome extract` 與 `tome estimate` 印每層有幾個書籤，只有數字（ADR-0115）。`tome preview <書>` 也已實作（`tests/cli/preview.test.ts`），在 `books/<slug>/review/` 產生原文與譯文對照（ADR-0104）。`tome translate <書> [--realtime] [--retry-failed]`、`tome batch status|collect|cancel <書>` 也已實作（`tests/cli/translate.test.ts`、`tests/cli/batch.test.ts`），接上 Anthropic 轉接層，一開始先取金鑰，沒有金鑰回 `key.missing`，不開書也不連網（ADR-0109）。`tome provider test` 也已實作（`tests/cli/provider.test.ts`），只查 Models API，不消耗 token，對照模型資料的 Batch、思考參數、伺服器端回退與淘汰，對不上只警告，不改設定檔（ADR-0109）。這兩組由維護者用真的 API 跑過，翻譯只跑過批次模式，即時模式只跟本機的假供應商跑過（ADR-0112）。`tome status <書>` 也已實作（`tests/cli/batch.test.ts`），只讀本機資料，不連網。`tome provider list` 也已實作（`tests/cli/provider.test.ts`），不連網，不讀金鑰與 `tome.yaml`，還沒 `tome init` 也能用，價目表過期時警告，結束碼仍是 0（ADR-0106）。跑得久的指令在 stderr 印進度（ADR-0111）：`tome extract` 啟動引擎前印一行，頁的進度依時間印，引擎 30 秒沒有事件時說它仍在執行，組裝 document 層前也印一行；重新探測前說要探測幾頁；`tome translate` 送出前說模式與請求數；連到供應商重試前說幾秒後重試、第幾次。估價、翻譯完成與 `tome status` 都寫出不需翻譯、原樣保留的單位數，翻譯完成時提示用 `tome preview` 看譯文。翻譯完成、翻譯中的進度與 `tome status` 的數字都是 `--chapters` 範圍內的，跟估價對得起來，範圍外沒完成的另印一行（ADR-0114）。位置參數比指令接受的多時，說收到幾個、只接受幾個，提醒路徑有空格要加引號，不回顯參數的值（ADR-0114）。其他指令還沒有。
+**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。`tome verify <書>` 也已實作（`tests/cli/verify.test.ts`），全部通過回 0，有失敗回 1（ADR-0102）。`tome estimate <書> [--budget <美元>] [--chapters <範圍>] [--chapter-level <層>] [--realtime] [--confirm]`、`tome translate <書> --dry-run [--realtime]` 也已實作（`tests/cli/estimate.test.ts`），`--confirm` 沒有預算或超過預算時回 1，不在表上的模型回 2（ADR-0103）。`--chapter-level` 選依第幾層書籤分章，層數不對或換層級時沒有一起給 `--chapters` 回 2；書籤有兩層以上時，`tome extract` 與 `tome estimate` 印每層有幾個書籤，只有數字（ADR-0115）。`tome preview <書>` 也已實作（`tests/cli/preview.test.ts`），在 `books/<slug>/review/` 產生原文與譯文對照（ADR-0104），粗體、斜體用 Markdown 標出（ADR-0116）。`tome translate <書> [--realtime] [--retry-failed]`、`tome batch status|collect|cancel <書>` 也已實作（`tests/cli/translate.test.ts`、`tests/cli/batch.test.ts`），接上 Anthropic 轉接層，一開始先取金鑰，沒有金鑰回 `key.missing`，不開書也不連網（ADR-0109）。`tome provider test` 也已實作（`tests/cli/provider.test.ts`），只查 Models API，不消耗 token，對照模型資料的 Batch、思考參數、伺服器端回退與淘汰，對不上只警告，不改設定檔（ADR-0109）。這兩組由維護者用真的 API 跑過，翻譯只跑過批次模式，即時模式只跟本機的假供應商跑過（ADR-0112）。`tome status <書>` 也已實作（`tests/cli/batch.test.ts`），只讀本機資料，不連網。`tome provider list` 也已實作（`tests/cli/provider.test.ts`），不連網，不讀金鑰與 `tome.yaml`，還沒 `tome init` 也能用，價目表過期時警告，結束碼仍是 0（ADR-0106）。跑得久的指令在 stderr 印進度（ADR-0111）：`tome extract` 啟動引擎前印一行，頁的進度依時間印，引擎 30 秒沒有事件時說它仍在執行，組裝 document 層前也印一行；重新探測前說要探測幾頁；`tome translate` 送出前說模式與請求數；連到供應商重試前說幾秒後重試、第幾次。估價、翻譯完成與 `tome status` 都寫出不需翻譯、原樣保留的單位數，翻譯完成時提示用 `tome preview` 看譯文。翻譯完成、翻譯中的進度與 `tome status` 的數字都是 `--chapters` 範圍內的，跟估價對得起來，範圍外沒完成的另印一行（ADR-0114）。位置參數比指令接受的多時，說收到幾個、只接受幾個，提醒路徑有空格要加引號，不回顯參數的值（ADR-0114）。其他指令還沒有。
 
 ---
 
@@ -1253,6 +1255,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0113](adr/0113-m3-decisions.md) | M3 的範圍、回合與開工前的決定 | M3 |
 | [ADR-0114](adr/0114-truncation-and-scope-counts.md) | 截斷、單位數上限與範圍內的數字 | M3 |
 | [ADR-0115](adr/0115-document-structure-decisions.md) | 文件結構：索引、版權頁、書籤層級、`full_image` 與放行 | M3 |
+| [ADR-0116](adr/0116-inline-runs-decisions.md) | 行內樣式：`runs` 與 `<pc>` | M3 |
 
 ---
 
@@ -1397,7 +1400,7 @@ Gemini 顯式快取也算過：Flash-Lite 上 8k 前綴省下約 0.13，但排�
 | M3 譯名與輸出 | Pass 0、審定、`tome glossary import`、數值塊欄位化、vault、`tome sync`、`tome run`、交付報告、一致性報告、`tome purge`、`tome backup` | 能帶團閱讀的成品 |
 | M4 首版 | `d100-orc`、試翻校準、盲評、發佈流程、著作權律師審查（ADR-0105） | Q-1 到 Q-8 達標，發佈 0.1.0 |
 
-**目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。M2 已完成（ADR-0099、ADR-0112）：維護者用自己的金鑰翻過一篇公有領域短篇與一本規則書的第 3 到 108 頁，兩次第一輪的花費都在估價區間內，規則書因為重送比估價上限多 $0.0047；估價比例仍是未校準，只有 Sonnet 5.5、批次的兩筆數據。目前在 M3，範圍、10 個回合與開工前的決定見 ADR-0113；行內 `runs` 拆成回合 035，排在 026 之後（ADR-0115）。M2 規則書的重送查明是 `max_tokens` 截斷，不是漏段（ADR-0114）。那本規則書其實沒有書籤，174 個章節是用標題建的；沒有書籤的書怎麼分章等引擎評估（ADR-0115）。
+**目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。M2 已完成（ADR-0099、ADR-0112）：維護者用自己的金鑰翻過一篇公有領域短篇與一本規則書的第 3 到 108 頁，兩次第一輪的花費都在估價區間內，規則書因為重送比估價上限多 $0.0047；估價比例仍是未校準，只有 Sonnet 5.5、批次的兩筆數據。目前在 M3，範圍、10 個回合與開工前的決定見 ADR-0113；行內 `runs` 拆成回合 035，排在 026 之後（ADR-0115），粗體、斜體與連結翻譯時以 `<pc>` 保留（ADR-0116）。M2 規則書的重送查明是 `max_tokens` 截斷，不是漏段（ADR-0114）。那本規則書其實沒有書籤，174 個章節是用標題建的；沒有書籤的書怎麼分章等引擎評估（ADR-0115）。
 
 M3 已實作的項目：
 
@@ -1411,6 +1414,7 @@ M3 已實作的項目：
 | 組裝時判定 `index` 與 `credits` | `src/core/assemble.ts`、`languages/source/en.yaml` | `tests/core/assemble.test.ts`、`tests/core/extract.test.ts` |
 | 依書籤層級選章節 | `src/core/chapters.ts`、`src/core/request.ts` | `tests/core/chapters.test.ts`、`tests/cli/estimate.test.ts`、`tests/cli/preview.test.ts` |
 | 放行操作 `accept` | `src/core/overrides.ts`、`src/core/assemble.ts`、`schemas/tome-overrides-1.schema.json` | `tests/core/overrides.test.ts`、`tests/core/assemble.test.ts`、`tests/core/extract.test.ts` |
+| 行內 `runs` 與 `<pc>` | `src/core/pdf.ts`、`src/core/runs.ts`、`src/core/assemble.ts`、`src/core/mask.ts`、`src/core/store.ts`、`src/core/preview.ts` | `tests/core/runs.test.ts`、`tests/core/pdf.test.ts`、`tests/core/mask.test.ts`、`tests/core/assemble.test.ts`、`tests/cli/translate.test.ts`、`tests/cli/preview.test.ts` |
 
 M2 已實作的項目：
 

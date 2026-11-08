@@ -66,6 +66,13 @@ const OUTPUT_ROOM = 2;
  */
 export const UNIT_OUTPUT_TOKENS = 16;
 
+/** 每個 `<pc>` 在輸出多要的 token：`<pc id="1">` 加 `</pc>` 約 9 個。是提案（ADR-0116）。 */
+export const PAIRED_OUTPUT_TOKENS = 10;
+
+function pairedCount(units: readonly TranslationUnit[]): number {
+  return units.reduce((total, { formats }) => total + (formats?.paired.length ?? 0), 0);
+}
+
 export interface PlannedRequest {
   readonly id: string;
   /** 依送出的順序，`<s>` 的編號就是這裡的位置加 1。 */
@@ -329,12 +336,13 @@ export interface BodyOptions {
 }
 
 /**
- * 請求的 `max_tokens`。思考也吃它，所以用含思考的預估輸出（ADR-0103），再加上每個單位的標籤（ADR-0114）。
- * 只是上限，計費看實際產生的 token，估價不用這個數字。
+ * 請求的 `max_tokens`。思考也吃它，所以用含思考的預估輸出（ADR-0103），再加上每個單位的標籤（ADR-0114）
+ * 與每個 `<pc>`（ADR-0116）。只是上限，計費看實際產生的 token，估價不用這個數字。
  */
 export function maxTokens(provider: Provider, model: ProviderModel, units: readonly TranslationUnit[]): number {
   const expected = outputTokens(provider, model, charsOf(units)) + UNIT_OUTPUT_TOKENS * units.length;
-  return Math.max(MIN_MAX_TOKENS, Math.ceil(expected * OUTPUT_ROOM));
+  const tags = PAIRED_OUTPUT_TOKENS * pairedCount(units);
+  return Math.max(MIN_MAX_TOKENS, Math.ceil((expected + tags) * OUTPUT_ROOM));
 }
 
 /** 組成 Messages API 的內容。 */

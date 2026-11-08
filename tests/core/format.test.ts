@@ -11,7 +11,7 @@ const { profile } = loadTargetLanguage('zh-TW');
 function format(inner: string, placeholders: readonly Placeholder[] = [], language: TargetLanguage = profile): string {
   const { units, issues } = parseUnits(`<s id="1">${inner}</s>`);
   expect(issues).toEqual([]);
-  return restoreSegments(formatSegments(units[0]?.segments ?? [], language), placeholders);
+  return restoreSegments(formatSegments(units[0]?.segments ?? [], language), placeholders).text;
 }
 
 describe('punctuation (ADR-0102)', () => {
@@ -114,6 +114,13 @@ describe('spacing around Latin text (ADR-0102)', () => {
     expect(format('使用HP值', [], spaced)).toBe('使用 HP 值');
     const placeholders = [{ id: 1, kind: 'dice', text: '1D100' }];
     expect(format('擲<ph id="1"/>次', placeholders, spaced)).toBe('擲 1D100 次');
+  });
+
+  it('looks through a <pc>, so a style does not change the spacing (ADR-0116)', () => {
+    expect(format('使用 <pc id="1">HP</pc> 值')).toBe(format('使用 HP 值'));
+    expect(format('使用<pc id="1"> HP </pc>值')).toBe('使用HP值');
+    expect(format('擲 <pc id="1"><ph id="1"/></pc> 次', [{ id: 1, kind: 'dice', text: '1D100' }])).toBe('擲1D100次');
+    expect(format('<pc id="1">HP</pc> 是 12')).toBe('HP是12');
   });
 });
 

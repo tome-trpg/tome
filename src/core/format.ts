@@ -139,19 +139,28 @@ function formatSpacing(text: string, language: TargetLanguage): string {
     .replace(/([A-Za-z0-9])(?=\p{Script=Han})/gu, '$1 ');
 }
 
+/** 相鄰的字。`<pc>` 只是樣式，看它裡面的字，有沒有 `<pc>` 排出來才一樣（ADR-0116）。 */
 function neighbor(item: Segment | undefined, end: 'first' | 'last'): string {
   if (item?.type === 'ph') return PLACEHOLDER_STAND_IN;
+  if (item?.type === 'pc') return neighbor(end === 'first' ? item.children[0] : item.children.at(-1), end);
   if (item?.type !== 'text') return '';
   const characters = [...item.text];
   return (end === 'first' ? characters[0] : characters.at(-1)) ?? '';
 }
 
-function formatList(segments: readonly Segment[], language: TargetLanguage): Segment[] {
+/** `outerBefore`、`outerAfter` 是 `<pc>` 外面相鄰的字。 */
+function formatList(
+  segments: readonly Segment[],
+  language: TargetLanguage,
+  outerBefore = '',
+  outerAfter = '',
+): Segment[] {
   return segments.map((item, index) => {
     if (item.type === 'ph') return item;
+    const before = index === 0 ? outerBefore : neighbor(segments[index - 1], 'last');
+    const after = index === segments.length - 1 ? outerAfter : neighbor(segments[index + 1], 'first');
+    if (item.type === 'pc') return { ...item, children: formatList(item.children, language, before, after) };
     if (item.type !== 'text') return { ...item, children: formatList(item.children, language) };
-    const before = neighbor(segments[index - 1], 'last');
-    const after = neighbor(segments[index + 1], 'first');
     const punctuated = replacePunctuation(item.text, before, after, language);
     // 前後接上鄰居再處理，邊界的空白才看得到另一邊是什麼。
     const spaced = formatSpacing(`${before}${punctuated}${after}`, language);

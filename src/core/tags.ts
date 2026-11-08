@@ -75,6 +75,13 @@ export function placeholderTag(id: number, kind: string): string {
   return `<ph id="${id}" kind="${escapeAttribute(kind)}"/>`;
 }
 
+/** 有樣式的文字的開始標籤。只帶編號，模型不需要知道是什麼樣式（ADR-0116）。 */
+export function pairedTag(id: number): string {
+  return `<pc id="${id}">`;
+}
+
+export const PAIRED_END = '</pc>';
+
 /** `masked` 已經跳脫過，見 `maskText`。 */
 export function unitTag(id: string, role: string, masked: string): string {
   return `<s id="${escapeAttribute(id)}" role="${escapeAttribute(role)}">${masked}</s>`;

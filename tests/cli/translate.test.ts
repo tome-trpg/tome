@@ -924,6 +924,57 @@ describe('translation memory (ADR-0104 item 18)', () => {
   });
 });
 
+describe('inline styles (ADR-0116)', () => {
+  /** 第一個區塊的第二個詞加粗，第二個區塊整段斜體。 */
+  async function styledLibrary(): Promise<Library> {
+    const lib = await library();
+    const path = join(lib.home, 'books', 'book', 'ir', 'document.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { blocks: { text: string; runs?: unknown }[] };
+    const [first, second] = document.blocks;
+    if (first === undefined || second === undefined) throw new Error('the book is too short');
+    const start = first.text.indexOf(' ') + 1;
+    const end = first.text.indexOf(' ', start);
+    first.runs = [{ start, end, marks: ['bold'] }];
+    second.runs = [{ start: 0, end: second.text.length, marks: ['italic'] }];
+    writeFileSync(path, JSON.stringify(document));
+    await estimate(lib, '--realtime', '--budget', '100', '--confirm');
+    return lib;
+  }
+
+  function styles(home: string): { masked: string; formats: string | null; translation_pc: string | null }[] {
+    return withStore(home, (store) => store.all('SELECT masked, formats, translation_pc FROM unit ORDER BY seq'));
+  }
+
+  it('sends the styled word in <pc>, and keeps where it landed in the translation', async () => {
+    const lib = await styledLibrary();
+    const { provider, host } = await fake(GOOD);
+    const { exit } = await translate(lib, host);
+    expect(exit).toBe(0);
+    const sent = provider.requests.map(({ user }) => user).join('\n');
+    expect(sent).toContain('<pc id="1">');
+    expect(sent).not.toContain('bold');
+    const [first, second] = styles(lib.home);
+    expect(first?.masked).toContain('<pc id="1">');
+    expect(JSON.parse(first?.translation_pc ?? '[]')).toEqual([{ id: 1, start: expect.any(Number), end: expect.any(Number) }]);
+    expect(second?.masked).not.toContain('<pc');
+    expect(JSON.parse(second?.formats ?? '{}')).toEqual({ whole: { marks: ['italic'] }, paired: [] });
+    expect(second?.translation_pc).toBeNull();
+  });
+
+  it('keeps the <pc> offsets when the translation comes from memory', async () => {
+    const lib = await styledLibrary();
+    await translate(lib, (await fake(GOOD)).host);
+    const before = styles(lib.home)[0]?.translation_pc;
+    withStore(lib.home, (store) =>
+      store.run("UPDATE unit SET state = 'PENDING', translation = NULL, translation_pc = NULL, attempts = 0"),
+    );
+    const { provider, host } = await fake(GOOD);
+    await translate(lib, host);
+    expect(provider.requests).toHaveLength(0);
+    expect(styles(lib.home)[0]?.translation_pc).toBe(before);
+  });
+});
+
 describe('--retry-failed (ADR-0104 item 26)', () => {
   it('gives a unit that gave up three more tries', async () => {
     const lib = await confirmed();

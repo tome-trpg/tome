@@ -148,6 +148,15 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
         ALTER TABLE ledger ADD COLUMN max_tokens INTEGER;
       `,
     },
+    {
+      // 行內樣式：原文的樣式與 `<pc>`，以及 `<pc>` 在譯文裡的位置，樣式讀的時候從 `formats` 套上（ADR-0116）。
+      // 舊的列是 NULL，沒有樣式。
+      version: 8,
+      sql: `
+        ALTER TABLE unit ADD COLUMN formats TEXT;
+        ALTER TABLE unit ADD COLUMN translation_pc TEXT;
+      `,
+    },
   ],
   series: [
     { version: 1, sql: metaTable('series') },

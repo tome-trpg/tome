@@ -10,6 +10,7 @@ import {
   BATCH_CHARS,
   CONTEXT_CHARS,
   maxTokens,
+  PAIRED_OUTPUT_TOKENS,
   planBatches,
   planRequests,
   REQUEST_CHARS,
@@ -472,6 +473,18 @@ describe('requestBody', () => {
     expect(UNIT_OUTPUT_TOKENS).toBe(16);
     expect(sent.max_tokens).toBe(1760);
     expect(maxTokens(provider, sonnet, request.units)).toBe(1760);
+  });
+
+  it('leaves room for every <pc> the model has to copy back (ADR-0116)', () => {
+    const source = 'see 12, 13, 14 and 15 for more on this.';
+    const runs = [7, 11, 15, 22].map((start) => ({ start: start - 3, end: start - 1, link: { page: start } }));
+    const linked = unit('a', source, maskText(source, [], runs));
+    expect(linked.formats?.paired).toHaveLength(4);
+    expect(PAIRED_OUTPUT_TOKENS).toBe(10);
+    // 40 個單位的請求加上 4 個 `<pc>`，每個 10 token，再取 2 倍。
+    const cells = [linked, ...Array.from({ length: REQUEST_UNITS - 1 }, (_, index) => unit(`c${index}`, text(15)))];
+    const plain = [unit('a', source), ...cells.slice(1)];
+    expect(maxTokens(provider, sonnet, cells) - maxTokens(provider, sonnet, plain)).toBe(80);
   });
 
   it('sends no sampling parameters, the current API refuses them', () => {

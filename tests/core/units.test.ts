@@ -142,6 +142,25 @@ describe('tables', () => {
   });
 });
 
+describe('inline styles (ADR-0116)', () => {
+  it('wraps the styled words of a paragraph in <pc>, apart from the placeholders', async () => {
+    const styled = block({
+      id: 'p0001-aaaaaa',
+      text: 'Roll 1D6 for Fire Bolt.',
+      runs: [{ start: 13, end: 22, marks: ['bold'] }],
+    });
+    const [unit] = (await buildUnits(documentOf([styled]), generic(), 'en')).units;
+    expect(unit?.masked).toBe('Roll <ph id="1" kind="dice"/> for <pc id="1">Fire Bolt</pc>.');
+    expect(unit?.formats).toEqual({ paired: [{ id: 1, start: 13, end: 22, marks: ['bold'] }] });
+    expect(unit).not.toHaveProperty('runs');
+  });
+
+  it('has no formats for a block without runs', async () => {
+    const [unit] = (await buildUnits(documentOf([block({ id: 'p0001-aaaaaa' })]), generic(), 'en')).units;
+    expect(unit?.formats).toBeNull();
+  });
+});
+
 describe('masking through a pack', () => {
   it('hides what the patterns of the pack find, with their kind', async () => {
     const text = 'Roll 1D100, see p.42.';
@@ -326,6 +345,29 @@ describe('syncUnits (ADR-0102)', () => {
     database.close();
   });
 
+  it('keeps the state when only the styles changed, and writes the new styles (ADR-0116)', () => {
+    const database = store();
+    syncUnits(database, [unit('a')]);
+    database.run("UPDATE unit SET state = 'DONE', attempts = 1, translation = '譯文'");
+    const heading = { whole: { marks: ['bold' as const] }, paired: [] };
+    syncUnits(database, [unit('a', 'Some text.', { formats: heading })]);
+    const [row] = database.all<Row & { formats: string | null }>('SELECT * FROM unit');
+    expect(row).toMatchObject({ state: 'DONE', translation: '譯文' });
+    expect(JSON.parse(row?.formats ?? 'null')).toEqual(heading);
+    database.close();
+  });
+
+  it('gives a unit that needs no LLM the <pc> offsets of its source (ADR-0116)', () => {
+    const database = store();
+    const styled = maskText('12 34', [], [{ start: 3, end: 5, marks: ['bold'] }]);
+    syncUnits(database, [unit('a', '12 34', styled)]);
+    const [row] = database.all<Row & { translation_pc: string | null }>('SELECT * FROM unit');
+    expect(row).toMatchObject({ state: 'DONE', translation: '12 34', translation_pc: '[{"id":1,"start":3,"end":5}]' });
+    syncUnits(database, [unit('a', '12 34', { ...styled, formats: null })]);
+    expect(database.get('SELECT translation_pc, formats FROM unit')).toEqual({ translation_pc: null, formats: null });
+    database.close();
+  });
+
   it('deletes units the document no longer has, and keeps their responses', () => {
     const database = store();
     syncUnits(database, [unit('a'), unit('b')]);
@@ -353,7 +395,7 @@ describe('the whole way there and back', () => {
         const [unit] = (await buildUnits(documentOf([block({ id: 'p0000-aaaaaa', text })]), pack, 'en')).units;
         const { units, issues } = parseUnits(unitTag('1', 'paragraph', unit?.masked ?? ''));
         expect(issues).toEqual([]);
-        expect(restoreSegments(units[0]?.segments ?? [], unit?.placeholders ?? [])).toBe(text);
+        expect(restoreSegments(units[0]?.segments ?? [], unit?.placeholders ?? []).text).toBe(text);
       }),
       { numRuns: 40 },
     );

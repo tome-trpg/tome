@@ -3,7 +3,7 @@ import { TomeError } from './errors.ts';
 import { finding, type Finding } from './findings.ts';
 import { formatSegments } from './format.ts';
 import { loadTargetLanguage, scriptViolations, type TargetLanguage } from './language.ts';
-import { findTerm, restoreSegments, type Placeholder } from './mask.ts';
+import { findTerm, pairedJson, restoreSegments, type PairedOffset, type Placeholder } from './mask.ts';
 import { loadPhraseCheck, type PhraseCheck } from './opencc.ts';
 import { findPack, resolvePack, termsFor, type LocalizedTerm, type ResolvedPack } from './pack.ts';
 import { failureEvent, nextState, type UnitState } from './state.ts';
@@ -51,6 +51,8 @@ export interface Verdict {
   readonly problems: readonly Problem[];
   /** 排版並還原後的譯文。沒通過時是 null。 */
   readonly translation: string | null;
+  /** 每個 `<pc>` 在譯文裡的位置。沒通過時是空的（ADR-0116）。 */
+  readonly paired: readonly PairedOffset[];
 }
 
 export interface VerifiableUnit {
@@ -219,10 +221,10 @@ function checkSegments(
 }
 
 function rejected(problem: Problem): Verdict {
-  return { passed: false, problems: [problem], translation: null };
+  return { passed: false, problems: [problem], translation: null, paired: [] };
 }
 
-/** 驗證回應裡一個單位的片段。通過才排版並還原。 */
+/** 驗證回應裡一個單位的片段。通過才排版並還原，`<pc>` 的位置在排版之後記下（ADR-0116）。 */
 export function verifyFragment(unit: VerifiableUnit, fragment: string, context: VerifyContext): Verdict {
   const { units, issues } = parseUnits(fragment);
   if (issues.length > 0) return rejected({ code: 'tag_error', level: 'resend' });
@@ -230,9 +232,10 @@ export function verifyFragment(unit: VerifiableUnit, fragment: string, context: 
   if (parsed === undefined || units.length > 1) return rejected({ code: 'unit_missing', level: 'resend' });
   const problems = checkSegments(unit, parsed.segments, context);
   const passed = !problems.some(({ level }) => level === 'resend');
-  if (!passed) return { passed, problems, translation: null };
+  if (!passed) return { passed, problems, translation: null, paired: [] };
   const formatted = formatSegments(parsed.segments, context.language);
-  return { passed, problems, translation: restoreSegments(formatted, unit.placeholders) };
+  const { text, paired } = restoreSegments(formatted, unit.placeholders);
+  return { passed, problems, translation: text, paired };
 }
 
 export interface UnitMatch {
@@ -287,7 +290,13 @@ export function settle(
 ): UnitState {
   const start = row.state === 'RECEIVED' || row.state === 'STALE' ? row.state : nextState(row.state, 'stale');
   const state = nextState(start, verdict.passed ? 'pass' : failureEvent(row.attempts));
-  store.run('UPDATE unit SET state = ?, translation = ? WHERE unit_id = ?', state, verdict.translation, row.unit_id);
+  store.run(
+    'UPDATE unit SET state = ?, translation = ?, translation_pc = ? WHERE unit_id = ?',
+    state,
+    verdict.translation,
+    pairedJson(verdict.paired),
+    row.unit_id,
+  );
   recordProblems(store, row.unit_id, verdict.problems);
   return state;
 }

@@ -86,7 +86,7 @@ ADR-0113 第 22 項把回合 026「文件結構」排在 025 之後：行內 `ru
 <!-- @assert-count target="src/core/probe.ts" symbol="export type PageKind = 'native' | 'full_image' | 'broken_text' | 'image_only';" expected="1" reason="第 3 項：scan 改名 full_image" -->
 <!-- @assert-absence target="src/core/probe.ts" symbol="'scan'" reason="第 3 項：不再有 scan 這個頁面類型" -->
 <!-- @assert-count target="schemas/tome-engine-1.schema.json" symbol="full_image" expected="1" comments="include" reason="第 4 項：引擎協定的頁面類型也改名" -->
-<!-- @assert-count target="src/core/assemble.ts" symbol="export const ASSEMBLY_VERSION = 2;" expected="1" reason="第 5 項：判定改了要重新組裝" -->
+<!-- @assert-count target="src/core/assemble.ts" regex="true" symbol="export const ASSEMBLY_VERSION = ([2-9]|\d{2,});" expected="1" reason="第 5 項：判定改了要重新組裝，035 再加 1（ADR-0116）" -->
 <!-- @assert-count target="src/core/assemble.ts" symbol="const INDEX_FROM_SHARE = 0.9;" expected="1" reason="第 6 項：只判全書 90% 之後的頁" -->
 <!-- @assert-count target="src/core/assemble.ts" symbol="const INDEX_MIN_LINES = 10;" expected="1" reason="第 6 項：至少 10 行" -->
 <!-- @assert-count target="src/core/assemble.ts" symbol="const INDEX_LINE_SHARE = 0.5;" expected="1" reason="第 6 項：一半以上的行結尾是頁碼" -->

@@ -8,6 +8,7 @@ import { TomeError } from './errors.ts';
 import { finding, type Finding } from './findings.ts';
 import type { DocumentBlock } from './ir.ts';
 import type { SourceLanguage } from './language.ts';
+import { joinRuns, replaceRuns, sliceRuns } from './runs.ts';
 import { validateOverrides } from './schema.ts';
 
 // overrides 層：人工修正。獨立成檔，重新解析後還在。對不到的操作要回報，
@@ -71,10 +72,11 @@ export function readOverrides(home: string, slug: string): Overrides {
   return { operations: checked.value.operations, hash: createHash('sha256').update(text).digest('hex') };
 }
 
-/** 內容變了，雜湊跟著變。ID 不動，後面的操作與重新組裝才對得到它。 */
+/** 內容變了，雜湊跟著變。ID 不動，後面的操作與重新組裝才對得到它。空的 `runs` 不寫（ADR-0116）。 */
 function rehash(block: DocumentBlock, change: Partial<DocumentBlock>): DocumentBlock {
   const text = change.text ?? block.text;
-  return { ...block, ...change, text, content_hash: hashText(text) };
+  const { runs, ...rest } = { ...block, ...change, text, content_hash: hashText(text) };
+  return runs === undefined || runs.length === 0 ? rest : { ...rest, runs };
 }
 
 function newId(blocks: readonly DocumentBlock[], page: number, text: string): string {
@@ -88,6 +90,8 @@ function newId(blocks: readonly DocumentBlock[], page: number, text: string): st
 function redactBlock(block: DocumentBlock, needle: string): DocumentBlock | null {
   const scrub = (value: string): string => value.replaceAll(needle, REDACTED);
   if (!block.text.includes(needle) && !block.raw.includes(needle)) return null;
+  // 遮掉的地方拿掉樣式，後面的跟著位移（ADR-0116）。
+  const runs = replaceRuns(block.text, needle, REDACTED, block.runs ?? []);
   const table =
     block.table === undefined
       ? {}
@@ -101,7 +105,7 @@ function redactBlock(block: DocumentBlock, needle: string): DocumentBlock | null
             })),
           },
         };
-  return rehash(block, { ...table, text: scrub(block.text), raw: scrub(block.raw) });
+  return rehash(block, { ...table, text: scrub(block.text), raw: scrub(block.raw), runs });
 }
 
 function splitBlock(
@@ -115,11 +119,13 @@ function splitBlock(
   const tail = block.text.slice(at);
   const rawAt = block.raw.indexOf(before);
   const raws = rawAt > 0 ? [block.raw.slice(0, rawAt).trimEnd(), block.raw.slice(rawAt)] : [block.raw, tail];
+  // 樣式分給前後兩塊，跨過切點的切開（ADR-0116）。
+  const runs = block.runs ?? [];
   return [
-    rehash(block, { text: head, raw: raws[0] ?? block.raw }),
+    rehash(block, { text: head, raw: raws[0] ?? block.raw, runs: sliceRuns(runs, 0, head.length) }),
     rehash(
       { ...block, id: newId(blocks, block.spans[0]?.page ?? 0, tail) },
-      { text: tail, raw: raws[1] ?? tail },
+      { text: tail, raw: raws[1] ?? tail, runs: sliceRuns(runs, at, block.text.length) },
     ),
   ];
 }
@@ -130,10 +136,19 @@ function mergeBlocks(
 ): DocumentBlock | null {
   const [first, ...others] = members;
   if (first === undefined || members.some(({ table }) => table !== undefined)) return null;
+  // 後面的區塊的樣式依接起來的位置位移（ADR-0116）。
+  const joined = others.reduce(
+    ({ text, runs }, block) => {
+      const next = joinText(language, text, block.text);
+      return { text: next, runs: joinRuns(next, runs, block.runs ?? [], block.text.length) };
+    },
+    { text: first.text, runs: first.runs ?? [] },
+  );
   return rehash(first, {
-    text: others.reduce((text, block) => joinText(language, text, block.text), first.text),
+    text: joined.text,
     raw: members.map(({ raw }) => raw).join('\n'),
     spans: members.flatMap(({ spans }) => spans),
+    runs: joined.runs,
   });
 }
 

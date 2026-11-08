@@ -43,6 +43,28 @@ describe('a good translation', () => {
   });
 });
 
+describe('inline styles (ADR-0116)', () => {
+  const styled = {
+    source: LONG_SOURCE,
+    role: 'paragraph',
+    ...maskText(LONG_SOURCE, [], [{ start: 4, end: 10, marks: ['bold'] }]),
+  };
+
+  it('passes when every <pc> comes back, and says where it landed after formatting', () => {
+    const verdict = verifyFragment(styled, '<s id="1"><pc id="1">守望者</pc> 在每次渡河前清點潮石，並在提燈上做記號，等待晨鐘響起。</s>', context());
+    expect(verdict.passed).toBe(true);
+    expect(verdict.translation).toBe('守望者 在每次渡河前清點潮石，並在提燈上做記號，等待晨鐘響起。');
+    expect(verdict.paired).toEqual([{ id: 1, start: 0, end: 3 }]);
+  });
+
+  it('resends a reply that lost a <pc>, and has no offsets', () => {
+    const verdict = verifyFragment(styled, `<s id="1">${LONG_TRANSLATION}</s>`, context());
+    expect(codes(verdict)).toContain('placeholder_mismatch');
+    expect(verdict.passed).toBe(false);
+    expect(verdict.paired).toEqual([]);
+  });
+});
+
 describe('the protocol', () => {
   it('fails a reply that does not parse', () => {
     const verdict = verifyFragment(unit(LONG_SOURCE), `<s id="1">${LONG_TRANSLATION}<b></s>`, context());

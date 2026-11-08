@@ -3,6 +3,7 @@ import { checkConservation } from './conservation.ts';
 import type {
   DocumentBlock,
   PageStatus,
+  Run,
   Section,
   SourceBlock,
   SourcePage,
@@ -11,14 +12,18 @@ import type {
   TableCell,
 } from './ir.ts';
 import { normalizeText, type SourceLanguage } from './language.ts';
-import type { Bbox, OutlineNode, TextRun } from './pdf.ts';
+import type { Bbox, OutlineNode, PdfLink, TextRun } from './pdf.ts';
 import type { PageKind } from './probe.ts';
+import { alignRuns, glyphsOf, joinRuns, runsInside } from './runs.ts';
 
 // 組裝：把 source 層的區塊變成 document 層（白皮書 §5.2）。這裡沒有輸入輸出，
 // 相同的輸入一定得到相同的結果。語言規則都來自語言設定檔，遊戲概念由規則包另外判定。
 
-/** 規則一改就要重新組裝，document 層的指紋含這個版本。2 加了 `index`、`credits` 的判定（ADR-0115）。 */
-export const ASSEMBLY_VERSION = 2;
+/**
+ * 規則一改就要重新組裝，document 層的指紋含這個版本。2 加了 `index`、`credits` 的判定（ADR-0115），
+ * 3 加了行內樣式 `runs`（ADR-0116）。
+ */
+export const ASSEMBLY_VERSION = 3;
 
 // 書末索引與版權頁（ADR-0115）。數字都是提案，只用維護者的七本書量過，只寫數字（ADR-0092 第 7 項）。
 /** 判錯成 `index` 的內容不會翻譯、使用者也不會發現，漏判只是多花錢，所以只判書末，寧可少判。 */
@@ -49,6 +54,8 @@ export interface PageLayout {
   readonly runs: readonly TextRun[];
   readonly boxes: readonly Bbox[];
   readonly invisibleGlyphs: number;
+  /** 這一頁的連結方框，行內樣式的 `link` 從這裡來（ADR-0116）。 */
+  readonly links?: readonly PdfLink[];
 }
 
 export interface AssemblyPage {
@@ -80,6 +87,8 @@ interface Working {
   spans: readonly Span[];
   text: string;
   raw: string;
+  /** `text` 上的行內樣式，表格沒有（ADR-0116）。 */
+  runs: readonly Run[];
   table?: Table;
   readonly lang: string;
   readonly writing_mode: DocumentBlock['writing_mode'];
@@ -134,6 +143,8 @@ function toWorking(language: SourceLanguage, block: SourceBlock): Working {
     spans: block.spans,
     text: table === undefined ? cleanText(language, block.text) : tableText(table),
     raw: block.raw,
+    // 引擎給的 `runs` 是對引擎的文字算的，清理過的文字對不上，樣式由組裝自己產生（ADR-0116）。
+    runs: [],
     ...(table === undefined ? {} : { table }),
     lang: block.lang,
     writing_mode: block.writing_mode,
@@ -264,6 +275,22 @@ function fixDropCaps(blocks: readonly Working[], layout: PageLayout): void {
   }
 }
 
+/**
+ * 段落類的區塊對上 pdf.js 的字，產生 `runs`。表格的儲存格沒有座標，不做；對上的字母數字不到 95%
+ * 的區塊不給樣式（ADR-0116）。首字放大要先修好，區塊的文字才是最後的樣子。
+ */
+function addRuns(language: SourceLanguage, blocks: readonly Working[], layout: PageLayout): void {
+  const links = layout.links ?? [];
+  for (const block of blocks) {
+    if (block.table !== undefined || block.text === '') continue;
+    const inside = runsInside(
+      layout.runs,
+      block.spans.map(({ bbox }) => bbox),
+    );
+    block.runs = alignRuns(language, block.text, glyphsOf(language, inside, links)).runs;
+  }
+}
+
 function firstPage(block: Working): number {
   return block.spans[0]?.page ?? 0;
 }
@@ -315,7 +342,10 @@ function absorb(language: SourceLanguage, into: Working, next: Working): void {
     into.table = appendTable(into.table, next.table);
     into.text = tableText(into.table);
   } else {
-    into.text = joinText(language, into.text, next.text);
+    const text = joinText(language, into.text, next.text);
+    // 後一塊的樣式跟著位移，跨頁的粗體句子接成一段（ADR-0116）。
+    into.runs = joinRuns(text, into.runs, next.runs, next.text.length);
+    into.text = text;
   }
 }
 
@@ -362,6 +392,7 @@ function pageBlocks(
     .filter((block) => block.text !== '' || block.role === 'figure');
   markSidebars(blocks, layout, source.page);
   fixDropCaps(blocks, layout);
+  addRuns(language, blocks, layout);
   const furniture = blocks.filter((block) => block.role === 'furniture');
   const rest = blocks.filter((block) => block.role !== 'furniture');
   return [
@@ -398,7 +429,7 @@ function statusOf(language: SourceLanguage, item: AssemblyPage, accepted: Readon
 function finish(blocks: readonly Working[]): DocumentBlock[] {
   const seen = new Map<string, number>();
   return blocks.map((block) => {
-    const { role, flow, group, spans, text, raw, table, lang, writing_mode, provenance } = block;
+    const { role, flow, group, spans, text, raw, runs, table, lang, writing_mode, provenance } = block;
     const hash = hashText(text);
     const base = `p${String(spans[0]?.page ?? 0).padStart(4, '0')}-${hash.slice(0, 6)}`;
     const count = seen.get(base) ?? 0;
@@ -412,6 +443,7 @@ function finish(blocks: readonly Working[]): DocumentBlock[] {
       spans,
       text,
       raw,
+      ...(runs.length === 0 ? {} : { runs }),
       ...(table === undefined ? {} : { table }),
       lang,
       writing_mode,

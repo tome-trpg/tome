@@ -4,11 +4,13 @@ import { bookDir, readBook, withBookLock } from './book.ts';
 import { chapterMap, checkedLevel, levelOf } from './chapters.ts';
 import { readDocument } from './extract.ts';
 import { finding } from './findings.ts';
+import type { Run } from './ir.ts';
+import { unitRuns, type PairedOffset, type UnitFormats } from './mask.ts';
 import type { PlanOutcome } from './request.ts';
 import { openBookStore } from './store.ts';
 
 // 原文與譯文對照（ADR-0099 第 3 項、ADR-0104 第 22、23 項）。只留在本機，M2 沒有 vault，
-// 要看譯文靠它。檔案裡只放狀態代碼，不放說明：核心不放給人看的文字。
+// 要看譯文靠它。檔案裡只放狀態代碼，不放說明：核心不放給人看的文字。粗體、斜體用 Markdown 標出（ADR-0116）。
 
 const REVIEW_DIR = 'review';
 const UNTRANSLATED = '[!untranslated]';
@@ -20,6 +22,8 @@ interface PreviewRow {
   readonly source: string;
   readonly state: string;
   readonly translation: string | null;
+  readonly formats: string | null;
+  readonly translation_pc: string | null;
 }
 
 function quoted(text: string): string {
@@ -29,12 +33,49 @@ function quoted(text: string): string {
     .join('\n');
 }
 
-function paragraph({ block_id, source, state, translation }: PreviewRow): string {
+function markerOf({ marks = [] }: Run): string {
+  const bold = marks.includes('bold');
+  const italic = marks.includes('italic');
+  if (bold && italic) return '***';
+  if (bold) return '**';
+  return italic ? '*' : '';
+}
+
+/**
+ * 粗體、斜體用 Markdown 標出來，連結只顯示文字（ADR-0116）。樣式兩端的空白移到記號外面，
+ * 書裡本來的 `*` 不跳脫：預覽要跟書對得起來。
+ */
+export function markdownText(text: string, runs: readonly Run[]): string {
+  let result = '';
+  let cursor = 0;
+  for (const run of runs) {
+    const marker = markerOf(run);
+    const inner = text.slice(run.start, run.end);
+    const core = inner.trim();
+    if (marker === '' || core === '' || run.start < cursor) continue;
+    const lead = inner.slice(0, inner.length - inner.trimStart().length);
+    const trail = inner.slice(inner.trimEnd().length);
+    result += `${text.slice(cursor, run.start)}${lead}${marker}${core}${marker}${trail}`;
+    cursor = run.end;
+  }
+  return result + text.slice(cursor);
+}
+
+function parsed<T>(json: string | null, fallback: T): T {
+  return json === null ? fallback : (JSON.parse(json) as T);
+}
+
+function paragraph({ block_id, source, state, translation, formats, translation_pc }: PreviewRow): string {
   const mark = `<!-- ${block_id} -->`;
   // 沒處理的 `BLOCKED` 單位不放原文，否則個資會進入輸出（白皮書 §6.2）。
   if (state === 'BLOCKED') return `${mark}\n${quoted(`${UNTRANSLATED} ${state}`)}\n`;
-  const after = state === 'DONE' && translation !== null ? translation : `${UNTRANSLATED} ${state}`;
-  return `${mark}\n${source}\n\n${quoted(after)}\n`;
+  const styles = parsed<UnitFormats | null>(formats, null);
+  const before = markdownText(source, unitRuns(source, styles, styles?.paired ?? []));
+  const after =
+    state === 'DONE' && translation !== null
+      ? markdownText(translation, unitRuns(translation, styles, parsed<PairedOffset[]>(translation_pc, [])))
+      : `${UNTRANSLATED} ${state}`;
+  return `${mark}\n${before}\n\n${quoted(after)}\n`;
 }
 
 function fileName(chapter: number): string {
@@ -55,7 +96,9 @@ function previewLocked(home: string, slug: string): PlanOutcome {
   const store = openBookStore(home, slug);
   let rows: PreviewRow[];
   try {
-    rows = store.all<PreviewRow>('SELECT block_id, source, state, translation FROM unit ORDER BY seq');
+    rows = store.all<PreviewRow>(
+      'SELECT block_id, source, state, translation, formats, translation_pc FROM unit ORDER BY seq',
+    );
   } finally {
     store.close();
   }

@@ -31,6 +31,14 @@ export interface TextRun {
   readonly text: string;
   readonly bbox: Bbox;
   readonly font: string;
+  /** 依字型名稱判斷，只有 `openPdf` 開了 `fontStyles` 才有（ADR-0116）。字型名稱本身不往外傳。 */
+  readonly bold?: boolean;
+  readonly italic?: boolean;
+}
+
+export interface OpenOptions {
+  /** 讀字型名稱判斷粗體、斜體。pdf.js 要多傳字型資料，只有組裝讀版面時開（ADR-0116）。 */
+  readonly fontStyles?: boolean;
 }
 
 export interface PageFacts {
@@ -244,15 +252,61 @@ async function pageLinks(
   return links;
 }
 
-function textRuns(items: readonly unknown[]): TextRun[] {
+interface FontStyle {
+  readonly bold: boolean;
+  readonly italic: boolean;
+}
+
+const BOLD_WORD = /bold|black|heavy|demi/iu;
+const ITALIC_WORD = /italic|oblique/iu;
+/** `MinionPro-It`、`-BoldIt`、`-ItCapt`：大寫的 `It` 後面不接小寫字母。 */
+const ITALIC_SUFFIX = /It(?!\p{Ll})/u;
+
+/**
+ * 依字型名稱判斷粗體、斜體（ADR-0116）。真書的字型沒有粗體、斜體旗標，只有名稱。拿掉子集前綴
+ * （`ABCDEF+`）後只看最後一個 `-` 或 `,` 之後的樣式段，字族名稱裡的 `Black` 才不會被當成粗體。
+ */
+export function fontStyle(name: string): FontStyle {
+  const bare = name.slice(name.indexOf('+') + 1);
+  const cut = Math.max(bare.lastIndexOf('-'), bare.lastIndexOf(','));
+  const style = cut < 0 ? bare : bare.slice(cut + 1);
+  return {
+    bold: BOLD_WORD.test(style),
+    italic: ITALIC_WORD.test(style) || (cut >= 0 && ITALIC_SUFFIX.test(style)),
+  };
+}
+
+type PdfPage = Awaited<ReturnType<PdfDocument['getPage']>>;
+type RawItem = { str?: string; transform?: number[]; width?: number; height?: number; fontName?: string };
+
+/** 字型在讀過運算子清單之後才會送到這一側，讀不到名稱的當成一般字型。 */
+function fontStyles(page: PdfPage, items: readonly RawItem[]): Map<string, FontStyle> {
+  const styles = new Map<string, FontStyle>();
+  for (const { fontName } of items) {
+    if (typeof fontName !== 'string' || styles.has(fontName)) continue;
+    let name: unknown = '';
+    try {
+      name = (page.commonObjs.get(fontName) as { name?: unknown } | null)?.name;
+    } catch {
+      name = '';
+    }
+    styles.set(fontName, fontStyle(typeof name === 'string' ? name : ''));
+  }
+  return styles;
+}
+
+function textRuns(items: readonly RawItem[], styles: ReadonlyMap<string, FontStyle> | null): TextRun[] {
   const runs: TextRun[] = [];
-  for (const item of items as { str?: string; transform?: number[]; width?: number; height?: number; fontName?: string }[]) {
+  for (const item of items) {
     if (typeof item.str !== 'string' || item.str.length === 0) continue;
     const [, , , , x = 0, y = 0] = item.transform ?? [];
+    const font = item.fontName ?? '';
+    const style = styles === null ? null : (styles.get(font) ?? { bold: false, italic: false });
     runs.push({
       text: item.str,
       bbox: [x, y, x + (item.width ?? 0), y + (item.height ?? 0)],
-      font: item.fontName ?? '',
+      font,
+      ...(style === null ? {} : { bold: style.bold, italic: style.italic }),
     });
   }
   return runs;
@@ -262,6 +316,7 @@ function wrap(
   doc: PdfDocument,
   ops: PdfJs['OPS'],
   tagged: boolean,
+  withStyles: boolean,
   destroy: () => Promise<void>,
 ): PdfHandle {
   return {
@@ -285,12 +340,14 @@ function wrap(
         page.view as unknown as Bbox,
       );
       const links = await pageLinks(doc, page, index);
+      const items = content.items as RawItem[];
+      const styles = withStyles ? fontStyles(page, items) : null;
       page.cleanup();
       return {
         page: index,
         width: viewport.width,
         height: viewport.height,
-        runs: textRuns(content.items),
+        runs: textRuns(items, styles),
         links,
         ...summary,
       };
@@ -304,19 +361,22 @@ function isPasswordError(error: unknown): boolean {
 }
 
 /** 加密的 PDF 不算錯誤，是要拒絕的輸入（PC-3）。打不開才丟 `pdf.unreadable`。 */
-export async function openPdf(path: string): Promise<PdfOpen> {
+export async function openPdf(path: string, options: OpenOptions = {}): Promise<PdfOpen> {
   let data: Uint8Array;
   try {
     data = new Uint8Array(await readFile(path));
   } catch {
     throw new TomeError('pdf.not_found', { path });
   }
+  const withStyles = options.fontStyles === true;
   const pdfjs = await getResolvedPDFJS();
   const task = pdfjs.getDocument({
     data,
     verbosity: 0,
     disableFontFace: true,
     useSystemFonts: false,
+    // 不開的話字型沒有名稱，判斷不了粗體、斜體（ADR-0116）。
+    fontExtraProperties: withStyles,
   });
   let doc: PdfDocument;
   try {
@@ -333,5 +393,5 @@ export async function openPdf(path: string): Promise<PdfOpen> {
   }
   const mark = (await doc.getMarkInfo()) as ReadonlyMap<string, unknown> | { Marked?: unknown } | null;
   const marked = mark instanceof Map ? mark.get('Marked') : (mark as { Marked?: unknown } | null)?.Marked;
-  return { status: 'ok', pdf: wrap(doc, pdfjs.OPS, marked === true, () => task.destroy()) };
+  return { status: 'ok', pdf: wrap(doc, pdfjs.OPS, marked === true, withStyles, () => task.destroy()) };
 }

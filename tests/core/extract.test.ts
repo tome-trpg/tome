@@ -22,7 +22,7 @@ import {
   type ExtractResult,
 } from '../../src/core/extract.ts';
 import { exitCodeOf, type Finding } from '../../src/core/findings.ts';
-import type { IrDocument } from '../../src/core/ir.ts';
+import type { DocumentBlock, IrDocument } from '../../src/core/ir.ts';
 import { keyEnvName } from '../../src/core/secrets.ts';
 import type { StreamRunner, ToolRunner } from '../../src/core/process.ts';
 import { validateIr, validateEngineManifest } from '../../src/core/schema.ts';
@@ -615,6 +615,18 @@ describe('the recorded layout book', () => {
     ]);
     const purchaser = blocks.filter(({ text }) => text === LAYOUT_TRUTH.furniture);
     expect(purchaser.map(({ role }) => role)).toEqual(['furniture', 'furniture', 'furniture']);
+  });
+
+  // 粗體、斜體來自 pdf.js 讀到的字型名稱，`openPdf` 沒開 `fontStyles` 就不會有（ADR-0116）。
+  it('marks the bold headings from the font names, and not the bold drop cap', async () => {
+    const { blocks } = await layoutBook();
+    const styled = (text: string): DocumentBlock | undefined => blocks.find((block) => block.text === text);
+    expect(styled(LAYOUT_TRUTH.heading)?.runs).toEqual([{ start: 0, end: LAYOUT_TRUTH.heading.length, marks: ['bold'] }]);
+    expect(styled(LAYOUT_TRUTH.plainHeading)?.runs).toEqual([
+      { start: 0, end: LAYOUT_TRUTH.plainHeading.length, marks: ['bold'] },
+    ]);
+    expect(blocks.find(({ text }) => text.startsWith(LAYOUT_TRUTH.dropCap))).not.toHaveProperty('runs');
+    expect(blocks.find(({ text }) => text.startsWith('Alpha opening'))).not.toHaveProperty('runs');
   });
 
   it('turns the ligature into plain letters', async () => {
