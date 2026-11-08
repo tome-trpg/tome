@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fontStyle, openPdf, type PdfHandle } from '../../src/core/pdf.ts';
+import { fontStyle, metadataInfo, openPdf, type PdfHandle } from '../../src/core/pdf.ts';
 import { forgeFile } from '../forge/index.ts';
 import { tempDir } from '../helpers.ts';
 
@@ -55,6 +55,15 @@ describe('openPdf with fontStyles', () => {
     }
   });
 
+  it('reads the title from the metadata and leaves out an author it does not have (ADR-0122)', async () => {
+    const pdf = await opened(false);
+    try {
+      expect(await pdf.info()).toStrictEqual({ title: 'Forged test document' });
+    } finally {
+      await pdf.close();
+    }
+  });
+
   it('leaves the runs without styles when it was not asked for them, as tome probe opens it', async () => {
     const pdf = await opened(false);
     try {
@@ -63,5 +72,13 @@ describe('openPdf with fontStyles', () => {
     } finally {
       await pdf.close();
     }
+  });
+});
+
+describe('metadataInfo (ADR-0122)', () => {
+  it('trims the title and the author, and leaves out empty or non-text values', () => {
+    expect(metadataInfo({ Title: '  A Book  ', Author: ' Somebody ' })).toStrictEqual({ title: 'A Book', author: 'Somebody' });
+    expect(metadataInfo({ Title: '   ', Author: 7 })).toStrictEqual({});
+    expect(metadataInfo({ Author: 'Somebody' })).toStrictEqual({ author: 'Somebody' });
   });
 });

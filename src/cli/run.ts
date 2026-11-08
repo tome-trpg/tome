@@ -19,6 +19,7 @@ import { lintPack } from '../core/pack-lint.ts';
 import { testPack } from '../core/pack-test.ts';
 import { createPack, listPacks, locatePack } from '../core/pack.ts';
 import { previewBook } from '../core/preview.ts';
+import { assembleBook } from '../core/vault.ts';
 import { detectGpu } from '../core/probe.ts';
 import { runTool, type StreamRunner, type ToolRunner } from '../core/process.ts';
 import { testProvider } from '../core/provider-test.ts';
@@ -54,6 +55,7 @@ import {
   promptText,
   usageText,
   glossaryReviewTexts,
+  vaultTexts,
   workspaceTemplate,
   type ArgumentKey,
 } from './messages.ts';
@@ -487,6 +489,22 @@ const COMMANDS: readonly Command[] = [
       const slug = positionals[0];
       if (slug === undefined) throw missing('book');
       return bookStatus(resolveHome(io.env, io.platform), slug);
+    },
+  },
+  {
+    path: ['assemble'],
+    options: { force: { type: 'boolean' } },
+    positionals: 1,
+    // vault 的固定文字從訊息檔帶進去，核心不放給人看的文字（ADR-0122）。
+    run: async (parsed, io) => {
+      const slug = parsed.positionals[0];
+      if (slug === undefined) throw missing('book');
+      return assembleBook({
+        home: resolveHome(io.env, io.platform),
+        slug,
+        texts: vaultTexts,
+        force: parsed.values['force'] === true,
+      });
     },
   },
   {

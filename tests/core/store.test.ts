@@ -339,8 +339,23 @@ describe('migrations', () => {
     const store = openStore(path, 'book');
     const rows = store.all('SELECT unit_id, fielded FROM unit');
     store.close();
-    expect(pragma(path, 'user_version')).toBe(11);
+    expect(pragma(path, 'user_version')).toBe(LATEST_BOOK);
     expect(rows).toEqual([{ unit_id: 'p0000-aaaaaa', fielded: 0 }]);
+  });
+
+  it('adds the render tables for what the vault last held, empty at first (ADR-0122)', () => {
+    const path = join(tempDir(), 'book.db');
+    openStore(path, 'book', MIGRATIONS.book.slice(0, 11)).close();
+    const store = openStore(path, 'book');
+    store.run("INSERT INTO render (block_id, path, markdown, rendered_at) VALUES ('p0000-aaaaaa', '01.md', '譯文', 't')");
+    store.run("INSERT INTO render_file (path, sha256, rendered_at) VALUES ('01.md', 'h', 't')");
+    const rows = [store.all('SELECT * FROM render'), store.all('SELECT * FROM render_file')];
+    store.close();
+    expect(pragma(path, 'user_version')).toBe(12);
+    expect(rows).toEqual([
+      [{ block_id: 'p0000-aaaaaa', path: '01.md', markdown: '譯文', rendered_at: 't' }],
+      [{ path: '01.md', sha256: 'h', rendered_at: 't' }],
+    ]);
   });
 });
 

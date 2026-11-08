@@ -17,7 +17,7 @@ const UNTRANSLATED = '[!untranslated]';
 /** `fileName` 產生的檔名。 */
 const OWN_FILE = /^\d{2,}\.md$/;
 
-interface PreviewRow {
+export interface PreviewRow {
   readonly block_id: string;
   readonly source: string;
   readonly state: string;
@@ -65,7 +65,8 @@ function parsed<T>(json: string | null, fallback: T): T {
   return json === null ? fallback : (JSON.parse(json) as T);
 }
 
-function paragraph({ block_id, source, state, translation, formats, translation_pc }: PreviewRow): string {
+/** 一個單位的原文與譯文。vault 的 `review/` 也用這個格式（ADR-0122）。 */
+export function reviewParagraph({ block_id, source, state, translation, formats, translation_pc }: PreviewRow): string {
   const mark = `<!-- ${block_id} -->`;
   // 沒處理的 `BLOCKED` 單位不放原文，否則個資會進入輸出（白皮書 §6.2）。
   if (state === 'BLOCKED') return `${mark}\n${quoted(`${UNTRANSLATED} ${state}`)}\n`;
@@ -106,7 +107,7 @@ function previewLocked(home: string, slug: string): PlanOutcome {
   for (const row of rows) {
     const chapter = chapters.get(row.block_id) ?? 0;
     const paragraphs = files.get(chapter) ?? [];
-    paragraphs.push(paragraph(row));
+    paragraphs.push(reviewParagraph(row));
     files.set(chapter, paragraphs);
   }
   const path = join(bookDir(home, slug), REVIEW_DIR);

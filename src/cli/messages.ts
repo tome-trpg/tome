@@ -10,6 +10,9 @@ export const usageText = catalog.usage;
 export const workspaceTemplate = catalog.template.workspace;
 
 /** 審定檔的說明與段落標題（ADR-0119）。 */
+/** vault 的固定文字（ADR-0113 第 17 項、ADR-0122）。 */
+export const vaultTexts = catalog.template.vault;
+
 export const glossaryReviewTexts = {
   header: catalog.template.glossary_review.header,
   sections: {
