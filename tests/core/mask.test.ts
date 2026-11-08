@@ -176,6 +176,122 @@ describe('inline styles as <pc> (ADR-0116)', () => {
     expect(unitRuns('abc', null, [])).toEqual([]);
   });
 
+  describe('the style every letter shares', () => {
+    const formatsOf = (runs: Run[], text = 'aa bb'): ReturnType<typeof maskText>['formats'] => maskText(text, [], runs).formats;
+
+    it('gives the whole unit a link only when every run has the same one', () => {
+      expect(
+        formatsOf([
+          { start: 0, end: 2, link: { page: 3 } },
+          { start: 3, end: 5, link: { page: 3 } },
+        ]),
+      ).toEqual({ whole: { link: { page: 3 } }, paired: [] });
+      expect(formatsOf([{ start: 0, end: 5, link: { uri: 'https://example.com/a' } }])).toEqual({
+        whole: { link: { uri: 'https://example.com/a' } },
+        paired: [],
+      });
+    });
+
+    it.each([
+      ['pages', { page: 1 }, { page: 2 }],
+      ['addresses', { uri: 'https://example.com/a' }, { uri: 'https://example.com/b' }],
+      ['a page and none', { page: 1 }, undefined],
+    ] as const)('keeps links to different %s on their own <pc>', (_name, first, second) => {
+      const runs: Run[] = [
+        { start: 0, end: 2, marks: ['bold'], link: first },
+        { start: 3, end: 5, marks: ['bold'], ...(second === undefined ? {} : { link: second }) },
+      ];
+      expect(formatsOf(runs)).toEqual({
+        whole: { marks: ['bold'] },
+        paired: [
+          { id: 1, start: 0, end: 2, link: first },
+          ...(second === undefined ? [] : [{ id: 2, start: 3, end: 5, link: second }]),
+        ],
+      });
+    });
+
+    it('needs every run to share the link, not just one more', () => {
+      const runs: Run[] = [
+        { start: 0, end: 2, link: { page: 1 } },
+        { start: 3, end: 5, link: { page: 1 } },
+        { start: 6, end: 8, link: { page: 2 } },
+      ];
+      expect(formatsOf(runs, 'aa bb cc')?.whole).toBeUndefined();
+    });
+
+    it('keeps only the marks every run has, and copes with a run that has none', () => {
+      expect(
+        formatsOf([
+          { start: 0, end: 2, marks: ['bold', 'italic'] },
+          { start: 3, end: 5, marks: ['italic'] },
+        ]),
+      ).toEqual({ whole: { marks: ['italic'] }, paired: [{ id: 1, start: 0, end: 2, marks: ['bold'] }] });
+      expect(
+        formatsOf([
+          { start: 0, end: 2, marks: ['bold'] },
+          { start: 3, end: 5, link: { page: 4 } },
+        ]),
+      ).toEqual({
+        paired: [
+          { id: 1, start: 0, end: 2, marks: ['bold'] },
+          { id: 2, start: 3, end: 5, link: { page: 4 } },
+        ],
+      });
+    });
+  });
+
+  describe('a <pc> next to a placeholder', () => {
+    it('leaves alone a placeholder that comes after the styled words', () => {
+      expect(maskText('Fire Bolt deals 2d6', [DICE(16, 19)], [BOLD(0, 9)]).masked).toBe(
+        '<pc id="1">Fire Bolt</pc> deals <ph id="1" kind="dice"/>',
+      );
+    });
+
+    it('keeps a placeholder that ends where the style ends inside the <pc>', () => {
+      expect(maskText('Deal fire 2d6 now', [DICE(10, 13)], [BOLD(5, 13)]).masked).toBe(
+        'Deal <pc id="1">fire <ph id="1" kind="dice"/></pc> now',
+      );
+    });
+
+    it('cuts the <pc> before a placeholder that sticks out past its end', () => {
+      expect(maskText('Fire 2d6 now', [DICE(5, 8)], [BOLD(0, 6)]).masked).toBe(
+        '<pc id="1">Fire</pc> <ph id="1" kind="dice"/> now',
+      );
+    });
+
+    it('drops a <pc> left with nothing but punctuation', () => {
+      expect(maskText('Hit: 2d6 now', [DICE(5, 8)], [BOLD(3, 7)])).toMatchObject({
+        masked: 'Hit: <ph id="1" kind="dice"/> now',
+        formats: null,
+      });
+    });
+
+    it('closes one <pc> before it opens the next at the same place', () => {
+      const runs: Run[] = [
+        { start: 0, end: 2, marks: ['bold'] },
+        { start: 2, end: 4, marks: ['italic'] },
+        { start: 4, end: 6, marks: ['bold'] },
+      ];
+      expect(maskText('abcdef', [], runs).masked).toBe(
+        '<pc id="1">ab</pc><pc id="2">cd</pc><pc id="3">ef</pc>',
+      );
+    });
+  });
+
+  it('lists the <pc> offsets by id, whatever order the translation put them in', () => {
+    const { units } = parseUnits('<s id="1"><pc id="3">丙</pc>、<pc id="2">乙</pc>與<pc id="1">甲</pc></s>');
+    expect(restoreSegments(units[0]?.segments ?? [], []).paired).toEqual([
+      { id: 1, start: 4, end: 5 },
+      { id: 2, start: 2, end: 3 },
+      { id: 3, start: 0, end: 1 },
+    ]);
+  });
+
+  it('ignores a <pc> offset whose id has no style', () => {
+    const formats = { whole: { marks: ['italic' as const] }, paired: [] };
+    expect(unitRuns('甲乙丙', formats, [{ id: 9, start: 1, end: 2 }])).toEqual([{ start: 0, end: 3, marks: ['italic'] }]);
+  });
+
   it('stores no offsets as NULL', () => {
     expect(pairedJson([])).toBeNull();
     expect(pairedJson([{ id: 1, start: 0, end: 2 }])).toBe('[{"id":1,"start":0,"end":2}]');
@@ -267,7 +383,7 @@ describe('restoreSegments', () => {
 
   it('refuses to invent what a placeholder held', () => {
     const { units } = parseUnits('<s id="1"><ph id="9"/></s>');
-    expect(() => restoreSegments(units[0]?.segments ?? [], [])).toThrow(RangeError);
+    expect(() => restoreSegments(units[0]?.segments ?? [], [])).toThrow(new RangeError('a placeholder has no text'));
   });
 
   it('gets the original back for any text and any ranges', () => {
@@ -306,6 +422,7 @@ describe('findTerm', () => {
     expect(findTerm('Dodge the dodge.', 'Dodge')).toEqual([[0, 5]]);
     expect(findTerm('Dodgeball', 'Dodge')).toEqual([]);
     expect(findTerm('UnDodge', 'Dodge')).toEqual([]);
+    expect(findTerm('aDodge', 'Dodge')).toEqual([]);
   });
 
   it('can ignore case', () => {
