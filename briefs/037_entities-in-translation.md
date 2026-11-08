@@ -88,7 +88,7 @@ protectedFiles:
 - [x] `book1` 複本量到的 `<glossary>`、`<recent>` 大小寫進 ADR-0120
 - [x] 白皮書與 CHANGELOG 更新
 
-  實作時多出的 18 項細節寫在共用筆記 `brief-037-details.md`，先照建議實作，寫進 ADR-0120。
+  實作時多出的 18 項細節寫在共用筆記 `brief-037-details.md`，維護者全部照建議選定，寫進 ADR-0120；第 1 項「比對指令前後的卡」的代價寫在 ADR-0120 的後果。
 
 ## Measured
 
