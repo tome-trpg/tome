@@ -15,6 +15,7 @@ import {
   type LLMProvider,
   type OnRetry,
   type RemoteBatch,
+  type Sleep,
 } from './llm.ts';
 import { findModel } from './provider.ts';
 import { maxTokens, planBatches, type PlanOutcome } from './request.ts';
@@ -66,7 +67,7 @@ export interface BatchOptions extends TranslateOptions {
   readonly onBatchWait?: (batch: number, minutes: number) => void;
 }
 
-interface BatchRow {
+export interface BatchRow {
   readonly id: number;
   readonly nonce: string;
   readonly remote_id: string | null;
@@ -80,12 +81,22 @@ interface BatchRun {
   readonly options: BatchOptions;
 }
 
-function customId(nonce: string, index: number): string {
+/** 批次的共用動作要的東西。翻譯與 Pass 0 的流程都有（ADR-0118）。 */
+export interface BatchHost {
+  readonly store: Store;
+  readonly llm: LLMProvider;
+  readonly sleep: Sleep;
+  readonly onRetry: OnRetry | undefined;
+  readonly notes: Finding[];
+}
+
+export function customId(nonce: string, index: number): string {
   return `tome-${nonce}-${index + 1}`;
 }
 
+/** 翻譯的批次。Pass 0 的批次由 `tome scan-terms` 收（ADR-0118）。 */
 function nextOutstanding(store: Store): BatchRow | undefined {
-  return store.get<BatchRow>(`SELECT * FROM batch WHERE ${OUTSTANDING} ORDER BY id LIMIT 1`);
+  return store.get<BatchRow>(`SELECT * FROM batch WHERE ${OUTSTANDING} AND stage = 'translate' ORDER BY id LIMIT 1`);
 }
 
 function outstandingRows(store: Store): BatchRow[] {
@@ -151,7 +162,7 @@ function giveBack(run: Run, batchId: number, state: 'abandoned' | 'collected'): 
  * 刪除收到 404 當成已經刪除，不再重試：上次其實刪掉了、只是沒收到回應時，之後每次都會是 404。
  * 404 也可能是換了金鑰，資料還在原本的帳號，所以照樣警告（ADR-0109 第 24 項）。
  */
-function remove(run: Run, remoteId: string): Promise<void> {
+export function remove(run: BatchHost, remoteId: string): Promise<void> {
   return withRetry(() => run.llm.deleteRemote(remoteId), run.sleep, undefined, run.onRetry).then((error) => {
     if (error !== null && error.status !== 404) {
       run.notes.push(finding('batch.delete_failed', 'warn', { id: remoteId }));
@@ -163,7 +174,12 @@ function remove(run: Run, remoteId: string): Promise<void> {
 }
 
 /** 等到整批結束。沒有逾時，批次最晚在建立後 24 小時結束（ADR-0107 第 12 項）。 */
-async function waitFor({ run, options }: BatchRun, row: BatchRow, remoteId: string): Promise<RemoteBatch | Finding> {
+export async function waitFor(
+  run: BatchHost,
+  onWait: BatchOptions['onBatchWait'],
+  row: BatchRow,
+  remoteId: string,
+): Promise<RemoteBatch | Finding> {
   let waited = 0;
   for (;;) {
     const remote = await withRetry(() => run.llm.pollBatch(remoteId), run.sleep, undefined, run.onRetry);
@@ -171,7 +187,7 @@ async function waitFor({ run, options }: BatchRun, row: BatchRow, remoteId: stri
     if (remote.status === 'ended') return remote;
     await run.sleep(POLL_SECONDS);
     waited += POLL_SECONDS;
-    options.onBatchWait?.(row.id, Math.round(waited / 60));
+    onWait?.(row.id, Math.round(waited / 60));
   }
 }
 
@@ -194,7 +210,7 @@ const FOREIGN: Collected = { next: [], stop: null, foreign: true };
 async function collect(batchRun: BatchRun, row: BatchRow, remoteId: string, unverified: boolean): Promise<Collected> {
   const { run } = batchRun;
   const { store, plan } = run;
-  const ended = await waitFor(batchRun, row, remoteId);
+  const ended = await waitFor(run, batchRun.options.onBatchWait, row, remoteId);
   if ('level' in ended) return { ...stopAt(ended), foreign: false };
   if (ended.archivedAt !== null) {
     if (unverified) return FOREIGN;
@@ -262,7 +278,11 @@ async function collect(batchRun: BatchRun, row: BatchRow, remoteId: string, unve
  * 沒有遠端 ID 的意圖紀錄：從最新的批次往回列，到意圖之前減掉時鐘差為止，
  * 找這本書還沒記錄過、請求總數相同的批次，取最早的（ADR-0107 第 9 項）。回傳認回的遠端 ID。
  */
-async function findCandidate(run: Run, row: BatchRow, rejected: ReadonlySet<string>): Promise<string | null | Finding> {
+export async function findCandidate(
+  run: BatchHost,
+  row: BatchRow,
+  rejected: ReadonlySet<string>,
+): Promise<string | null | Finding> {
   const { store } = run;
   const since = Date.parse(row.created_at) - CLOCK_SKEW_MS;
   const known = new Set(
@@ -287,8 +307,8 @@ async function findCandidate(run: Run, row: BatchRow, rejected: ReadonlySet<stri
   }
 }
 
-/** 上次刪除失敗的，這次再試（ADR-0107 第 15 項）。 */
-async function retryDeletes(run: Run): Promise<void> {
+/** 上次刪除失敗的，這次再試（ADR-0107 第 15 項）。翻譯與 Pass 0 的批次都算。 */
+export async function retryDeletes(run: BatchHost): Promise<void> {
   const rows = run.store.all<{ remote_id: string }>(
     "SELECT remote_id FROM batch WHERE state = 'collected' AND remote_id IS NOT NULL AND deleted_at IS NULL ORDER BY id",
   );

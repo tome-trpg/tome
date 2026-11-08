@@ -115,8 +115,37 @@
           "type": "array",
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 }
+        },
+        "pass0": {
+          "description": "Finding candidate names and game terms in this language before translation. A language without it gets no capitalized phrases.",
+          "type": "object",
+          "required": ["connectors", "stopwords", "pronouns", "sentence_end"],
+          "additionalProperties": false,
+          "properties": {
+            "connectors": {
+              "description": "Lower case words that can join the capitalized words of one name.",
+              "$ref": "#/$defs/words"
+            },
+            "stopwords": {
+              "description": "Capitalized words that are not names on their own, such as the first word of a sentence.",
+              "$ref": "#/$defs/words"
+            },
+            "pronouns": {
+              "description": "Pronouns, matched without case, for choosing a sentence that shows a gender.",
+              "$ref": "#/$defs/words"
+            },
+            "sentence_end": {
+              "description": "Marks that end a sentence when a space follows.",
+              "$ref": "#/$defs/marks"
+            }
+          }
         }
       }
+    },
+    "words": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
     },
     "target": {
       "type": "object",

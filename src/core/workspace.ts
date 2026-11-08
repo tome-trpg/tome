@@ -77,7 +77,7 @@ export function workspaceTargetLang(home: string): string {
 }
 
 /** `tome.yaml` 裡的模型，用到時才檢查（ADR-0099 第 10 項）。沒設時是 undefined。 */
-export function workspaceModel(home: string, key: 'translator_model' | 'fallback_model'): string | undefined {
+export function workspaceModel(home: string, key: 'translator_model' | 'fallback_model' | 'scanner_model'): string | undefined {
   const value: unknown = readWorkspaceConfig(home)?.[key];
   if (value !== undefined && value !== null && typeof value !== 'string') {
     throw new TomeError('config.bad_schema', { path: join(home, CONFIG_FILE), expected: WORKSPACE_SCHEMA });

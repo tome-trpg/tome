@@ -511,6 +511,17 @@ export function fakeHost(provider: FakeProvider, endpoint: string | null = provi
   return { connect, sleep, waits, ...(endpoint === null ? {} : { endpoint }) };
 }
 
+/** Pass 0 的提要，三段都有（ADR-0118）。 */
+export const FAKE_BRIEF = '<brief><era>Synthetic era.</era><tone>Plain.</tone><factions>None.</factions></brief>';
+
+/** Pass 0：每個候選詞回一張卡，提要的請求回提要（ADR-0118）。 */
+export function scanned(user: string): string {
+  if (!user.includes('<term ')) return FAKE_BRIEF;
+  return [...user.matchAll(/<term id="(\d+)" count="\d+">([^<]*)<\/term>/g)]
+    .map(([, id, text]) => `<card id="${id}" class="place">譯：${text}</card>`)
+    .join('\n');
+}
+
 /** 把每個單位原樣翻回去，佔位符與數字都留著，一定過得了驗證。 */
 export function translated(user: string): string {
   return parseUnits(user)

@@ -57,9 +57,9 @@ export const REQUEST_CHARS = 6000;
 export const REQUEST_UNITS = 40;
 /** 上文約這麼多字元。 */
 export const CONTEXT_CHARS = 800;
-const MIN_MAX_TOKENS = 1024;
-/** 模型要翻完才停，`max_tokens` 留到預估輸出的 2 倍（ADR-0103）。 */
-const OUTPUT_ROOM = 2;
+export const MIN_MAX_TOKENS = 1024;
+/** 模型要翻完才停，`max_tokens` 留到預估輸出的 2 倍（ADR-0103）。Pass 0 也用（ADR-0118）。 */
+export const OUTPUT_ROOM = 2;
 /**
  * 每個單位在輸出多要的 token，例如 `<s id>` 的標籤。依字元預估的輸出沒算到它，短格子的請求
  * 因此被截斷。是提案，取 M2 兩本書帳本擬合的較大者（ADR-0114）。
@@ -357,7 +357,7 @@ export function requestBody({ units }: PlannedRequest, { prefix, user, model, pr
 }
 
 /** 目前只接 Anthropic（ADR-0080）。 */
-const PROVIDER_ID = 'anthropic';
+export const PROVIDER_ID = 'anthropic';
 export const ESTIMATE_STAGE = 'estimate';
 
 export interface SizedRequest {
@@ -553,7 +553,7 @@ export interface PlanOutcome {
   readonly findings: readonly Finding[];
 }
 
-function parseBudget(value: string): number {
+export function parseBudget(value: string): number {
   const amount = Number(value);
   if (!Number.isFinite(amount) || amount <= 0) throw new TomeError('budget.invalid', { value });
   return amount;
