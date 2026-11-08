@@ -61,8 +61,12 @@ protectedFiles:
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過，`tests/engine` 在本機跑過一次
 - [x] 新的測試先在舊行為上失敗過，護欄測試故意改壞程式確認會失敗
-- [ ] `specs`、`test`、`engine` 在 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `specs`、`test`、`engine` 在 CI 第一次跑就通過，沒有靠重跑
+
+  `29d543e` 的 `specs`、`test` 與 `engine`（Docling）在 Windows 與 Ubuntu 都是第一次跑就通過。
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+
+  `CodeQL` 是 success、0 個 annotation。三個 `Analyze` 工作各有 1 個 notice，是 `ubuntu-latest` 要換成 Ubuntu 26 的執行環境通知，不是程式掃描的警示。
 - [x] 訊息、`--json` 與紀錄都不含書本文字，`<pc>` 只帶編號，連結目標不送給模型
 
   沒有新的訊息代碼；`tests/cli/translate.test.ts` 確認送出的內容有 `<pc id="1">`、沒有樣式名稱。
