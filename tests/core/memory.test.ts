@@ -162,4 +162,19 @@ describe('remember and recall', () => {
     expect(recall(series, 'key', roll('1D100'), verifyContext())?.translation).toContain('擲1D100');
     series.close();
   });
+
+  it('says where each <pc> landed, and keeps no style in the memory (ADR-0116)', () => {
+    const series = store();
+    const styled = (marks: ('bold' | 'italic')[]) => ({
+      source: LONG,
+      role: 'paragraph',
+      ...maskText(LONG, [], [{ start: 4, end: 10, marks }]),
+    });
+    const fragment = '<s id="1"><pc id="1">守望者</pc>在每次渡河前清點潮石，並在提燈上做記號，等待晨鐘響起再出發。</s>';
+    expect(remember(series, 'key', { ...ENTRY, fragment }, styled(['bold']), verifyContext())).toBe(true);
+    const found = recall(series, 'key', styled(['italic']), verifyContext());
+    series.close();
+    expect(found?.paired).toEqual([{ id: 1, start: 0, end: 3 }]);
+    expect(found?.entry.fragment).not.toContain('bold');
+  });
 });

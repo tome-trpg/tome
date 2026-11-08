@@ -288,13 +288,14 @@ function readSourcePage(path: string): SourcePage | null {
 }
 
 async function readLayouts(path: string, pages: readonly number[]): Promise<Map<number, PageLayout>> {
-  const opened = await openPdf(path);
+  // 組裝要字型名稱才分得出粗體、斜體（ADR-0116）。
+  const opened = await openPdf(path, { fontStyles: true });
   if (opened.status !== 'ok') throw new TomeError('pdf.unreadable', { path });
   const layouts = new Map<number, PageLayout>();
   try {
     for (const page of pages) {
-      const { width, height, runs, boxes, invisibleGlyphs } = await opened.pdf.page(page);
-      layouts.set(page, { width, height, runs, boxes, invisibleGlyphs });
+      const { width, height, runs, boxes, invisibleGlyphs, links } = await opened.pdf.page(page);
+      layouts.set(page, { width, height, runs, boxes, invisibleGlyphs, links });
     }
   } finally {
     await opened.pdf.close();

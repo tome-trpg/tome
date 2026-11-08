@@ -259,8 +259,26 @@ describe('migrations', () => {
     const store = openStore(path, 'book');
     const rows = store.all('SELECT request_id, output_tokens, stop_reason, max_tokens FROM ledger');
     store.close();
-    expect(pragma(path, 'user_version')).toBe(7);
+    expect(pragma(path, 'user_version')).toBe(LATEST_BOOK);
     expect(rows).toEqual([{ request_id: 'r1', output_tokens: 2, stop_reason: null, max_tokens: null }]);
+  });
+
+  it('adds the inline formats to units that are already there, with no styles (ADR-0116)', () => {
+    const path = join(tempDir(), 'book.db');
+    openStore(path, 'book', MIGRATIONS.book.slice(0, 7)).close();
+    const old = new DatabaseSync(path);
+    old
+      .prepare(
+        `INSERT INTO unit (unit_id, block_id, role, seq, source, masked, placeholders, state, translation)
+         VALUES ('a', 'b', 'paragraph', 0, 'x', 'x', '[]', 'DONE', 'y')`,
+      )
+      .run();
+    old.close();
+    const store = openStore(path, 'book');
+    const rows = store.all('SELECT unit_id, state, translation, formats, translation_pc FROM unit');
+    store.close();
+    expect(pragma(path, 'user_version')).toBe(8);
+    expect(rows).toEqual([{ unit_id: 'a', state: 'DONE', translation: 'y', formats: null, translation_pc: null }]);
   });
 });
 

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { PairedOffset } from './mask.ts';
 import type { LocalizedTerm } from './pack.ts';
 import type { Store } from './store.ts';
 import {
@@ -37,6 +38,8 @@ export interface MemoryEntry {
 export interface Recalled {
   readonly entry: MemoryEntry;
   readonly translation: string;
+  /** `<pc>` 在譯文裡的位置。樣式用目前單位的 `formats`，記憶裡只有編號（ADR-0116）。 */
+  readonly paired: readonly PairedOffset[];
   /** 只報告的問題，交付報告要看得到。 */
   readonly problems: readonly Problem[];
 }
@@ -105,6 +108,6 @@ export function recall(
     key,
   );
   if (entry === undefined) return null;
-  const { translation, problems } = verifyFragment(unit, entry.fragment, context);
-  return translation === null ? null : { entry, translation, problems };
+  const { translation, paired, problems } = verifyFragment(unit, entry.fragment, context);
+  return translation === null ? null : { entry, translation, paired, problems };
 }

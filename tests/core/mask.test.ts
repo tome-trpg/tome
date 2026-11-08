@@ -1,6 +1,15 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { findTerm, maskText, needsLlm, restoreSegments, type MaskRange } from '../../src/core/mask.ts';
+import type { Run } from '../../src/core/ir.ts';
+import {
+  findTerm,
+  maskText,
+  needsLlm,
+  pairedJson,
+  restoreSegments,
+  unitRuns,
+  type MaskRange,
+} from '../../src/core/mask.ts';
 import { parseUnits, unitTag } from '../../src/core/tags.ts';
 
 // 文字都是這裡編的。
@@ -11,7 +20,7 @@ function roundTrip(text: string, ranges: readonly MaskRange[]): string {
   const { masked, placeholders } = maskText(text, ranges);
   const { units, issues } = parseUnits(unitTag('1', 'paragraph', masked));
   expect(issues).toEqual([]);
-  return restoreSegments(units[0]?.segments ?? [], placeholders);
+  return restoreSegments(units[0]?.segments ?? [], placeholders).text;
 }
 
 describe('maskText', () => {
@@ -20,6 +29,7 @@ describe('maskText', () => {
       masked: 'Roll <ph id="1" kind="dice"/> now.',
       placeholders: [{ id: 1, kind: 'dice', text: '1D100' }],
       needs_llm: true,
+      formats: null,
     });
   });
 
@@ -81,6 +91,128 @@ describe('maskText', () => {
   });
 });
 
+describe('inline styles as <pc> (ADR-0116)', () => {
+  const BOLD = (start: number, end: number): Run => ({ start, end, marks: ['bold'] });
+
+  it('wraps only the styled stretch and numbers <pc> apart from <ph>', () => {
+    expect(maskText('Roll 1D6 for Fire Bolt now.', [DICE(5, 8)], [BOLD(13, 22)])).toEqual({
+      masked: 'Roll <ph id="1" kind="dice"/> for <pc id="1">Fire Bolt</pc> now.',
+      placeholders: [{ id: 1, kind: 'dice', text: '1D6' }],
+      needs_llm: true,
+      formats: { paired: [{ id: 1, start: 13, end: 22, marks: ['bold'] }] },
+    });
+  });
+
+  it('sends no <pc> when the whole unit has one style', () => {
+    expect(maskText('Chapter One:', [], [BOLD(0, 11)])).toMatchObject({
+      masked: 'Chapter One:',
+      formats: { whole: { marks: ['bold'] }, paired: [] },
+    });
+  });
+
+  it('takes out what every letter shares and sends only the difference', () => {
+    const runs: Run[] = [
+      { start: 0, end: 2, marks: ['italic'] },
+      { start: 3, end: 5, marks: ['bold', 'italic'] },
+      { start: 6, end: 8, marks: ['italic'], link: { page: 3 } },
+    ];
+    expect(maskText('aa bb cc', [], runs)).toMatchObject({
+      masked: 'aa <pc id="1">bb</pc> <pc id="2">cc</pc>',
+      formats: {
+        whole: { marks: ['italic'] },
+        paired: [
+          { id: 1, start: 3, end: 5, marks: ['bold'] },
+          { id: 2, start: 6, end: 8, link: { page: 3 } },
+        ],
+      },
+    });
+  });
+
+  it('puts a whole placeholder inside the <pc>', () => {
+    expect(maskText('Deal 2d6 fire now', [DICE(5, 8)], [BOLD(5, 13)]).masked).toBe(
+      'Deal <pc id="1"><ph id="1" kind="dice"/> fire</pc> now',
+    );
+  });
+
+  it('shrinks a <pc> off a placeholder it only partly covers, and drops one left empty', () => {
+    expect(maskText('Deal 2d6 fire', [DICE(5, 8)], [BOLD(7, 13)]).masked).toBe(
+      'Deal <ph id="1" kind="dice"/> <pc id="1">fire</pc>',
+    );
+    expect(maskText('Deal 2d6 fire now', [DICE(5, 8)], [BOLD(4, 7)])).toMatchObject({
+      masked: 'Deal <ph id="1" kind="dice"/> fire now',
+      formats: null,
+    });
+  });
+
+  it('leaves the masked text as it was without styles, so memory keys do not change', () => {
+    expect(maskText('Roll 1D6.', [DICE(5, 8)], [])).toEqual(maskText('Roll 1D6.', [DICE(5, 8)]));
+  });
+
+  it('records where each <pc> lands in the translation, without the spaces at its edges', () => {
+    const { placeholders } = maskText('Roll 1D6 for Fire Bolt.', [DICE(5, 8)], [BOLD(13, 22)]);
+    const { units } = parseUnits('<s id="1">施放<pc id="1"> 火焰箭 </pc>，擲 <ph id="1"/>。</s>');
+    expect(restoreSegments(units[0]?.segments ?? [], placeholders)).toEqual({
+      text: '施放 火焰箭 ，擲 1D6。',
+      paired: [{ id: 1, start: 3, end: 6 }],
+    });
+  });
+
+  it('styles the source and the translation from the same formats', () => {
+    const { formats } = maskText('aa bb cc', [], [
+      { start: 0, end: 2, marks: ['italic'] },
+      { start: 3, end: 5, marks: ['bold', 'italic'] },
+      { start: 6, end: 8, marks: ['italic'] },
+    ]);
+    expect(unitRuns('aa bb cc', formats, formats?.paired ?? [])).toEqual([
+      { start: 0, end: 3, marks: ['italic'] },
+      { start: 3, end: 5, marks: ['bold', 'italic'] },
+      { start: 5, end: 8, marks: ['italic'] },
+    ]);
+    expect(unitRuns('甲乙丙丁', formats, [{ id: 1, start: 1, end: 2 }])).toEqual([
+      { start: 0, end: 1, marks: ['italic'] },
+      { start: 1, end: 2, marks: ['bold', 'italic'] },
+      { start: 2, end: 4, marks: ['italic'] },
+    ]);
+    expect(unitRuns('abc', null, [])).toEqual([]);
+  });
+
+  it('stores no offsets as NULL', () => {
+    expect(pairedJson([])).toBeNull();
+    expect(pairedJson([{ id: 1, start: 0, end: 2 }])).toBe('[{"id":1,"start":0,"end":2}]');
+  });
+
+  it('gets the text and every <pc> back for any text, ranges and styles', () => {
+    const scenario = fc.string({ unit: 'binary', maxLength: 40 }).chain((text) =>
+      fc.record({
+        text: fc.constant(text),
+        ranges: fc.array(
+          fc
+            .tuple(fc.nat({ max: text.length }), fc.nat({ max: text.length }))
+            .map(([a, b]) => DICE(Math.min(a, b), Math.max(a, b))),
+          { maxLength: 3 },
+        ),
+        cuts: fc.uniqueArray(fc.nat({ max: text.length }), { maxLength: 6 }),
+        marks: fc.array(fc.subarray(['bold', 'italic'] as const), { maxLength: 6 }),
+      }),
+    );
+    fc.assert(
+      fc.property(scenario, ({ text, ranges, cuts, marks }) => {
+        const points = [...cuts].sort((a, b) => a - b);
+        const runs: Run[] = [];
+        for (let index = 0; index + 1 < points.length; index += 2) {
+          runs.push({ start: points[index] ?? 0, end: points[index + 1] ?? 0, marks: [...(marks[index] ?? ['bold'])] });
+        }
+        const { masked, placeholders, formats } = maskText(text, ranges, runs);
+        const { units, issues } = parseUnits(unitTag('1', 'paragraph', masked));
+        expect(issues).toEqual([]);
+        const restored = restoreSegments(units[0]?.segments ?? [], placeholders);
+        expect(restored.text).toBe(text);
+        expect(restored.paired).toEqual((formats?.paired ?? []).map(({ id, start, end }) => ({ id, start, end })));
+      }),
+    );
+  });
+});
+
 describe('whether a unit needs the LLM (ADR-0100)', () => {
   it.each([
     ['1D100', [DICE(0, 5)], false],
@@ -123,14 +255,14 @@ describe('restoreSegments', () => {
       { start: 16, end: 20, kind: 'page_ref' },
     ]);
     const { units } = parseUnits('<s id="1">先看 <ph id="2"/>，再擲 <ph id="1"/>。</s>');
-    expect(restoreSegments(units[0]?.segments ?? [], placeholders)).toBe('先看 p.42，再擲 1D100。');
+    expect(restoreSegments(units[0]?.segments ?? [], placeholders).text).toBe('先看 p.42，再擲 1D100。');
   });
 
   it('keeps the text inside the tags that only carry a note', () => {
     const { units } = parseUnits(
       '<s id="1"><pc id="1" kind="bold">甲</pc><new-term source="B">乙</new-term><flag reason="r">丙</flag></s>',
     );
-    expect(restoreSegments(units[0]?.segments ?? [], [])).toBe('甲乙丙');
+    expect(restoreSegments(units[0]?.segments ?? [], [])).toEqual({ text: '甲乙丙', paired: [{ id: 1, start: 0, end: 1 }] });
   });
 
   it('refuses to invent what a placeholder held', () => {

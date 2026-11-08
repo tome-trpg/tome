@@ -15,6 +15,7 @@ import {
   type RequestResult,
   type Sleep,
 } from './llm.ts';
+import { pairedJson } from './mask.ts';
 import { memoryKey, recall, remember } from './memory.ts';
 import { packHash } from './pack.ts';
 import { promptHash } from './prompt.ts';
@@ -252,7 +253,12 @@ export function skipRemembered(run: Run, units: readonly TranslationUnit[]): Tra
     }
     store.transaction(() => {
       move(store, unit_id, 'hit');
-      store.run('UPDATE unit SET translation = ? WHERE unit_id = ?', hit.translation, unit_id);
+      store.run(
+        'UPDATE unit SET translation = ?, translation_pc = ? WHERE unit_id = ?',
+        hit.translation,
+        pairedJson(hit.paired),
+        unit_id,
+      );
       // 留一列，規則改了 `tome verify` 才驗得到它。
       saveResponse(store, unit_id, 0, hit.entry.fragment, hit.entry.model);
       recordProblems(store, unit_id, hit.problems);

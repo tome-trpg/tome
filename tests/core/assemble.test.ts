@@ -9,7 +9,7 @@ import {
 } from '../../src/core/assemble.ts';
 import type { DocumentBlock, SourceBlock, SourcePage, Table } from '../../src/core/ir.ts';
 import { loadSourceLanguage } from '../../src/core/language.ts';
-import type { Bbox, TextRun } from '../../src/core/pdf.ts';
+import type { Bbox, PdfLink, TextRun } from '../../src/core/pdf.ts';
 import { validateIr } from '../../src/core/schema.ts';
 
 const { profile: language } = loadSourceLanguage('en');
@@ -41,10 +41,11 @@ interface PageSpec {
   readonly blocks: readonly SourceBlock[];
   readonly boxes?: readonly Bbox[];
   readonly runs?: readonly TextRun[];
+  readonly links?: readonly PdfLink[];
 }
 
 /** 文字層預設就是區塊的文字，所以字元守恆會過。 */
-function page(index: number, { blocks, boxes = [], runs }: PageSpec): AssemblyPage {
+function page(index: number, { blocks, boxes = [], runs, links = [] }: PageSpec): AssemblyPage {
   const located = blocks.map((item) => ({
     ...item,
     spans: item.spans.map((span) => ({ ...span, page: index })),
@@ -62,6 +63,7 @@ function page(index: number, { blocks, boxes = [], runs }: PageSpec): AssemblyPa
     runs: runs ?? blocks.map((item) => run(item.raw, item.spans[0]?.bbox ?? [0, 0, 0, 0])),
     boxes,
     invisibleGlyphs: 0,
+    links,
   };
   return { page: index, kind: 'native', source, layout };
 }
@@ -525,6 +527,72 @@ describe('index and credits', () => {
     const words = [block('All rights reserved', [72, 100, 540, 120], 'heading'), block('All rights reserved.', [72, 200, 540, 220])];
     expect(rolesOn(assembleBlocks({ language: plain, pages: book(3, { 0: words }) }).blocks, 0)).toEqual(['heading', 'paragraph']);
     expect(rolesOn(assembleBlocks({ language, pages: book(3, { 0: words }) }).blocks, 0)).toEqual(['credits', 'heading']);
+  });
+});
+
+describe('inline styles (ADR-0116)', () => {
+  /** 一行裡的幾段文字，依序往右排，每個字 6 點寬。 */
+  function line(parts: readonly (readonly [string, Partial<TextRun>?])[], x = 60, y = 600): TextRun[] {
+    let left = x;
+    return parts.map(([text, style = {}]) => {
+      const item = { text, bbox: [left, y, left + text.length * 6, y + 10] as Bbox, font: 'f', ...style };
+      left += text.length * 6;
+      return item;
+    });
+  }
+
+  it('marks the bold words of a paragraph', () => {
+    const [styled] = assemble({
+      blocks: [block('Use Fire Bolt now.', LEFT_TOP)],
+      runs: line([['Use '], ['Fire Bolt', { bold: true }], [' now.']]),
+    });
+    expect(styled?.runs).toEqual([{ start: 4, end: 13, marks: ['bold'] }]);
+    expect(validateIr({ schema: 'tome-ir/1', layer: 'source', pdf_sha256: SHA, page: 0, blocks: [styled] }).ok).toBe(true);
+  });
+
+  it('writes no runs for plain text', () => {
+    const [plain] = assemble({ blocks: [block('Plain words here.', LEFT_TOP)], runs: line([['Plain words here.']]) });
+    expect(plain).not.toHaveProperty('runs');
+  });
+
+  it('links the words under a link box', () => {
+    const [linked] = assemble({
+      blocks: [block('See page 12.', LEFT_TOP)],
+      runs: line([['See page 12.']]),
+      links: [{ page: 0, bbox: [114, 595, 126, 615], target_page: 11 }],
+    });
+    expect(linked?.runs).toEqual([{ start: 9, end: 11, link: { page: 11 } }]);
+  });
+
+  it('shifts the runs of a paragraph joined across pages', () => {
+    const [joined] = assemble(
+      { blocks: [block('The warden walks', LEFT_TOP)], runs: line([['The warden '], ['walks', { italic: true }]]) },
+      { blocks: [block('slowly to the ferry.', LEFT_TOP)], runs: line([['slowly to the '], ['ferry', { italic: true }], ['.']]) },
+    );
+    expect(joined?.text).toBe('The warden walks slowly to the ferry.');
+    expect(joined?.runs).toEqual([
+      { start: 11, end: 16, marks: ['italic'] },
+      { start: 31, end: 36, marks: ['italic'] },
+    ]);
+  });
+
+  it('gives no runs when the text layer does not line up, rather than wrong ones', () => {
+    const [unaligned] = assemble({
+      blocks: [block('alpha beta gamma delta', LEFT_TOP)],
+      runs: line([['delta gamma beta alpha', { bold: true }]]),
+    });
+    expect(unaligned?.text).toBe('alpha beta gamma delta');
+    expect(unaligned).not.toHaveProperty('runs');
+  });
+
+  it('gives no runs to a table', () => {
+    const table: Table = { rows: 1, cols: 1, cells: [{ row: 0, col: 0, text: 'Bold cell' }] };
+    const [found] = assemble({
+      blocks: [block('Bold cell', LEFT_TOP, 'table', { table })],
+      runs: line([['Bold cell', { bold: true }]]),
+    });
+    expect(found?.role).toBe('table');
+    expect(found).not.toHaveProperty('runs');
   });
 });
 

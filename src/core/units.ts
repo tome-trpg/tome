@@ -1,6 +1,6 @@
 import { finding, type Finding } from './findings.ts';
-import type { DocumentBlock, IrDocument } from './ir.ts';
-import { findTerm, maskText, type MaskRange, type Placeholder } from './mask.ts';
+import type { DocumentBlock, IrDocument, Run } from './ir.ts';
+import { findTerm, maskText, pairedJson, type MaskRange, type Placeholder, type UnitFormats } from './mask.ts';
 import { patternInputs, termsFor, type LocalizedTerm, type ResolvedPack } from './pack.ts';
 import { runPatterns } from './patterns.ts';
 import { nextState, type UnitState } from './state.ts';
@@ -25,6 +25,13 @@ export interface TranslationUnit extends UnitSource {
   readonly masked: string;
   readonly placeholders: readonly Placeholder[];
   readonly needs_llm: boolean;
+  /** 行內樣式，沒有時是 null（ADR-0116）。 */
+  readonly formats: UnitFormats | null;
+}
+
+interface SourceWithRuns extends UnitSource {
+  /** 段落的行內樣式。表格的儲存格不做（ADR-0116）。 */
+  readonly runs?: readonly Run[];
 }
 
 export interface UnitResult {
@@ -36,8 +43,8 @@ function hasText(text: string): boolean {
   return text.trim() !== '';
 }
 
-function sourcesOf(block: DocumentBlock): UnitSource[] {
-  const { id, role, group, section, text, table } = block;
+function sourcesOf(block: DocumentBlock): SourceWithRuns[] {
+  const { id, role, group, section, text, table, runs } = block;
   if (UNTRANSLATED.has(role)) return [];
   const base = { block_id: id, role, ...(section === undefined ? {} : { section }) };
   if (table !== undefined) {
@@ -52,7 +59,15 @@ function sourcesOf(block: DocumentBlock): UnitSource[] {
       }));
   }
   if (!hasText(text)) return [];
-  return [{ ...base, unit_id: id, ...(group === undefined ? {} : { group }), source: text }];
+  return [
+    {
+      ...base,
+      unit_id: id,
+      ...(group === undefined ? {} : { group }),
+      source: text,
+      ...(runs === undefined ? {} : { runs }),
+    },
+  ];
 }
 
 function termRanges(terms: readonly LocalizedTerm[], { source, role }: UnitSource): MaskRange[] {
@@ -79,24 +94,34 @@ export async function buildUnits(
     return { units: [], findings: [finding('pack.slow_regex', 'fail', { pattern: outcome.pattern })] };
   }
   const terms = termsFor(pack, sourceLang).filter(({ term }) => term.keep_source === true);
-  const units = sources.map((source, index) => {
+  const units = sources.map(({ runs, ...source }, index) => {
     const patternRanges = masks.flatMap(({ id, kind }) =>
       (outcome.matches[id]?.[index] ?? []).map(([start, end]) => ({ start, end, kind: kind ?? id })),
     );
-    return { ...source, ...maskText(source.source, [...patternRanges, ...termRanges(terms, source)]) };
+    return { ...source, ...maskText(source.source, [...patternRanges, ...termRanges(terms, source)], runs) };
   });
   return { units, findings: [] };
 }
 
 const INITIAL_STATE: UnitState = 'PENDING';
 
+function formatsJson(unit: TranslationUnit): string | null {
+  return unit.formats === null ? null : JSON.stringify(unit.formats);
+}
+
+/** 不需要 LLM 的單位譯文就是原文，`<pc>` 的位置也用原文的（ADR-0116）。 */
+function keptOffsets(unit: TranslationUnit): string | null {
+  return unit.needs_llm ? null : pairedJson(unit.formats?.paired ?? []);
+}
+
 function insertUnit(store: Store, unit: TranslationUnit, seq: number): void {
   // 不需要 LLM 的單位原樣輸出（ADR-0100）。
   const state = unit.needs_llm ? INITIAL_STATE : nextState(INITIAL_STATE, 'hit');
   store.run(
     `INSERT OR REPLACE INTO unit
-       (unit_id, block_id, role, group_id, section, seq, source, masked, placeholders, state, attempts, translation)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+       (unit_id, block_id, role, group_id, section, seq, source, masked, placeholders, state, attempts, translation,
+        formats, translation_pc)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
     unit.unit_id,
     unit.block_id,
     unit.role,
@@ -108,24 +133,30 @@ function insertUnit(store: Store, unit: TranslationUnit, seq: number): void {
     JSON.stringify(unit.placeholders),
     state,
     unit.needs_llm ? null : unit.source,
+    formatsJson(unit),
+    keptOffsets(unit),
   );
 }
 
+/** 遮蔽後的文字沒變，狀態與譯文留著。樣式照新的寫，譯文的樣式讀的時候從它套上（ADR-0116）。 */
 function moveUnit(store: Store, unit: TranslationUnit, seq: number): void {
   store.run(
-    'UPDATE unit SET block_id = ?, role = ?, group_id = ?, section = ?, seq = ? WHERE unit_id = ?',
+    'UPDATE unit SET block_id = ?, role = ?, group_id = ?, section = ?, seq = ?, formats = ? WHERE unit_id = ?',
     unit.block_id,
     unit.role,
     unit.group ?? null,
     unit.section === undefined ? null : JSON.stringify(unit.section),
     seq,
+    formatsJson(unit),
     unit.unit_id,
   );
+  if (!unit.needs_llm) store.run('UPDATE unit SET translation_pc = ? WHERE unit_id = ?', keptOffsets(unit), unit.unit_id);
 }
 
 /**
  * 把單位寫進 `book.db`（ADR-0102）。同一個 `unit_id` 且遮蔽後文字相同就保留狀態，
- * 文字變了回到起點，`document` 裡沒有的單位刪除，回應保留。
+ * 文字變了回到起點，`document` 裡沒有的單位刪除，回應保留。有 `<pc>` 的單位遮蔽後的文字含 `<pc>`，
+ * 樣式的範圍變了也會回到起點（ADR-0116）。
  */
 export function syncUnits(store: Store, units: readonly TranslationUnit[]): void {
   store.transaction(() => {
