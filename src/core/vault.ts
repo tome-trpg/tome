@@ -10,6 +10,7 @@ import type { DocumentBlock, IrDocument, Section } from './ir.ts';
 import { unitRuns, type PairedOffset, type Placeholder, type UnitFormats } from './mask.ts';
 import { openPdf } from './pdf.ts';
 import { markdownText, reviewParagraph, type PreviewRow } from './preview.ts';
+import { collectReport, fill, pageLabel, renderReport, reportedBlocks, type BookReport, type ReportTexts } from './report.ts';
 import type { PlanOutcome } from './request.ts';
 import { openBookStore, type Store } from './store.ts';
 import { pathFindings, readWorkspaceConfig } from './workspace.ts';
@@ -44,6 +45,8 @@ export interface VaultTexts {
   };
   /** `review/` 裡區塊對應表的檔名與欄名。 */
   readonly map: { readonly file: string; readonly block: string; readonly chapter: string };
+  /** 交付報告的固定文字（ADR-0123）。 */
+  readonly report: ReportTexts;
 }
 
 export interface UnitRow extends PreviewRow {
@@ -66,10 +69,6 @@ const NUMBER = /\d+/u;
 /** 檔名與連結用的名字：拿掉不能用的字元、合併空白、去掉結尾的點與空白、太長截斷。 */
 export function safeName(text: string): string {
   return text.replace(UNSAFE, ' ').replace(/\s+/gu, ' ').trim().replace(/[. ]+$/u, '').slice(0, MAX_NAME).trim();
-}
-
-function fill(template: string, slots: Readonly<Record<string, string>>): string {
-  return template.replace(/\{(\w+)\}/gu, (whole, name: string) => slots[name] ?? whole);
 }
 
 function quote(text: string): string {
@@ -101,10 +100,6 @@ function sectionDepths(sections: readonly Section[], depth = 1, depths = new Map
   return depths;
 }
 
-function pageLabel(document: IrDocument, page: number): string {
-  return document.page_map.find((item) => item.page === page)?.label ?? String(page + 1);
-}
-
 function pageOf(block: DocumentBlock): number {
   return block.spans[0]?.page ?? 0;
 }
@@ -118,6 +113,8 @@ export interface RenderInput {
   readonly cards: readonly EntityCard[];
   readonly pdf: { readonly title?: string; readonly author?: string };
   readonly texts: VaultTexts;
+  /** 交付報告的資料，有才寫 `00-交付報告.md`（ADR-0123）。 */
+  readonly report?: BookReport;
 }
 
 export interface RenderedVault {
@@ -226,7 +223,8 @@ export function renderVault(input: RenderInput): RenderedVault {
     if (isHeading(plan)) last = plan;
     if (last !== undefined) headingBefore.set(plan.index, last);
   }
-  const anchors = new Set<string>();
+  // 交付報告提到的區塊也是連結的目標（ADR-0123）。
+  const anchors = new Set<string>(input.report === undefined ? [] : reportedBlocks(input.report));
   const linkTarget = (reference: string, from: number): string | null => {
     const number = NUMBER.exec(reference)?.[0];
     if (number === undefined) return null;
@@ -381,6 +379,19 @@ export function renderVault(input: RenderInput): RenderedVault {
     [`| ${texts.map.block} | ${texts.map.chapter} |`, '| --- | --- |', ...blocks.map(({ block_id: id, path }) => `| ${id} | [[${path.slice(0, -3)}]] |`), ''].join('\n'),
   );
 
+  // 交付報告：每筆連到章節檔裡的區塊；沒輸出的區塊只寫 ID（ADR-0123）。
+  if (input.report !== undefined) {
+    const where = new Map(rendered.map((plan) => [plan.block.id, plan]));
+    const written = new Set(blocks.map(({ block_id: id }) => id));
+    const place = (blockId: string): string => {
+      const plan = where.get(blockId);
+      if (plan === undefined || !written.has(blockId)) return blockId;
+      const stem = stemOf(plan.chapter);
+      return `[[${stem}#^${blockId}|${fill(texts.report.place, { file: stem, page: pageLabel(document, pageOf(plan.block)) })}]]`;
+    };
+    files.set(`${texts.report.file}.md`, renderReport(input.report, texts.report, place));
+  }
+
   const expected = {
     headings: rendered.filter((plan) => isHeading(plan) && plan.units[0] !== undefined && plan.units[0].state !== 'BLOCKED').length,
     tables: rendered.filter((plan) => plan.block.role === 'table' && plan.block.table !== undefined).length,
@@ -464,14 +475,16 @@ async function assembleLocked({ home, slug, texts, force }: AssembleOptions): Pr
     const units = store.all<UnitRow>(
       'SELECT unit_id, block_id, source, state, translation, formats, translation_pc, placeholders FROM unit ORDER BY seq',
     );
+    const cards = entityCards(store);
     const rendered = renderVault({
       slug,
       document,
       chapterLevel: checkedLevel(document, levelOf(book)),
       units,
-      cards: entityCards(store),
+      cards,
       pdf: await pdfInfo(book.config.pdf.path),
       texts,
+      report: collectReport(store, document, cards, book.config.budget_usd ?? null),
     });
     const { expected, actual } = rendered.structure;
     if (expected.headings !== actual.headings || expected.tables !== actual.tables) {

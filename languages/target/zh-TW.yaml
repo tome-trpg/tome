@@ -137,3 +137,71 @@ style_guide:
 term_checks: []
 # 片語表與自訂清單的誤報。
 term_exceptions: []
+
+# 代名詞與實體卡不符的檢查只報告（ADR-0123）。這些詞含代名詞集合的字卻不是那個代名詞，先拿掉再比；
+# 複數也列進來，卡的代名詞是單數。維護者在 2026-11-09 逐字審過。
+pronoun_exceptions:
+  - 其他
+  - 其它
+  - 他人
+  - 他們
+  - 她們
+  - 牠們
+  - 它們
+  - 祂們
+  - 吉他
+  - 他鄉
+  - 他國
+  - 他處
+  - 他方
+  - 他日
+  - 他者
+  - 利他
+  - 排他
+  - 無他
+  - 他殺
+  - 他用
+
+# 機翻腔訊號，只報告不重送（ADR-0123）。成對的寫法要在同一句裡（中間沒有 sentence_end 的字），
+# 前半之後 pair_gap 個字以內出現後半才算。維護者在 2026-11-09 逐字審過；誤報率沒有量過。
+translationese:
+  pair_gap: 15
+  sentence_end: [。, ！, ？]
+  phrases:
+    - { text: 作為一個, prefer: 身為 }
+    - { text: 作為一名, prefer: 身為 }
+    - { text: 做出決定, prefer: 決定 }
+    - { text: 做出判斷, prefer: 判斷 }
+    - { text: 做出回應, prefer: 回應 }
+    - { text: 做出反應, prefer: 反應 }
+    - { text: 他自己的, prefer: 自己的 }
+    - { text: 她自己的, prefer: 自己的 }
+    - { text: 它自己的, prefer: 自己的 }
+    - { text: 牠自己的, prefer: 自己的 }
+    - { text: 其中的一個, prefer: 其中一個 }
+    - { text: 毫無疑問地, prefer: 無疑 }
+    - { text: 基於此, prefer: 因此 }
+    - { text: 就此而言, prefer: 在這方面 }
+    - { text: 正在進行中, prefer: 進行中 }
+    - { text: 進行了一次, prefer: 直接用動詞 }
+    - { text: 對其進行, prefer: 直接用動詞 }
+    - { text: 一個非常, prefer: 很 }
+    - { text: 被認為是, prefer: 一般認為 }
+    - { text: 被允許, prefer: 可以 }
+    - { text: 被要求, prefer: 必須 }
+    - { text: 擁有一個, prefer: 有一個 }
+    - { text: 在這種情況下, prefer: 這時 }
+    - { text: 值得注意的是, prefer: 要注意 }
+    - { text: 讓我們, prefer: 省略 }
+    - { text: 變得更加, prefer: 更 }
+    - { text: 在某種程度上, prefer: 多少 }
+    - { text: 與此同時, prefer: 同時 }
+    - { pair: [被, 所], prefer: 拿掉「所」 }
+    - { pair: [由, 所], prefer: 拿掉「由」「所」 }
+    - { pair: [當, 的時候], prefer: ……時 }
+    - { pair: [對於, 來說], prefer: 對……來說 }
+    - { pair: [以, 的方式], prefer: ……地 }
+    - { pair: [一種, 的感覺], prefer: 直接寫感覺 }
+    - { pair: [最, 之一], prefer: 改寫 }
+    - { pair: [對, 進行], prefer: 直接用動詞 }
+  exceptions: []

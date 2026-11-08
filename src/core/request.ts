@@ -28,7 +28,7 @@ import { readDocument } from './extract.ts';
 import { finding, type Finding } from './findings.ts';
 import type { IrDocument } from './ir.ts';
 import { loadTargetLanguage } from './language.ts';
-import { spentUsd } from './ledger.ts';
+import { recordEstimate, spentUsd } from './ledger.ts';
 import { packHash, type LocalizedTerm, type ResolvedPack } from './pack.ts';
 import { feedbackSentences, fillSentence, promptHash, staticPrefix } from './prompt.ts';
 import {
@@ -719,6 +719,11 @@ function confirmation(
   }
   if (confirm) {
     recordStage(store, ESTIMATE_STAGE, plan.fingerprint);
+    // 同一份估價再確認一次不另記，交付報告才不會多出一列沒有花費的（ADR-0123）。
+    if (!confirmed) {
+      const { mode, model, requests, estimate } = plan;
+      recordEstimate(store, { stage: 'translate', mode, model: model.id, requests: requests.length, ...estimate });
+    }
     return { confirmed: true, findings: [shown, finding('estimate.confirmed', 'info')] };
   }
   const reminder = confirmed ? [] : [finding('estimate.not_confirmed', 'info')];

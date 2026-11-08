@@ -21,7 +21,7 @@ import { readDocument } from './extract.ts';
 import { finding, type Finding } from './findings.ts';
 import type { DocumentBlock, IrDocument } from './ir.ts';
 import { loadSourceLanguage, loadTargetLanguage } from './language.ts';
-import { recordUsage, spentUsd } from './ledger.ts';
+import { recordEstimate, recordUsage, spentUsd } from './ledger.ts';
 import {
   RETRYABLE_BATCH_ERRORS,
   isApiError,
@@ -1102,6 +1102,8 @@ async function scanLocked(options: ScanOptions): Promise<PlanOutcome> {
     }
     const { host } = options;
     if (host === undefined) throw new RangeError('scan-terms --confirm needs a provider');
+    // 確認過、要送出的估價，交付報告拿來對照實際花費（ADR-0123）。
+    recordEstimate(store, { stage: 'scan', mode, model: plan.model.id, requests: plan.works.length, ...plan.estimate });
     const run = startRun(options, book, store, plan, host);
     if (plan.works.length > 0) options.onStart?.(mode, plan.works.length);
     if (mode === 'batch') {

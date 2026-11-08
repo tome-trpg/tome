@@ -351,11 +351,26 @@ describe('migrations', () => {
     store.run("INSERT INTO render_file (path, sha256, rendered_at) VALUES ('01.md', 'h', 't')");
     const rows = [store.all('SELECT * FROM render'), store.all('SELECT * FROM render_file')];
     store.close();
-    expect(pragma(path, 'user_version')).toBe(12);
+    expect(pragma(path, 'user_version')).toBe(LATEST_BOOK);
     expect(rows).toEqual([
       [{ block_id: 'p0000-aaaaaa', path: '01.md', markdown: '譯文', rendered_at: 't' }],
       [{ path: '01.md', sha256: 'h', rendered_at: 't' }],
     ]);
+  });
+
+  it('adds the confirmed estimates and the memory key of a batched unit, which old rows leave empty (ADR-0123)', () => {
+    const path = join(tempDir(), 'book.db');
+    const old = openStore(path, 'book', MIGRATIONS.book.slice(0, 12));
+    old.run("INSERT INTO batch_unit (batch_id, custom_id, position, unit_id, model) VALUES (1, 'c', 0, 'p0000-aaaaaa', 'm')");
+    old.close();
+    const store = openStore(path, 'book');
+    store.run(
+      "INSERT INTO estimate (stage, mode, model, requests, low_usd, high_usd, created_at) VALUES ('translate', 'batch', 'm', 2, 0.1, 0.3, 't')",
+    );
+    const rows = [store.all('SELECT stage, requests, low_usd, high_usd FROM estimate'), store.all('SELECT memory_key FROM batch_unit')];
+    store.close();
+    expect(pragma(path, 'user_version')).toBe(13);
+    expect(rows).toEqual([[{ stage: 'translate', requests: 2, low_usd: 0.1, high_usd: 0.3 }], [{ memory_key: null }]]);
   });
 });
 

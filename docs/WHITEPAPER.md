@@ -471,7 +471,7 @@ Docling 環境的 `pillow` 用 `override-dependencies` 蓋過 Docling 2.140.0 �
 
 目標語言只測試與承諾 zh-TW。評測與 QA 的成本會隨語言數相乘，所以 G-2 的目標語言部分只保證「加語言時不必改架構」。
 
-**已實作**：`languages/source/en.yaml`、`languages/target/zh-TW.yaml`，格式是 `tome-lang/1`（`schemas/tome-lang-1.schema.json`），載入在 `src/core/language.ts`（`tests/core/language.test.ts`），隨 npm 包發送（ADR-0084）。欄位是提案。來源設定檔的文字品質資料已接進 `tome probe`；正規化、斷字還原與接段的資料要到組裝步驟才用到；Pass 0 提示到 M3 才加。目標設定檔的排版規則、長度比例與 `script_check` 已接進驗證，OpenCC 的片語表接進只報告的用語檢查（ADR-0102）。風格指南由維護者審過，已接進提示（ADR-0103），用語檢查表留空。語言代碼只拿來組檔名，有斷言擋下核心依語言代碼分支。
+**已實作**：`languages/source/en.yaml`、`languages/target/zh-TW.yaml`，格式是 `tome-lang/1`（`schemas/tome-lang-1.schema.json`），載入在 `src/core/language.ts`（`tests/core/language.test.ts`），隨 npm 包發送（ADR-0084）。欄位是提案。來源設定檔的文字品質資料已接進 `tome probe`；正規化、斷字還原與接段的資料要到組裝步驟才用到；Pass 0 提示到 M3 才加。目標設定檔的排版規則、長度比例與 `script_check` 已接進驗證，OpenCC 的片語表接進只報告的用語檢查（ADR-0102）。風格指南由維護者審過，已接進提示（ADR-0103），用語檢查表留空。代名詞例外詞與機翻腔詞表由維護者審過，接進只報告的檢查（ADR-0123）。語言代碼只拿來組檔名，有斷言擋下核心依語言代碼分支。
 
 ### 5.5 輸出：Obsidian vault
 
@@ -505,7 +505,9 @@ Obsidian 的限制要在輸出端處理：
 
 vault 可以直接修改（ADR-0012）。`tome sync` 比對上次輸出與目前的 vault，把改過的段落存成人工譯文，優先序最高，之後重新輸出也不會覆蓋。併段、拆段這類結構改動回收不了，列在交付報告裡。
 
-**已實作**（ADR-0122）：`tome assemble <書>` 寫 `00-書目與來源.md`、一章一檔、`entities/` 與 `review/`，沒設 `vault_path` 時寫到工作區的 `vault/`，vault 在 git repo 裡就拒絕。frontmatter、邊欄與規則包區塊的 callout、`[!untranslated]`（`BLOCKED` 不放原文）、頁面邊界、頁碼參照的連結（顯示譯文裡原本的字）、區塊回溯照上表。**圖還沒抽**：只寫一行原書頁碼的 callout，不建 `assets/`。上次輸出記在 `book.db` 的 `render` 表，vault 被人改過就拒絕輸出，`tome sync`（031）之前可以 `--force` 覆蓋；寫檔前查標題與表格的結構跟 IR 對得上。交付報告在回合 038。Obsidian 裡的顯示只能人看，測試只查產生的文字。
+**已實作**（ADR-0122）：`tome assemble <書>` 寫 `00-書目與來源.md`、一章一檔、`entities/` 與 `review/`，沒設 `vault_path` 時寫到工作區的 `vault/`，vault 在 git repo 裡就拒絕。frontmatter、邊欄與規則包區塊的 callout、`[!untranslated]`（`BLOCKED` 不放原文）、頁面邊界、頁碼參照的連結（顯示譯文裡原本的字）、區塊回溯照上表。**圖還沒抽**：只寫一行原書頁碼的 callout，不建 `assets/`。上次輸出記在 `book.db` 的 `render` 表，vault 被人改過就拒絕輸出，`tome sync`（031）之前可以 `--force` 覆蓋；寫檔前查標題與表格的結構跟 IR 對得上。Obsidian 裡的顯示只能人看，測試只查產生的文字。
+
+**已實作**（ADR-0123）：`tome assemble` 每次也寫 `00-交付報告.md`，各節照 §5.6，每筆連到章節檔裡的區塊並在那裡加 `^區塊 ID`；報告指到的區塊就是連結目標。
 
 ### 5.6 翻譯核心
 
@@ -572,7 +574,7 @@ flowchart LR
 | 機翻腔訊號、長度過長、代名詞與實體卡不符 | 列報告 |
 | 輸出的標題與表格結構跟 IR 不符 | 輸出失敗，這是程式錯誤 |
 
-長度過短的比例，`zh-TW` 是 0.2，`too_short` 照舊重送（ADR-0111）。這是第一筆數據：第一次真實翻譯自然的譯文有低於 0.3 的，少了一半的摘要約 0.19；只有一本小說、一個模型，規則書的表格與短標籤沒有數據。機翻腔訊號、代名詞與實體卡不符、輸出的標題與表格結構排到 M3（ADR-0102）。混入簡體字沿用 repo 的判定：標準 Big5 以外的漢字，加上 Big5 也收錄的簡體字形，字表是語言資料，鎖定譯名裡的字不算。OpenCC 只用在只報告的用語檢查。數字比原文有沒有都出現，少了重送，譯文多出來的只報告，`three` 譯成 `3` 不是錯。
+長度過短的比例，`zh-TW` 是 0.2，`too_short` 照舊重送（ADR-0111）。這是第一筆數據：第一次真實翻譯自然的譯文有低於 0.3 的，少了一半的摘要約 0.19；只有一本小說、一個模型，規則書的表格與短標籤沒有數據。輸出的標題與表格結構在 `tome assemble` 寫檔前檢查（ADR-0122）。**已實作**（ADR-0123）：代名詞與實體卡不符、機翻腔訊號都只報告。代名詞：單位命中恰好一張有代名詞的鎖定卡，譯文拿掉命中的譯名與例外詞後出現別的代名詞、又沒有那張卡的代名詞才報；活躍實體不看。機翻腔：目標語言設定檔的詞表，字串或同一句裡相隔不遠的前後兩半。兩份語言資料由維護者在 2026-11-09 逐字審過，誤報率沒有量過。混入簡體字沿用 repo 的判定：標準 Big5 以外的漢字，加上 Big5 也收錄的簡體字形，字表是語言資料，鎖定譯名裡的字不算。OpenCC 只用在只報告的用語檢查。數字比原文有沒有都出現，少了重送，譯文多出來的只報告，`three` 譯成 `3` 不是錯。
 
 失敗時只重送失敗的單位並附上原因，預設最多 3 次。到達上限標成 `FAILED_QA`，列入交付報告，輸出時保留原文，MUST NOT 靜默略過。查到的 BabelDOC、PDFMathTranslate v1 都沒有這個保證（[佐證 §1.9](research/2026-10-31-landscape.md#19-標籤協定與佔位符的前例)）。
 
@@ -603,7 +605,7 @@ flowchart LR
 
 **翻譯記憶**（S-6）的鍵是：遮蔽後文字的雜湊、命中詞條摘要、目標語言、風格版本。風格版本是該角色風格文字的雜湊（ADR-0050）。短段落（預設 40 字元以下）再加前一段的雜湊，避免 `It moves.` 這種句子用錯它、牠、祂。模型不在鍵裡，存成中繼資料。翻譯記憶與人工譯文存在 `series.db`；每本書預設自成一個系列，所以 0.1.0 也用它，跨書共用排到之後。人工譯文的優先序最高（ADR-0012）。依內容雜湊只翻變動段落的新版更新，排到 0.1.0 之後。
 
-**改譯名不重翻**（S-16）：鎖定譯名改動時，直接替換受影響的譯文，再跑一次驗證。替換要避開較長詞條的子字串。人工譯文不替換，內含舊譯名的段落列入交付報告，由人決定（ADR-0081）。代名詞或語域改動無法用字串替換，受影響的單位要重翻，會先列出估價。**已實作**（ADR-0120）：`tome glossary review` 與 `import` 改了已鎖定的實體卡時當下做。譯名改了，就在已翻單位的最後一份回應裡替換，避開較長譯名裡的那一處，存成新的回應、重新驗證，翻譯記憶用新的鍵存；找不到舊譯名的單位重送。性別、代名詞或語域改了，命中的單位回到待翻，估價會列出。人工譯文要等回合 031，規則包詞條的譯名改了還不做 S-16。
+**改譯名不重翻**（S-16）：鎖定譯名改動時，直接替換受影響的譯文，再跑一次驗證。替換要避開較長詞條的子字串。人工譯文不替換，內含舊譯名的段落列入交付報告，由人決定（ADR-0081）。代名詞或語域改動無法用字串替換，受影響的單位要重翻，會先列出估價。**已實作**（ADR-0120）：`tome glossary review` 與 `import` 改了已鎖定的實體卡時當下做。譯名改了，就在已翻單位的最後一份回應裡替換，避開較長譯名裡的那一處，存成新的回應、重新驗證，翻譯記憶用新的鍵存；找不到舊譯名的單位重送。性別、代名詞或語域改了，命中的單位回到待翻，估價會列出。人工譯文要等回合 031，規則包詞條的譯名改了還不做 S-16。批次送出時記下每個單位的翻譯記憶鍵，收回時跟目前的鍵比，送出後改了或新鎖定了命中的卡的單位不存翻譯記憶、回到待翻（ADR-0123）。
 
 **風格與校稿**：風格依區塊角色（S-17），哪些角色用哪種風格由規則包決定。預設翻一次加零 token 驗證。依角色開啟的 LLM 校稿（ADR-0013）排到 0.1.0 之後（ADR-0081）。
 
@@ -617,6 +619,8 @@ flowchart LR
 * 只報告的檢查結果：疑似大陸用語、機翻腔、長度過長、代名詞
 * `tome sync` 回收不了的結構改動，以及內含舊譯名的人工譯文
 * 全書一致性問題：重複出現卻有多種譯法的片語。定案後用「改譯名不重翻」一次修掉
+
+**已實作**（ADR-0123）：`tome assemble` 每次寫 `00-交付報告.md`，含書本文字，只在 vault 裡；`BLOCKED` 的單位只寫狀態與位置。花費分翻譯與 Pass 0，確認估價時記下金額（`book.db` 的 `estimate` 表，遷移第 13 版），每一筆對到之後的實際花費，寫出落在估價區間的哪裡；之前確認的估價沒有紀錄。一致性算兩種：還沒鎖定卡的原文，各單位的 `<new-term>` 回報了不同的譯名；鎖定的譯名在翻好的單位裡沒用上。只報告，修法是鎖定譯名後跑 `tome verify` 重送；新鎖定的卡不走 S-16，用回報過的其他譯名替換之後另議。`tome sync` 的兩項在 031。`tome report <書>` 只印各項的數字。
 
 **不翻的內容**
 
@@ -954,7 +958,7 @@ tome backup|purge <book>               備份與刪除
 
 `tome assemble` 偵測到未回收的 vault 修改就拒絕輸出，列出檔案，要求先跑 `tome sync`，人工譯文不會被覆蓋。
 
-**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。`tome verify <書>` 也已實作（`tests/cli/verify.test.ts`），全部通過回 0，有失敗回 1（ADR-0102）。`tome estimate <書> [--budget <美元>] [--chapters <範圍>] [--chapter-level <層>] [--realtime] [--confirm]`、`tome translate <書> --dry-run [--realtime]` 也已實作（`tests/cli/estimate.test.ts`），`--confirm` 沒有預算或超過預算時回 1，不在表上的模型回 2（ADR-0103）。`--chapter-level` 選依第幾層書籤分章，層數不對或換層級時沒有一起給 `--chapters` 回 2；書籤有兩層以上時，`tome extract` 與 `tome estimate` 印每層有幾個書籤，只有數字（ADR-0115）。`tome preview <書>` 也已實作（`tests/cli/preview.test.ts`），在 `books/<slug>/review/` 產生原文與譯文對照（ADR-0104），粗體、斜體用 Markdown 標出（ADR-0116）。`tome assemble <書> [--force]` 也已實作（`tests/cli/assemble.test.ts`），把譯文寫成 Obsidian 的 vault，不連網；vault 在 git repo 裡、被人改過（沒加 `--force`）或結構對不上時回 1，訊息只印 vault 的根目錄與數量（ADR-0122）。`tome translate <書> [--realtime] [--retry-failed]`、`tome batch status|collect|cancel <書>` 也已實作（`tests/cli/translate.test.ts`、`tests/cli/batch.test.ts`），接上 Anthropic 轉接層，一開始先取金鑰，沒有金鑰回 `key.missing`，不開書也不連網（ADR-0109）。`tome provider test` 也已實作（`tests/cli/provider.test.ts`），只查 Models API，不消耗 token，對照模型資料的 Batch、思考參數、伺服器端回退與淘汰，對不上只警告，不改設定檔（ADR-0109）。這兩組由維護者用真的 API 跑過，翻譯只跑過批次模式，即時模式只跟本機的假供應商跑過（ADR-0112）。`tome status <書>` 也已實作（`tests/cli/batch.test.ts`），只讀本機資料，不連網。`tome provider list` 也已實作（`tests/cli/provider.test.ts`），不連網，不讀金鑰與 `tome.yaml`，還沒 `tome init` 也能用，價目表過期時警告，結束碼仍是 0（ADR-0106）。`tome scan-terms <書> [--budget <美元>] [--realtime] [--confirm]` 也已實作（`tests/cli/scan.test.ts`），不加 `--confirm` 只估價、不連網，加了要跟上次顯示的估價相同才送，沒設 `scanner_model` 回 2；`tome batch status|collect|cancel` 也管它的批次（ADR-0118）。`tome glossary review <書>`、`tome glossary import <書> <csv>` 也已實作（`tests/cli/glossary.test.ts`），只讀寫本機，不連網；審定檔有內容不合規定的列、CSV 有不合規定的列或欄名時回 1，CSV 不存在回 2（ADR-0119）。兩個指令改了已鎖定的實體卡時當下做 S-16，只印數量；還有待審的卡時，`tome estimate` 與 `tome translate` 提醒筆數，結束碼仍是 0（ADR-0120）。跑得久的指令在 stderr 印進度（ADR-0111）：`tome extract` 啟動引擎前印一行，頁的進度依時間印，引擎 30 秒沒有事件時說它仍在執行，組裝 document 層前也印一行；重新探測前說要探測幾頁；`tome translate` 送出前說模式與請求數；連到供應商重試前說幾秒後重試、第幾次。估價、翻譯完成與 `tome status` 都寫出不需翻譯、原樣保留的單位數，翻譯完成時提示用 `tome preview` 看譯文。翻譯完成、翻譯中的進度與 `tome status` 的數字都是 `--chapters` 範圍內的，跟估價對得起來，範圍外沒完成的另印一行（ADR-0114）。位置參數比指令接受的多時，說收到幾個、只接受幾個，提醒路徑有空格要加引號，不回顯參數的值（ADR-0114）。其他指令還沒有。
+**已實作**：`tome init [--vault <路徑>]`、`tome doctor`、`tome provider auth set <供應商>`、`tome add <pdf> [--as <名稱>] [--system <規則包>] [--source-lang <語言>]`、`tome probe <書>`（`src/cli/`；`tests/cli/run.test.ts`、`tests/cli/book.test.ts`）。訊息集中在 `src/cli/messages/zh-TW.json`，`--json` 的外層是 `tome-cli/1`，全域旗標目前只有 `--json`、`--help`、`--version`。`<book>` 預設取 PDF 檔名，撞名回 1 要求 `--as`（ADR-0084）。`tome add` 的 `--source-lang`、`--system` 指到不存在的語言或規則包時回 2，沒指定 `--system` 的書用 `generic`（ADR-0100）。`tome system new <ID>`、`tome system list`、`tome system lint <ID 或路徑> [--public]`、`tome system test <ID 或路徑>` 也已實作（`tests/cli/system.test.ts`）。`tome engine add <名稱或路徑> [--gpu]`、`tome engine list`、`tome engine remove <名稱>`、`tome extract <書>` 也已實作（`tests/cli/engine.test.ts`）。各項結束碼見 ADR-0082，加密的 PDF 回 1，打不開或檔案被換掉回 2，有頁面解析失敗或未通過字元守恆回 1，引擎失敗的頁下次重跑。`tome verify <書>` 也已實作（`tests/cli/verify.test.ts`），全部通過回 0，有失敗回 1（ADR-0102）。`tome estimate <書> [--budget <美元>] [--chapters <範圍>] [--chapter-level <層>] [--realtime] [--confirm]`、`tome translate <書> --dry-run [--realtime]` 也已實作（`tests/cli/estimate.test.ts`），`--confirm` 沒有預算或超過預算時回 1，不在表上的模型回 2（ADR-0103）。`--chapter-level` 選依第幾層書籤分章，層數不對或換層級時沒有一起給 `--chapters` 回 2；書籤有兩層以上時，`tome extract` 與 `tome estimate` 印每層有幾個書籤，只有數字（ADR-0115）。`tome preview <書>` 也已實作（`tests/cli/preview.test.ts`），在 `books/<slug>/review/` 產生原文與譯文對照（ADR-0104），粗體、斜體用 Markdown 標出（ADR-0116）。`tome assemble <書> [--force]` 也已實作（`tests/cli/assemble.test.ts`），把譯文寫成 Obsidian 的 vault，不連網；vault 在 git repo 裡、被人改過（沒加 `--force`）或結構對不上時回 1，訊息只印 vault 的根目錄與數量（ADR-0122）。`tome report <書>` 也已實作（`tests/cli/report.test.ts`），只印交付報告各項的數字，不寫檔、不拿書的鎖，結束碼 0（ADR-0123）。`tome translate <書> [--realtime] [--retry-failed]`、`tome batch status|collect|cancel <書>` 也已實作（`tests/cli/translate.test.ts`、`tests/cli/batch.test.ts`），接上 Anthropic 轉接層，一開始先取金鑰，沒有金鑰回 `key.missing`，不開書也不連網（ADR-0109）。`tome provider test` 也已實作（`tests/cli/provider.test.ts`），只查 Models API，不消耗 token，對照模型資料的 Batch、思考參數、伺服器端回退與淘汰，對不上只警告，不改設定檔（ADR-0109）。這兩組由維護者用真的 API 跑過，翻譯只跑過批次模式，即時模式只跟本機的假供應商跑過（ADR-0112）。`tome status <書>` 也已實作（`tests/cli/batch.test.ts`），只讀本機資料，不連網。`tome provider list` 也已實作（`tests/cli/provider.test.ts`），不連網，不讀金鑰與 `tome.yaml`，還沒 `tome init` 也能用，價目表過期時警告，結束碼仍是 0（ADR-0106）。`tome scan-terms <書> [--budget <美元>] [--realtime] [--confirm]` 也已實作（`tests/cli/scan.test.ts`），不加 `--confirm` 只估價、不連網，加了要跟上次顯示的估價相同才送，沒設 `scanner_model` 回 2；`tome batch status|collect|cancel` 也管它的批次（ADR-0118）。`tome glossary review <書>`、`tome glossary import <書> <csv>` 也已實作（`tests/cli/glossary.test.ts`），只讀寫本機，不連網；審定檔有內容不合規定的列、CSV 有不合規定的列或欄名時回 1，CSV 不存在回 2（ADR-0119）。兩個指令改了已鎖定的實體卡時當下做 S-16，只印數量；還有待審的卡時，`tome estimate` 與 `tome translate` 提醒筆數，結束碼仍是 0（ADR-0120）。跑得久的指令在 stderr 印進度（ADR-0111）：`tome extract` 啟動引擎前印一行，頁的進度依時間印，引擎 30 秒沒有事件時說它仍在執行，組裝 document 層前也印一行；重新探測前說要探測幾頁；`tome translate` 送出前說模式與請求數；連到供應商重試前說幾秒後重試、第幾次。估價、翻譯完成與 `tome status` 都寫出不需翻譯、原樣保留的單位數，翻譯完成時提示用 `tome preview` 看譯文。翻譯完成、翻譯中的進度與 `tome status` 的數字都是 `--chapters` 範圍內的，跟估價對得起來，範圍外沒完成的另印一行（ADR-0114）。位置參數比指令接受的多時，說收到幾個、只接受幾個，提醒路徑有空格要加引號，不回顯參數的值（ADR-0114）。其他指令還沒有。
 
 ---
 
@@ -1272,6 +1276,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0120](adr/0120-entities-in-translation-decisions.md) | 實體卡進翻譯與 S-16 | M3 |
 | [ADR-0121](adr/0121-stat-block-fields-decisions.md) | 數值塊欄位化與合成測試規則包 | M3 |
 | [ADR-0122](adr/0122-vault-output-decisions.md) | vault 輸出 | M3 |
+| [ADR-0123](adr/0123-reports-and-checks-decisions.md) | 交付報告與報告類的檢查 | M3 |
 
 ---
 
@@ -1416,7 +1421,7 @@ Gemini 顯式快取也算過：Flash-Lite 上 8k 前綴省下約 0.13，但排�
 | M3 譯名與輸出 | Pass 0、審定、`tome glossary import`、數值塊欄位化、vault、`tome sync`、`tome run`、交付報告、一致性報告、`tome purge`、`tome backup` | 能帶團閱讀的成品 |
 | M4 首版 | `d100-orc`、試翻校準、盲評、發佈流程、著作權律師審查（ADR-0105） | Q-1 到 Q-8 達標，發佈 0.1.0 |
 
-**目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。M2 已完成（ADR-0099、ADR-0112）：維護者用自己的金鑰翻過一篇公有領域短篇與一本規則書的第 3 到 108 頁，兩次第一輪的花費都在估價區間內，規則書因為重送比估價上限多 $0.0047；估價比例仍是未校準，只有 Sonnet 5.5、批次的兩筆數據。目前在 M3，範圍、10 個回合與開工前的決定見 ADR-0113；行內 `runs` 拆成回合 035，排在 026 之後（ADR-0115），粗體、斜體與連結翻譯時以 `<pc>` 保留（ADR-0116）。Pass 0 產出實體卡的提議與全書提要（ADR-0118），實體卡進翻譯拆成回合 037，排在審定（028）之後。審定用工作區裡的 YAML 檔，低影響的提議自動鎖定，S-16 移到 037（ADR-0119）。鎖定的實體卡、活躍實體與全書提要已進翻譯請求，改已鎖定的譯名不必重翻（ADR-0120）。整塊對上的數值塊在本機用詞條翻好、不送 LLM，只用合成的測試規則包驗證過（ADR-0121）。`tome assemble` 把譯文寫成 Obsidian 的 vault；原本的回合 030 拆成 030「vault 輸出」與 038「報告與檢查」（ADR-0122）。M2 規則書的重送查明是 `max_tokens` 截斷，不是漏段（ADR-0114）。那本規則書其實沒有書籤，174 個章節是用標題建的；沒有書籤的書怎麼分章等引擎評估（ADR-0115）。
+**目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。M2 已完成（ADR-0099、ADR-0112）：維護者用自己的金鑰翻過一篇公有領域短篇與一本規則書的第 3 到 108 頁，兩次第一輪的花費都在估價區間內，規則書因為重送比估價上限多 $0.0047；估價比例仍是未校準，只有 Sonnet 5.5、批次的兩筆數據。目前在 M3，範圍、10 個回合與開工前的決定見 ADR-0113；行內 `runs` 拆成回合 035，排在 026 之後（ADR-0115），粗體、斜體與連結翻譯時以 `<pc>` 保留（ADR-0116）。Pass 0 產出實體卡的提議與全書提要（ADR-0118），實體卡進翻譯拆成回合 037，排在審定（028）之後。審定用工作區裡的 YAML 檔，低影響的提議自動鎖定，S-16 移到 037（ADR-0119）。鎖定的實體卡、活躍實體與全書提要已進翻譯請求，改已鎖定的譯名不必重翻（ADR-0120）。整塊對上的數值塊在本機用詞條翻好、不送 LLM，只用合成的測試規則包驗證過（ADR-0121）。`tome assemble` 把譯文寫成 Obsidian 的 vault；原本的回合 030 拆成 030「vault 輸出」與 038「報告與檢查」（ADR-0122）。交付報告、`tome report`、代名詞與機翻腔的只報告檢查已實作，單書額外模式另開回合 039（ADR-0123）。M2 規則書的重送查明是 `max_tokens` 截斷，不是漏段（ADR-0114）。那本規則書其實沒有書籤，174 個章節是用標題建的；沒有書籤的書怎麼分章等引擎評估（ADR-0115）。
 
 M3 已實作的項目：
 
@@ -1434,6 +1439,7 @@ M3 已實作的項目：
 | Pass 0：`tome scan-terms`、`entity` 與 `summary` | `src/core/candidates.ts`、`src/core/cards.ts`、`src/core/scan.ts`、`prompts/scan-terms.md`、`prompts/summary.md`、`languages/source/en.yaml` | `tests/core/candidates.test.ts`、`tests/core/cards.test.ts`、`tests/core/prompt.test.ts`、`tests/cli/scan.test.ts` |
 | 審定與匯入：`tome glossary review`、`import`，遷移第 10 版 | `src/core/glossary.ts`、`src/core/entities.ts`、`src/core/csv.ts`、`src/core/store.ts`、`src/core/status.ts` | `tests/cli/glossary.test.ts`、`tests/core/csv.test.ts`、`tests/core/store.test.ts`、ADR-0119 的斷言 |
 | vault 輸出：`tome assemble`、`render` 表（遷移第 12 版） | `src/core/vault.ts`、`src/core/preview.ts`、`src/core/pdf.ts`、`src/core/store.ts` | `tests/core/vault.test.ts`、`tests/cli/assemble.test.ts`、`tests/core/store.test.ts`、ADR-0122 的斷言 |
+| 交付報告與 `tome report`、代名詞與機翻腔、`estimate` 表與批次的鍵（遷移第 13 版） | `src/core/report.ts`、`src/core/verify.ts`、`src/core/vault.ts`、`src/core/ledger.ts`、`src/core/batch.ts`、`src/core/translate.ts`、`languages/target/zh-TW.yaml`、`schemas/tome-lang-1.schema.json` | `tests/core/report.test.ts`、`tests/core/verify.test.ts`、`tests/cli/report.test.ts`、`tests/cli/entities.test.ts`、`tests/core/store.test.ts`、ADR-0123 的斷言 |
 | 數值塊欄位化、遷移第 11 版、合成測試規則包 `stat-fixture` | `src/core/fields.ts`、`src/core/units.ts`、`src/core/request.ts`、`src/core/pack-test.ts`、`src/core/pack-lint.ts`、`schemas/tome-pack-1.schema.json`、`tests/fixtures/packs/stat-fixture/` | `tests/core/fields.test.ts`、`tests/core/units.test.ts`、`tests/cli/fields.test.ts`、`tests/core/schema.test.ts`、ADR-0121 的斷言 |
 | 實體卡進翻譯、活躍實體、全書提要、S-16 | `src/core/verify.ts`、`src/core/memory.ts`、`src/core/request.ts`、`src/core/prompt.ts`、`src/core/units.ts`、`src/core/rename.ts`、`prompts/translate.md` | `tests/core/verify.test.ts`、`tests/core/memory.test.ts`、`tests/core/request.test.ts`、`tests/core/prompt.test.ts`、`tests/core/units.test.ts`、`tests/cli/entities.test.ts`、ADR-0120 的斷言 |
 

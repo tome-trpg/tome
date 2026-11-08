@@ -229,6 +229,24 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
         ) STRICT;
       `,
     },
+    {
+      // 報告與檢查（ADR-0123）：確認過的估價，交付報告拿來對照實際花費；批次送出時每個單位的翻譯記憶鍵，
+      // 收回時跟目前的鍵比，送出後改了或新鎖定了實體卡的單位不存記憶、回到待翻。舊的列是 NULL，不比。
+      version: 13,
+      sql: `
+        CREATE TABLE estimate (
+          id INTEGER PRIMARY KEY,
+          stage TEXT NOT NULL,
+          mode TEXT NOT NULL,
+          model TEXT NOT NULL,
+          requests INTEGER NOT NULL,
+          low_usd REAL NOT NULL,
+          high_usd REAL NOT NULL,
+          created_at TEXT NOT NULL
+        ) STRICT;
+        ALTER TABLE batch_unit ADD COLUMN memory_key TEXT;
+      `,
+    },
   ],
   series: [
     { version: 1, sql: metaTable('series') },

@@ -35,6 +35,7 @@ import {
   keyEnvName,
   type SecretStore,
 } from '../core/secrets.ts';
+import { reportBook } from '../core/report.ts';
 import { bookStatus } from '../core/status.ts';
 import { collectScans, countOutstanding, scanTerms } from '../core/scan.ts';
 import { importGlossary, reviewGlossary } from '../core/glossary.ts';
@@ -489,6 +490,17 @@ const COMMANDS: readonly Command[] = [
       const slug = positionals[0];
       if (slug === undefined) throw missing('book');
       return bookStatus(resolveHome(io.env, io.platform), slug);
+    },
+  },
+  {
+    path: ['report'],
+    options: {},
+    positionals: 1,
+    // 只印數字，內容寫在 tome assemble 輸出的交付報告（ADR-0123）。
+    run: async ({ positionals }, io) => {
+      const slug = positionals[0];
+      if (slug === undefined) throw missing('book');
+      return reportBook(resolveHome(io.env, io.platform), slug);
     },
   },
   {

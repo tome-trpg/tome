@@ -3,7 +3,7 @@ import { entityCards, type EntityCard } from './entities.ts';
 import { TomeError } from './errors.ts';
 import { finding, type Finding } from './findings.ts';
 import { formatSegments } from './format.ts';
-import { loadTargetLanguage, scriptViolations, type TargetLanguage } from './language.ts';
+import { loadTargetLanguage, scriptViolations, type TargetLanguage, type Translationese } from './language.ts';
 import { findTerm, pairedJson, restoreSegments, type PairedOffset, type Placeholder } from './mask.ts';
 import { loadPhraseCheck, type PhraseCheck } from './opencc.ts';
 import {
@@ -46,7 +46,9 @@ export type IssueCode =
   | 'untranslatable'
   | 'pii_hit'
   | 'refused'
-  | 'truncated';
+  | 'truncated'
+  | 'pronoun_mismatch'
+  | 'translationese';
 
 export interface Problem {
   readonly code: IssueCode;
@@ -188,6 +190,53 @@ function wordingProblems(translation: string, context: VerifyContext): Problem[]
   }));
 }
 
+/** 拿掉這些詞，留一個字元，兩邊的字才不會接成新的詞。 */
+function without(text: string, words: readonly string[]): string {
+  return words.reduce((rest, word) => rest.replaceAll(word, REMOVED), text);
+}
+
+/**
+ * 代名詞與實體卡不符，只報告（ADR-0123）。命中恰好一張有代名詞的卡，譯文用了代名詞集合裡別的字、
+ * 又沒有那張卡的代名詞才報；命中的譯名與例外詞先拿掉。多張卡、沒有卡時不判，活躍實體不看。
+ */
+function pronounProblems(translation: string, hits: readonly LocalizedTerm[], language: TargetLanguage): Problem[] {
+  const carded = hits.flatMap(({ text, attributes }) => (attributes?.pronoun === undefined ? [] : [{ text, pronoun: attributes.pronoun }]));
+  const [card] = carded;
+  if (card === undefined || carded.length > 1) return [];
+  const targets = hits.map(({ term }) => term.target);
+  const rest = without(without(translation, targets), language.pronoun_exceptions ?? []);
+  if (rest.includes(card.pronoun)) return [];
+  const found = language.pronouns.filter((pronoun) => pronoun !== card.pronoun && rest.includes(pronoun));
+  if (found.length === 0) return [];
+  return [{ code: 'pronoun_mismatch', level: 'report', detail: { term: card.text, expected: card.pronoun, found: found.join(' ') } }];
+}
+
+/** 成對的寫法：前半之後 `pair_gap` 個字以內出現後半，中間沒有句末的字。回傳命中的那一段。 */
+function pairIn(text: string, [first, second]: readonly [string, string], rules: Translationese): string | null {
+  for (let at = text.indexOf(first); at >= 0; at = text.indexOf(first, at + 1)) {
+    const from = at + first.length;
+    const end = text.indexOf(second, from);
+    // 這個前半之後沒有後半，更後面的前半也不會有。
+    if (end < 0) return null;
+    const between = text.slice(from, end);
+    if ([...between].length <= rules.pair_gap && !rules.sentence_end.some((mark) => between.includes(mark))) {
+      return text.slice(at, end + second.length);
+    }
+  }
+  return null;
+}
+
+/** 機翻腔訊號，只報告（ADR-0123）。詞表是語言資料，例外詞先拿掉；每一列在一個單位裡最多報一次。 */
+function translationeseProblems(translation: string, language: TargetLanguage): Problem[] {
+  const rules = language.translationese;
+  if (rules === undefined) return [];
+  const text = without(translation, rules.exceptions);
+  return rules.phrases.flatMap((phrase): Problem[] => {
+    const found = 'text' in phrase ? (text.includes(phrase.text) ? phrase.text : null) : pairIn(text, phrase.pair, rules);
+    return found === null ? [] : [{ code: 'translationese', level: 'report', detail: { text: found, prefer: phrase.prefer } }];
+  });
+}
+
 function notes(segments: readonly Segment[]): Problem[] {
   return segments.flatMap((item): Problem[] => {
     if (item.type === 'text' || item.type === 'ph') return [];
@@ -225,6 +274,8 @@ function checkSegments(
     ...scriptProblems(translation, hits, context.language),
     ...lengthProblems(source, translation, context.language),
     ...wordingProblems(translation, context),
+    ...pronounProblems(translation, hits, context.language),
+    ...translationeseProblems(translation, context.language),
     ...notes(segments),
   ];
 }

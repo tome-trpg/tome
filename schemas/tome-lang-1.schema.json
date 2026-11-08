@@ -273,6 +273,64 @@
           "description": "Words the wording check must not report.",
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
+        },
+        "pronoun_exceptions": {
+          "description": "Words that hold a pronoun of the set but are not one, such as a plural or a word for others. Taken out before the pronoun check, which only reports.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "translationese": {
+          "description": "Wording that reads like a translation. Only reported, never resent.",
+          "type": "object",
+          "required": ["pair_gap", "sentence_end", "phrases", "exceptions"],
+          "additionalProperties": false,
+          "properties": {
+            "pair_gap": {
+              "description": "The most characters between the two halves of a pair.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "sentence_end": {
+              "description": "Characters a pair must not span.",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "phrases": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": ["text", "prefer"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "text": { "type": "string", "minLength": 1 },
+                      "prefer": { "type": "string", "minLength": 1 }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["pair", "prefer"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "pair": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": { "type": "string", "minLength": 1 }
+                      },
+                      "prefer": { "type": "string", "minLength": 1 }
+                    }
+                  }
+                ]
+              }
+            },
+            "exceptions": {
+              "description": "Words taken out before the check.",
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
         }
       }
     }
