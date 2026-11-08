@@ -66,8 +66,12 @@ protectedFiles:
 - [x] 本機單一變異的小工具對改過的函式跑過一輪，存活的補上測試或說明是等價變異
 
   三個檔案 153 個變異，最後都殺掉或逾時，沒有存活、沒有等價（見 Measured）。
-- [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
+
+  `cf4a7c6`、`f824cae` 的 `specs`、`test` 在 Windows 與 Ubuntu 都是第一次跑就通過。
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+
+  兩個 commit 的 `CodeQL` 都是 success、0 個 annotation，三個 `Analyze` 都在 attempt 1 通過；notice 只有 `ubuntu-latest` 要換成 Ubuntu 26 的執行環境通知。
 - [x] 訊息、`--json` 與紀錄都不含書本文字
 
   `tests/cli/entities.test.ts` 確認 S-16 與待審提醒的輸出不含原文與譯名。
