@@ -57,8 +57,12 @@ protectedFiles:
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
 - [x] 每個新的測試都在本機確認過殺得掉它要殺的變異
-- [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
+
+  `182e930` 與 `2f68521` 的 `specs`、`test` 在 Windows 與 Ubuntu 都是第一次跑就通過。
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+
+  `CodeQL` 是 success、0 個 annotation。三個 `Analyze` 工作各有 1 個 notice，是 `ubuntu-latest` 要換成 Ubuntu 26 的執行環境通知，不是程式掃描的警示。
 - [x] `src/**` 沒有改動
 
 ## Acceptance Criteria
