@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-08
 type: chore
 wave: 26
@@ -27,7 +27,15 @@ protectedFiles:
   - src/**
   - stryker.config.mjs
   - systems/**
+integrity: sha256-0d48aebd00ddb83c1cbb0a7f03b5a1f02219b77ac54b43e2a41aa4351ea8e7a2
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-08.**
+> Merged in pull request [#66](https://github.com/tome-trpg/tome/pull/66).
+> Recorded at commit `d6d5a72`: 4 files changed, +287 −1.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 036 — 遮蔽還原的變異測試
 
