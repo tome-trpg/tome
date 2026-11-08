@@ -157,6 +157,42 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
         ALTER TABLE unit ADD COLUMN translation_pc TEXT;
       `,
     },
+    {
+      // Pass 0（ADR-0118）：實體卡的提議與全書提要。`source` 是書本文字，只留在本機。
+      // 批次多一欄 `stage`，翻譯與 Pass 0 的批次各收各的，舊的列都是翻譯。
+      version: 9,
+      sql: `
+        CREATE TABLE entity (
+          id INTEGER PRIMARY KEY,
+          source TEXT NOT NULL UNIQUE,
+          target TEXT,
+          class TEXT,
+          gender TEXT,
+          pronoun TEXT,
+          register TEXT,
+          keep_source INTEGER NOT NULL DEFAULT 0,
+          match TEXT,
+          status TEXT NOT NULL,
+          origin TEXT NOT NULL,
+          sources TEXT NOT NULL,
+          occurrences INTEGER NOT NULL,
+          first_block TEXT,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        ) STRICT;
+        CREATE TABLE summary (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          era TEXT NOT NULL,
+          tone TEXT NOT NULL,
+          factions TEXT NOT NULL,
+          input_hash TEXT NOT NULL,
+          model TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        ) STRICT;
+        ALTER TABLE batch ADD COLUMN stage TEXT NOT NULL DEFAULT 'translate';
+      `,
+    },
   ],
   series: [
     { version: 1, sql: metaTable('series') },

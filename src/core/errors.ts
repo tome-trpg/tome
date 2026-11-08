@@ -31,6 +31,7 @@ export const ERROR_CODES = [
   'pdf.not_found',
   'pdf.unreadable',
   'provider.unknown',
+  'scanner_model.missing',
   'secret.invalid',
   'store.bad_id',
   'store.busy',

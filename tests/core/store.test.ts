@@ -277,8 +277,32 @@ describe('migrations', () => {
     const store = openStore(path, 'book');
     const rows = store.all('SELECT unit_id, state, translation, formats, translation_pc FROM unit');
     store.close();
-    expect(pragma(path, 'user_version')).toBe(8);
+    expect(pragma(path, 'user_version')).toBe(LATEST_BOOK);
     expect(rows).toEqual([{ unit_id: 'a', state: 'DONE', translation: 'y', formats: null, translation_pc: null }]);
+  });
+
+  it('adds the entity cards and the summary, and counts old batches as translation (ADR-0118)', () => {
+    const path = join(tempDir(), 'book.db');
+    openStore(path, 'book', MIGRATIONS.book.slice(0, 8)).close();
+    const old = new DatabaseSync(path);
+    old
+      .prepare(
+        `INSERT INTO batch (nonce, state, requests, high_usd, created_at)
+         VALUES ('n', 'submitted', 1, 0.1, '2026-11-08T00:00:00.000Z')`,
+      )
+      .run();
+    old.close();
+    const store = openStore(path, 'book');
+    const batches = store.all('SELECT nonce, stage FROM batch');
+    store.run(
+      `INSERT INTO entity (source, status, origin, sources, occurrences, created_at, updated_at)
+       VALUES ('Salt Marsh', 'candidate', 'pass0', '["caps"]', 2, 't', 't')`,
+    );
+    const entities = store.all('SELECT source, target, keep_source, attempts FROM entity');
+    store.close();
+    expect(pragma(path, 'user_version')).toBe(9);
+    expect(batches).toEqual([{ nonce: 'n', stage: 'translate' }]);
+    expect(entities).toEqual([{ source: 'Salt Marsh', target: null, keep_source: 0, attempts: 0 }]);
   });
 });
 

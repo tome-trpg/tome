@@ -64,3 +64,80 @@ text_quality:
 # 標示版權頁的字詞，不分大小寫比對（ADR-0115）。©、(c) 加年份與 ISBN 不分語言，寫在核心。
 # 維護者的書裡有三本的版權頁只有這種字詞，沒有 ©。
 credits_phrases: [copyright, all rights reserved]
+
+# Pass 0 挖候選詞（ADR-0118）。大寫開頭的詞連成一個名字，中間可以夾 connectors；
+# 名字開頭的 stopwords 拿掉，單獨一個 stopword 不算名字。pronouns 用來挑看得出性別的句子。
+# 清單是提案，沒有用語料量過。
+pass0:
+  connectors: [of, the, de, du, la, le, von, van]
+  stopwords:
+    - A
+    - An
+    - The
+    - This
+    - That
+    - These
+    - Those
+    - It
+    - Its
+    - I
+    - You
+    - Your
+    - We
+    - Our
+    - He
+    - She
+    - His
+    - Her
+    - They
+    - Their
+    - There
+    - Here
+    - If
+    - When
+    - While
+    - Where
+    - What
+    - Which
+    - Who
+    - Why
+    - How
+    - In
+    - On
+    - At
+    - As
+    - By
+    - For
+    - From
+    - To
+    - Of
+    - With
+    - Without
+    - And
+    - But
+    - Or
+    - Not
+    - No
+    - Yes
+    - All
+    - Any
+    - Each
+    - Every
+    - Some
+    - Most
+    - Many
+    - Then
+    - Once
+    - After
+    - Before
+    - Also
+    - See
+    - Note
+    - Example
+    - Chapter
+    - Part
+    - Page
+    - Table
+    - Figure
+  pronouns: [he, him, his, himself, she, her, hers, herself, it, its, itself, they, them, their, theirs, themselves]
+  sentence_end: [".", "!", "?", "…"]

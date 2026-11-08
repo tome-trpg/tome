@@ -1,5 +1,5 @@
 {
-  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   將 API 金鑰存入作業系統憑證庫\n  provider list                列出 TOME 知道怎麼呼叫的模型與價格\n  provider test                確認金鑰可用，並對照模型資料，不消耗 token\n  add <pdf>                    加入書籍並執行探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <名稱>                 探測文件結構與頁面類型\n  extract <名稱>               以解析引擎解析書籍頁面\n  estimate <名稱>              在本機估算翻譯費用，不連網\n    [--budget <美元>] [--chapters <範圍>] [--chapter-level <層>]\n    [--realtime] [--confirm]\n  translate <名稱>             以批次翻譯，加上 --realtime 則逐一送出\n    [--realtime] [--retry-failed]\n  translate <名稱> --dry-run   組出所有請求但不送出\n  batch status <名稱>          查詢這本書尚未收回的批次\n  batch collect <名稱>         收回已完成的批次，不送出新的批次\n  batch cancel <名稱>          取消這本書尚未收回的批次\n  verify <名稱>                以已儲存的回應重新驗證譯文，不消耗 token\n  preview <名稱>               在本機產生原文與譯文對照\n  status <名稱>                顯示翻譯進度與花費，不連網\n  engine add <名稱或路徑>      安裝解析引擎，加上 --gpu 則安裝 CUDA 版\n  engine list                  列出已安裝的解析引擎\n  engine remove <名稱>         移除解析引擎\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加上 --public 則一併檢查公開規則包的要求\n  system test <ID 或路徑>      執行規則包的測試案例，不消耗 token\n\n選項：\n  --json     以 JSON 格式輸出\n  --help     顯示本說明\n  --version  顯示版本\n",
+  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   將 API 金鑰存入作業系統憑證庫\n  provider list                列出 TOME 知道怎麼呼叫的模型與價格\n  provider test                確認金鑰可用，並對照模型資料，不消耗 token\n  add <pdf>                    加入書籍並執行探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <名稱>                 探測文件結構與頁面類型\n  extract <名稱>               以解析引擎解析書籍頁面\n  scan-terms <名稱>            挖出專有名詞並提議譯名，不加 --confirm 只估價\n    [--budget <美元>] [--realtime] [--confirm]\n  estimate <名稱>              在本機估算翻譯費用，不連網\n    [--budget <美元>] [--chapters <範圍>] [--chapter-level <層>]\n    [--realtime] [--confirm]\n  translate <名稱>             以批次翻譯，加上 --realtime 則逐一送出\n    [--realtime] [--retry-failed]\n  translate <名稱> --dry-run   組出所有請求但不送出\n  batch status <名稱>          查詢這本書尚未收回的批次\n  batch collect <名稱>         收回已完成的批次，不送出新的批次\n  batch cancel <名稱>          取消這本書尚未收回的批次\n  verify <名稱>                以已儲存的回應重新驗證譯文，不消耗 token\n  preview <名稱>               在本機產生原文與譯文對照\n  status <名稱>                顯示翻譯進度與花費，不連網\n  engine add <名稱或路徑>      安裝解析引擎，加上 --gpu 則安裝 CUDA 版\n  engine list                  列出已安裝的解析引擎\n  engine remove <名稱>         移除解析引擎\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加上 --public 則一併檢查公開規則包的要求\n  system test <ID 或路徑>      執行規則包的測試案例，不消耗 token\n\n選項：\n  --json     以 JSON 格式輸出\n  --help     顯示本說明\n  --version  顯示版本\n",
   "prompt": {
     "secret": "請輸入 {provider} 的 API 金鑰（輸入內容不會顯示）："
   },
@@ -16,6 +16,9 @@
     "probe": "正在探測 {pages} 頁的文件結構……\n",
     "translate_realtime": "開始翻譯：即時模式，共 {requests} 個請求。\n",
     "translate_batch": "開始翻譯：批次模式，共 {requests} 個請求。\n",
+    "scan_realtime": "開始掃描專有名詞：即時模式，共 {requests} 個請求。\n",
+    "scan_batch": "開始掃描專有名詞：批次模式，共 {requests} 個請求。\n",
+    "term": "已處理 {done} 個候選詞，共 {total} 個。\n",
     "retry": "供應商暫時無法完成請求（狀態碼 {status}，- 表示沒有收到回應），{seconds} 秒後重試（第 {attempt} 次，最多 {max} 次）。\n"
   },
   "level": {
@@ -37,7 +40,7 @@
     "no": "無"
   },
   "template": {
-    "workspace": "schema: tome-workspace/1\n\n# 設定檔不得存放金鑰。金鑰請以 tome provider auth set <供應商> 存入作業系統憑證庫。\n\n# 譯文的目標語言，目前僅支援 zh-TW。\ntarget_lang: zh-TW\n\n# Obsidian vault 的路徑，必須位於任何 git 儲存庫之外。\n# vault_path:\n\n# 解析引擎，由 tome engine add 更新。同一種頁面有多個引擎時，排在前面的優先。\n# engines: []\n\n# 翻譯使用的模型，用到時才檢查。TOME 不內建預設模型，目前也沒有通過盲評的建議組合。\n# translator_model:\n# 模型拒絕翻譯時改用的模型，選填。\n# fallback_model:\n# 掃描專有名詞使用的模型，此功能尚未提供。\n# scanner_model:\n\n# 購買者姓名、訂單編號等個資。送出前會掃描，符合時不會送出。\npii: []\n",
+    "workspace": "schema: tome-workspace/1\n\n# 設定檔不得存放金鑰。金鑰請以 tome provider auth set <供應商> 存入作業系統憑證庫。\n\n# 譯文的目標語言，目前僅支援 zh-TW。\ntarget_lang: zh-TW\n\n# Obsidian vault 的路徑，必須位於任何 git 儲存庫之外。\n# vault_path:\n\n# 解析引擎，由 tome engine add 更新。同一種頁面有多個引擎時，排在前面的優先。\n# engines: []\n\n# 翻譯使用的模型，用到時才檢查。TOME 不內建預設模型，目前也沒有通過盲評的建議組合。\n# translator_model:\n# 模型拒絕翻譯時改用的模型，選填。\n# fallback_model:\n# 掃描專有名詞（tome scan-terms）使用的模型，用到時才檢查。\n# scanner_model:\n\n# 購買者姓名、訂單編號等個資。送出前會掃描，符合時不會送出。\npii: []\n",
     "pack": {
       "pack.yaml": "schema: tome-pack/1\nid: {id}\nversion: 0.1.0\n# 未指定 extends 時繼承 generic。\n# extends: generic\n# 僅供個人使用時不需修改。要公開規則包時，請改為 Apache-2.0、ORC 或 CC-BY-3.0，並加上 LICENSE 與 NOTICE。\nlicense: UNLICENSED\nsource_langs: [en]\n",
       "roles.yaml": "# 區塊角色。鍵名只寫角色名稱，判定時 TOME 會自動加上規則包 ID，成為 <規則包 ID>:<角色>。detect 列出的模式全部符合時才成立。\nroles: {}\n",
@@ -166,6 +169,16 @@
     "probe.spread": "這份 PDF 疑似採用跨頁攤開版型，一個 PDF 頁面可能對應印刷的兩頁。",
     "probe.structure": "文件結構：標記結構 {tagged}、書籤 {outline} 筆（{unresolved} 筆無法解析）、頁碼標籤 {labels} 頁、連結 {links} 筆。",
     "probe.unchanged": "PDF 沒有變動，沿用上次的探測結果。",
+    "scan.blocked": "請求含有個資清單的項目，命中 {count} 次，沒有送出。確實是個資時，請在 overrides 用 redact 遮掉；是誤判時，請加進 book.yaml 的 pii_exceptions。處理後再執行一次即可續跑。",
+    "scan.budget_exceeded": "下一個請求的估價上限 ${next} 美元加上已花費的 ${spent} 美元，超過預算 ${budget} 美元，已停止並保留進度。請以 tome scan-terms {book} --budget <美元> 提高預算，確認估價後再加上 --confirm 續跑。",
+    "scan.changed": "這次的估價與上次顯示的不同，或尚未估價過，因此沒有送出。請確認上述估價後，再執行一次 tome scan-terms {book} {flags}。",
+    "scan.done": "共 {candidates} 個候選詞：已提議譯名 {proposed} 個，判定不是專有名詞 {skipped} 個，未取得提議 {failed} 個，尚未處理 {left} 個；全書提要 {summary} 份。累計花費 ${spent} 美元。提議尚未經過審定，不會用於翻譯。",
+    "scan.estimate": "估價結果：共 {candidates} 個候選詞，本次要送出其中 {terms} 個與全書提要 {summary} 份（{requests} 個請求），使用 {model}，預估 ${low} 至 ${high} 美元。此為本機估算，尚未以實際用量校準。批次資料最多在供應商端保留 {retention} 天。",
+    "scan.no_budget": "尚未設定預算。送出前必須設定，請加上 --budget <美元>。",
+    "scan.not_confirmed": "尚未送出任何資料。確認估價後，請執行 tome scan-terms {book} {flags}。",
+    "scan.nothing": "沒有需要送出的候選詞，全書提要也已是最新。",
+    "scan.over_budget": "估價上限 ${high} 美元加上已花費的 ${spent} 美元，超過預算 ${budget} 美元。請以 --budget 提高預算。",
+    "scan.summary_failed": "全書提要連續三次未取得完整的回覆，本次先略過，下次執行時會再試。",
     "scope.outside": "以上是 --chapters {chapters} 範圍內的數字。範圍外另有 {outside} 個翻譯單位尚未完成，要翻譯請以 tome estimate {book} --chapters <範圍> 調整範圍。",
     "sqlite.ok": "SQLite 版本 {version}。",
     "sqlite.unavailable": "此 Node 環境無法使用 node:sqlite。請確認 Node 版本符合 TOME 的需求。",
@@ -228,6 +241,7 @@
     "pdf.not_found": "找不到檔案：{path}。",
     "pdf.unreadable": "無法開啟 {path}，檔案可能不是 PDF 或已損毀。",
     "provider.unknown": "不支援此供應商。目前僅支援 {supported}。",
+    "scanner_model.missing": "尚未設定掃描專有名詞使用的模型。請在 tome.yaml 設定 scanner_model，TOME 不內建預設模型。",
     "secret.invalid": "金鑰格式無效：不得為空、不得含空白，長度不得超過 1024 字元。",
     "store.bad_id": "{id} 不是有效的名稱。僅可使用文字、數字、底線與連字號，開頭必須是文字或數字，也不得使用 CON、NUL 等 Windows 保留名稱。",
     "store.busy": "資料庫 {path} 正由其他程式使用，無法取得鎖定。請等該程式結束後再試一次，不需要變更此檔案。",

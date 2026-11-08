@@ -62,8 +62,24 @@ function packText(pack: ResolvedPack, file: string): string {
   return '';
 }
 
+function styleGuideOf(language: TargetLanguage): string {
+  return language.style_guide.map((line) => `- ${line}`).join('\n');
+}
+
 export function staticPrefix(language: TargetLanguage, pack: ResolvedPack): string {
-  const styleGuide = language.style_guide.map((line) => `- ${line}`).join('\n');
-  const parts = [readInstructions().trim(), styleGuide, packText(pack, PERSONA_FILE), packText(pack, FEW_SHOTS_FILE)];
+  const parts = [readInstructions().trim(), styleGuideOf(language), packText(pack, PERSONA_FILE), packText(pack, FEW_SHOTS_FILE)];
   return parts.filter((part) => part !== '').join('\n\n');
+}
+
+/**
+ * Pass 0 提議譯名的系統提示：指令加上目標語言的風格指南，同一本書不變（ADR-0118）。
+ * 指令由維護者逐字審過。
+ */
+export function scanPrefix(language: TargetLanguage): string {
+  return [promptFile('scan-terms.md').trim(), styleGuideOf(language)].filter((part) => part !== '').join('\n\n');
+}
+
+/** 全書提要的系統提示。提要用英文寫，不帶風格指南（ADR-0118）。 */
+export function summaryPrefix(): string {
+  return promptFile('summary.md').trim();
 }

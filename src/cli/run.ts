@@ -35,6 +35,7 @@ import {
   type SecretStore,
 } from '../core/secrets.ts';
 import { bookStatus } from '../core/status.ts';
+import { collectScans, countOutstanding, scanTerms } from '../core/scan.ts';
 import { translateBook } from '../core/translate.ts';
 import { verifyBook } from '../core/verify.ts';
 import {
@@ -344,6 +345,41 @@ const COMMANDS: readonly Command[] = [
     },
   },
   {
+    path: ['scan-terms'],
+    options: {
+      budget: { type: 'string' },
+      confirm: { type: 'boolean' },
+      realtime: { type: 'boolean' },
+    },
+    positionals: 1,
+    // 不加 --confirm 只估價，不連網也不取金鑰（ADR-0118）。
+    run: async (parsed, io) => {
+      const slug = parsed.positionals[0];
+      if (slug === undefined) throw missing('book');
+      const options = {
+        home: resolveHome(io.env, io.platform),
+        slug,
+        mode: requestMode(parsed.values),
+        budget: stringValue(parsed, 'budget'),
+        confirm: parsed.values['confirm'] === true,
+      };
+      if (!options.confirm) return scanTerms(options);
+      const progress = progressOf(io);
+      return withHost(io, { book: slug }, (host) =>
+        scanTerms({
+          ...options,
+          host,
+          onStart: (mode, requests) =>
+            io.stderr.write(progressText(mode === 'realtime' ? 'scan_realtime' : 'scan_batch', { requests: String(requests) })),
+          onProgress: (done, total) => io.stderr.write(progressText('term', { done: String(done), total: String(total) })),
+          onRetry: progress.onRetry,
+          onBatchSent: progress.onBatchSent,
+          onBatchWait: progress.onBatchWait,
+        }),
+      );
+    },
+  },
+  {
     path: ['estimate'],
     options: {
       budget: { type: 'string' },
@@ -402,8 +438,16 @@ const COMMANDS: readonly Command[] = [
     path: ['batch', 'collect'],
     options: {},
     positionals: 1,
+    // Pass 0 的批次由 Pass 0 收，翻譯的由翻譯收；沒有 Pass 0 的批次時跟以前一樣（ADR-0118）。
     run: ({ positionals }, io) =>
-      withBook(positionals, io, (options) => collectBatches({ ...options, retryFailed: false, ...progressOf(io) })),
+      withBook(positionals, io, async (options) => {
+        const translation = (): Promise<Result> => collectBatches({ ...options, retryFailed: false, ...progressOf(io) });
+        if (countOutstanding(options.home, options.slug, 'scan') === 0) return translation();
+        const scanned = await collectScans({ ...options, onBatchWait: progressOf(io).onBatchWait });
+        if (countOutstanding(options.home, options.slug, 'translate') === 0) return scanned;
+        const translated = await translation();
+        return { data: { ...translated.data, scan: scanned.data }, findings: [...scanned.findings, ...translated.findings] };
+      }),
   },
   {
     path: ['batch', 'cancel'],

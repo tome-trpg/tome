@@ -35,6 +35,19 @@ export interface SourceLanguage {
   readonly text_quality: TextQuality;
   /** 這個語言標示版權頁的字詞，不分大小寫比對。不分語言的記號寫在核心（ADR-0115）。 */
   readonly credits_phrases?: readonly string[];
+  /** Pass 0 挖候選詞的規則（ADR-0118）。沒有的語言不挖大寫片語。 */
+  readonly pass0?: Pass0Rules;
+}
+
+export interface Pass0Rules {
+  /** 夾在一個名字的大寫詞中間的小寫詞，例如 `of`。 */
+  readonly connectors: readonly string[];
+  /** 單獨出現時不算名字的大寫詞，例如句首的 `The`。 */
+  readonly stopwords: readonly string[];
+  /** 不分大小寫比對，挑看得出性別的句子。 */
+  readonly pronouns: readonly string[];
+  /** 後面接空白時結束一句的記號。 */
+  readonly sentence_end: readonly string[];
 }
 
 export interface TargetLanguage {

@@ -9,7 +9,7 @@ import type { Store } from './store.ts';
 // document 層轉翻譯單位（白皮書 §5.2、§5.6、ADR-0100）。單位是段落，表格是每個儲存格。
 
 /** 這些角色不翻：頁面雜訊、目錄、索引、版權頁與圖（ADR-0010、ADR-0011、ADR-0099）。 */
-const UNTRANSLATED = new Set(['furniture', 'toc', 'index', 'credits', 'figure']);
+export const UNTRANSLATED: ReadonlySet<string> = new Set(['furniture', 'toc', 'index', 'credits', 'figure']);
 const KEEP_SOURCE_KIND = 'keep_source';
 
 interface UnitSource {

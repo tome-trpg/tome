@@ -486,8 +486,13 @@ function pageRefBefore(line: string, end: number): number {
  * 從行尾往前掃一次，不用正規表示式，長行也不會回溯（ADR-0115）。
  */
 export function endsWithPageNumbers(line: string): boolean {
+  return pageListStart(line) >= 0;
+}
+
+/** 行尾頁碼清單從哪裡開始，不是頁碼清單就回 -1。Pass 0 從索引取前面的詞用（ADR-0118）。 */
+export function pageListStart(line: string): number {
   let start = pageRefBefore(line, skipSpaces(line, line.length));
-  if (start < 0) return false;
+  if (start < 0) return -1;
   for (;;) {
     const comma = skipSpaces(line, start);
     if (line[comma - 1] !== ',') break;
@@ -496,8 +501,8 @@ export function endsWithPageNumbers(line: string): boolean {
     start = previous;
   }
   const before = line[start - 1];
-  if (!(isSpace(before) || before === ',' || before === '.')) return false;
-  return /\p{L}/u.test(line.slice(0, start));
+  if (!(isSpace(before) || before === ',' || before === '.')) return -1;
+  return /\p{L}/u.test(line.slice(0, start)) ? start : -1;
 }
 
 /** 一個區塊的每一行：表格是每一格，其他用引擎給的原文分行，接段之前的樣子。讀不出來的字當空白。 */

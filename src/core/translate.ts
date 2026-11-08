@@ -191,8 +191,11 @@ const STRAY_IN_FLIGHT = `
   )
 `;
 
-export function outstandingBatches(store: Store): number {
-  return store.get<{ count: number }>(`SELECT COUNT(*) AS count FROM batch WHERE ${OUTSTANDING}`)?.count ?? 0;
+/** 還沒收回的批次。翻譯與 Pass 0 各算各的，各自的指令收（ADR-0118）。 */
+export function outstandingBatches(store: Store, stage: 'translate' | 'scan' = 'translate'): number {
+  return (
+    store.get<{ count: number }>(`SELECT COUNT(*) AS count FROM batch WHERE ${OUTSTANDING} AND stage = ?`, stage)?.count ?? 0
+  );
 }
 
 /**
@@ -313,8 +316,8 @@ function charge(run: Run, { request, model }: Work, result: Answer, limit: numbe
   });
 }
 
-/** 還沒收回的批次的估價上限，預算的「進行中」（ADR-0081 第 2 項）。 */
-function inFlightUsd(store: Store): number {
+/** 還沒收回的批次的估價上限，預算的「進行中」（ADR-0081 第 2 項）。Pass 0 的批次也算（ADR-0118）。 */
+export function inFlightUsd(store: Store): number {
   return store.get<{ total: number | null }>(`SELECT SUM(high_usd) AS total FROM batch WHERE ${OUTSTANDING}`)?.total ?? 0;
 }
 
