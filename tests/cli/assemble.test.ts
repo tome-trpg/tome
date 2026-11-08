@@ -83,12 +83,12 @@ describe('tome assemble (ADR-0122)', () => {
     const lib = await book(vault);
     const { exit, output, text } = await tome(lib, 'assemble', 'book');
     expect(exit).toBe(0);
-    expect(found(output, 'assemble.done')?.params).toEqual({ root: vault, files: '6', units: '4', untranslated: '1' });
+    expect(found(output, 'assemble.done')?.params).toEqual({ root: vault, files: '7', units: '4', untranslated: '1' });
     expect(found(output, 'assemble.done')?.level).toBe('info');
     expect(output.data).toMatchObject({ overwritten: 0 });
     expect(found(output, 'vault.default')).toBeUndefined();
     const folder = join(vault, 'book');
-    expect(readdirSync(folder).sort()).toEqual(['00-書目與來源.md', '01-渡口.md', '02-沼澤.md', 'review']);
+    expect(readdirSync(folder).sort()).toEqual(['00-交付報告.md', '00-書目與來源.md', '01-渡口.md', '02-沼澤.md', 'review']);
     expect(readFileSync(join(folder, '01-渡口.md'), 'utf8')).toContain('# 渡口');
     // 合成 PDF 的中繼資料有書名、沒有作者。
     expect(readFileSync(join(folder, '00-書目與來源.md'), 'utf8')).toMatch(/^# Forged test document\n\n- 書名: Forged test document\n- 作者: 不明\n/u);
@@ -124,7 +124,7 @@ describe('tome assemble (ADR-0122)', () => {
     const rows = withStore(lib.home, (store) => store.all<{ block_id: string; path: string }>('SELECT block_id, path FROM render ORDER BY block_id'));
     expect(rows.map(({ path }) => path)).toEqual(['01-渡口.md', '01-渡口.md', '02-沼澤.md', '02-沼澤.md']);
     const files = withStore(lib.home, (store) => store.all<{ path: string }>('SELECT path FROM render_file ORDER BY path'));
-    expect(files).toHaveLength(6);
+    expect(files).toHaveLength(7);
   });
 
   it('refuses to overwrite a file someone changed, counting the files only, unless told to', async () => {

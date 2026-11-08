@@ -72,7 +72,8 @@ function changesOf(before: readonly EntityCard[], after: readonly EntityCard[]):
   return { renamed, reworded };
 }
 
-function resetUnit(store: Store, unitId: string): void {
+/** 回到待翻，譯文與問題清掉，重試額度歸零。批次收回時鍵不同的單位也用這個（ADR-0123）。 */
+export function resetUnit(store: Store, unitId: string): void {
   store.run("UPDATE unit SET state = 'PENDING', attempts = 0, translation = NULL, translation_pc = NULL WHERE unit_id = ?", unitId);
   recordProblems(store, unitId, []);
 }

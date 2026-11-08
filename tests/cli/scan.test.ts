@@ -217,6 +217,14 @@ describe('tome scan-terms --confirm (ADR-0118)', () => {
     expect(withStore(lib.home, (store) => store.get<{ count: number }>('SELECT COUNT(*) AS count FROM egress'))?.count).toBe(2);
     const { output } = await tome(lib, undefined, 'estimate', 'book');
     expect(Number(output.data['spent_usd'])).toBeGreaterThan(0);
+    // 送出前記下確認過的估價，交付報告拿來對照（ADR-0123）。
+    const estimates = withStore(lib.home, (store) =>
+      store.all<{ stage: string; mode: string; requests: number; low_usd: number; high_usd: number }>(
+        'SELECT stage, mode, requests, low_usd, high_usd FROM estimate',
+      ),
+    );
+    expect(estimates.map(({ stage, mode, requests }) => [stage, mode, requests])).toEqual([['scan', 'realtime', 2]]);
+    expect(estimates[0]?.high_usd).toBeGreaterThan(estimates[0]?.low_usd ?? 0);
   });
 
   it('sends nothing the second time, and reports there is nothing to do', async () => {

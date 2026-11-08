@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { vaultTexts } from '../../src/cli/messages.ts';
 import type { EntityCard } from '../../src/core/entities.ts';
 import type { DocumentBlock, IrDocument, Section } from '../../src/core/ir.ts';
+import type { BookReport } from '../../src/core/report.ts';
 import { escapeLines, renderVault, safeName, type RenderInput, type UnitRow, type VaultTexts } from '../../src/core/vault.ts';
 
 // 文字都是這裡編的（ADR-0122）。
@@ -12,6 +14,8 @@ const TEXTS: VaultTexts = {
   figure: '原書 p.{page} 的圖',
   entity: { source: '原文', target: '譯名', class: '類別', gender: '性別', pronoun: '代名詞', register: '語域' },
   map: { file: '00-區塊對應表', block: '區塊', chapter: '章節檔' },
+  // 交付報告的固定文字用訊息檔的，報告本身的測試在 tests/core/report.test.ts。
+  report: vaultTexts.report,
 };
 
 function block(id: string, role: string, text: string, page = 0, extra: Partial<DocumentBlock> = {}): DocumentBlock {
@@ -546,6 +550,45 @@ describe('renderVault: the other files', () => {
     const vault = render({ document, units: [unit('h1', 'A', '甲')] });
     expect(vault.files.has('02.md')).toBe(true);
     expect([...vault.files.keys()].filter((path) => path.startsWith('review/')).sort()).toEqual(['review/00-區塊對應表.md', 'review/01-甲.md']);
+  });
+});
+
+describe('renderVault: the delivery report (ADR-0123)', () => {
+  const report = (blocks: readonly string[]): BookReport => ({
+    coverage: { total: 9, kept: 0, fielded: 0, done: 9, in_flight: 0, blocked: 0, failed: 0, refused: 0, left: 0 },
+    spent: { translate: 0, scan: 0, budget: null },
+    estimates: [],
+    pending_cards: 0,
+    untranslated: [],
+    pages: [],
+    figures: [],
+    flags: [],
+    checks: blocks.map((id) => ({ block_id: id, code: 'too_long', detail: {} })),
+    variants: [],
+    unused: [],
+  });
+
+  it('writes the report, links each item to its block by file and printed page, and marks the block', () => {
+    const vault = render({ document: BOOK, units: BOOK_UNITS, report: report(['p1', 'p3']) });
+    const text = vault.files.get('00-交付報告.md') ?? '';
+    expect(text).toContain('- [[01-渡口#^p1|01-渡口 p.1]]：譯文比原文長很多');
+    expect(text).toContain('- [[02-沼澤#^p3|02-沼澤 p.3]]：譯文比原文長很多');
+    expect(vault.files.get('01-渡口.md')).toContain('\n守望者在等待。 ^p1\n');
+    expect(vault.files.get('02-沼澤.md')).toContain('\n雨落下。 ^p3\n');
+    expect(vault.files.get('01-渡口.md')).not.toContain('^l1');
+  });
+
+  it('writes only the ID of a block that is not in a chapter file', () => {
+    const vault = render({ document: BOOK, units: BOOK_UNITS, report: report(['x1', 'gone']) });
+    expect(vault.files.get('00-交付報告.md')).toContain('- x1：譯文比原文長很多\n- gone：譯文比原文長很多');
+    // 在章節裡、但沒有東西可寫的區塊也一樣。
+    const document = documentOf([block('p1', 'paragraph', 'One.'), block('p2', 'paragraph', 'No unit.')]);
+    const empty = render({ document, units: [unit('p1', 'One.', '一。')], report: report(['p2']) });
+    expect(empty.files.get('00-交付報告.md')).toContain('- p2：譯文比原文長很多');
+  });
+
+  it('writes no report without its data', () => {
+    expect(render({ document: BOOK, units: BOOK_UNITS }).files.has('00-交付報告.md')).toBe(false);
   });
 });
 

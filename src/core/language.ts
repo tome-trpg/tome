@@ -73,7 +73,23 @@ export interface TargetLanguage {
   readonly opencc?: { readonly from: string; readonly to: string };
   readonly term_checks: readonly { readonly avoid: string; readonly prefer: string }[];
   readonly term_exceptions: readonly string[];
+  /** 含代名詞集合的字卻不是代名詞的詞，代名詞檢查先拿掉（ADR-0123）。 */
+  readonly pronoun_exceptions?: readonly string[];
+  /** 機翻腔訊號，只報告（ADR-0123）。 */
+  readonly translationese?: Translationese;
 }
+
+/** 機翻腔的詞表：字串，或同一句裡相隔不遠的前後兩半（ADR-0123）。 */
+export interface Translationese {
+  readonly pair_gap: number;
+  readonly sentence_end: readonly string[];
+  readonly phrases: readonly TranslationesePhrase[];
+  readonly exceptions: readonly string[];
+}
+
+export type TranslationesePhrase =
+  | { readonly text: string; readonly prefer: string }
+  | { readonly pair: readonly [string, string]; readonly prefer: string };
 
 /** 混入其他文字系統的判定資料（ADR-0102）。 */
 export interface ScriptCheck {

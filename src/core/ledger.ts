@@ -88,6 +88,31 @@ export function recordUsage(store: Store, record: UsageRecord): void {
   });
 }
 
+export interface EstimateRecord {
+  /** `translate` 或 `scan`（Pass 0）。 */
+  readonly stage: 'translate' | 'scan';
+  readonly mode: RequestMode;
+  readonly model: string;
+  readonly requests: number;
+  readonly low_usd: number;
+  readonly high_usd: number;
+}
+
+/** 確認過的估價，交付報告拿來對照之後的實際花費（ADR-0123）。只有數字。 */
+export function recordEstimate(store: Store, record: EstimateRecord): void {
+  const { stage, mode, model, requests, low_usd, high_usd } = record;
+  store.run(
+    'INSERT INTO estimate (stage, mode, model, requests, low_usd, high_usd, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    stage,
+    mode,
+    model,
+    requests,
+    low_usd,
+    high_usd,
+    new Date().toISOString(),
+  );
+}
+
 /** 這本書已經花掉的，從第一筆付費呼叫算起（ADR-0081）。 */
 export function spentUsd(store: Store): number {
   return store.get<{ spent: number | null }>('SELECT SUM(cost_usd) AS spent FROM ledger')?.spent ?? 0;

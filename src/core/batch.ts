@@ -28,6 +28,7 @@ import {
   blockedStop,
   connect,
   markBlocked,
+  memoryKeyOf,
   move,
   moveAll,
   outstandingBatches,
@@ -111,6 +112,8 @@ interface SentUnit {
   readonly unit: TranslationUnit;
   /** 送出時在請求裡的位置，回應的 `<s id>` 是它加 1（ADR-0107 第 11 項）。 */
   readonly position: number;
+  /** 送出時的翻譯記憶鍵。遷移第 13 版之前送出的是 null，不比（ADR-0123）。 */
+  readonly key: string | null;
 }
 
 interface SentRequest {
@@ -124,17 +127,17 @@ interface SentRequest {
 
 /** 依送出的順序，單位依在請求裡的位置。 */
 function sentRequests({ store, byId }: Run, batchId: number): SentRequest[] {
-  const rows = store.all<{ custom_id: string; position: number; unit_id: string; model: string }>(
-    'SELECT custom_id, position, unit_id, model FROM batch_unit WHERE batch_id = ? ORDER BY rowid',
+  const rows = store.all<{ custom_id: string; position: number; unit_id: string; model: string; memory_key: string | null }>(
+    'SELECT custom_id, position, unit_id, model, memory_key FROM batch_unit WHERE batch_id = ? ORDER BY rowid',
     batchId,
   );
   const requests = new Map<string, { model: string; units: SentUnit[]; sent: number }>();
-  for (const { custom_id, position, unit_id, model } of rows) {
+  for (const { custom_id, position, unit_id, model, memory_key } of rows) {
     const request = requests.get(custom_id) ?? { model, units: [], sent: 0 };
     requests.set(custom_id, request);
     request.sent += 1;
     const unit = byId.get(unit_id);
-    if (unit !== undefined) request.units.push({ unit, position });
+    if (unit !== undefined) request.units.push({ unit, position, key: memory_key });
   }
   return [...requests].map(([id, { model, units, sent }]) => ({ customId: id, model, units, sent }));
 }
@@ -241,7 +244,9 @@ async function collect(batchRun: BatchRun, row: BatchRow, remoteId: string, unve
     if (result.outcome === 'ok' || result.outcome === 'truncated' || result.outcome === 'refused') {
       succeeded += 1;
       const model = findModel(plan.provider.profile, sent.model);
-      const work = { request: { id: sent.customId, units, context: '' }, model };
+      // 送出後改了或新鎖定了命中的實體卡，鍵就不同：照舊收下回應，但不存翻譯記憶、回到待翻（ADR-0123）。
+      const changed = new Set(live.flatMap(({ unit, key }) => (key !== null && key !== memoryKeyOf(run, unit) ? [unit.unit_id] : [])));
+      const work = { request: { id: sent.customId, units, context: '' }, model, changed };
       // 照送出時的位置對 `<s id>`，中間有單位不在了，後面的單位才不會拿到別人的譯文。
       const ids = live.map(({ position }) => String(position + 1));
       // 送出時的 `max_tokens` 沒有存，單位都還在才算得回來（ADR-0114）。
@@ -389,14 +394,15 @@ async function sendBatch(batchRun: BatchRun, works: readonly Work[]): Promise<St
     );
     const { id } = store.get<{ id: number }>('SELECT last_insert_rowid() AS id') ?? { id: 0 };
     prepared.forEach(({ work }, index) => {
-      work.request.units.forEach(({ unit_id }, position) => {
+      work.request.units.forEach((unit, position) => {
         store.run(
-          'INSERT INTO batch_unit (batch_id, custom_id, position, unit_id, model) VALUES (?, ?, ?, ?, ?)',
+          'INSERT INTO batch_unit (batch_id, custom_id, position, unit_id, model, memory_key) VALUES (?, ?, ?, ?, ?, ?)',
           id,
           customId(nonce, index),
           position,
-          unit_id,
+          unit.unit_id,
           work.model.id,
+          memoryKeyOf(run, unit),
         );
       });
     });

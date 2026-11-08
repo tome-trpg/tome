@@ -19,6 +19,7 @@ import { pairedJson } from './mask.ts';
 import { memoryKey, recall, remember } from './memory.ts';
 import { packHash } from './pack.ts';
 import { promptHash } from './prompt.ts';
+import { resetUnit } from './rename.ts';
 import { loadProvider, usd, type ProviderModel, type RequestMode } from './provider.ts';
 import {
   ESTIMATE_STAGE,
@@ -88,6 +89,8 @@ export interface TranslationRun {
   sent: number;
   /** 這次送出了幾批。 */
   batches: number;
+  /** 批次收回時鍵跟送出時不同、回到待翻的單位（ADR-0123）。 */
+  rewound: number;
 }
 
 type Run = TranslationRun;
@@ -96,6 +99,11 @@ type Run = TranslationRun;
 export interface Work {
   readonly request: PlannedRequest;
   readonly model: ProviderModel;
+  /**
+   * 批次收回時，翻譯記憶的鍵跟送出時不同的單位：送出後改了或新鎖定了命中的實體卡。譯文照舊付過錢、
+   * 回應留著，但不存翻譯記憶，回到待翻（ADR-0123）。
+   */
+  readonly changed?: ReadonlySet<string>;
 }
 
 /** 一個請求做完之後：接著要送什麼，或為什麼要停下來。 */
@@ -144,7 +152,8 @@ function saveResponse(store: Store, unitId: string, attempt: number, text: strin
   );
 }
 
-function memoryKeyOf(run: Run, unit: TranslationUnit): string {
+/** 這個單位用目前的詞條算的翻譯記憶鍵。批次送出時記下，收回時再算一次比對（ADR-0123）。 */
+export function memoryKeyOf(run: Run, unit: TranslationUnit): string {
   const { plan, previous, context, targetLang } = run;
   const style = plan.pack.roles.find(({ pack, name }) => `${pack}:${name}` === unit.role)?.style;
   return memoryKey(unit, previous.get(unit.unit_id) ?? null, { terms: context.terms, targetLang, style });
@@ -412,7 +421,8 @@ function numbered(units: readonly TranslationUnit[]): string[] {
 }
 
 /** 回應先存，驗證另一步：驗證出事時這筆錢不會白花（ADR-0104 第 28 項）。 */
-function replied(run: Run, { request, model }: Work, text: string, ids: readonly string[]): Step {
+function replied(run: Run, work: Work, text: string, ids: readonly string[]): Step {
+  const { request, model } = work;
   const { store } = run;
   const { matched } = matchUnits(parseUnits(text), ids);
   const replies = store.transaction(() =>
@@ -425,7 +435,14 @@ function replied(run: Run, { request, model }: Work, text: string, ids: readonly
     }),
   );
   store.transaction(() => {
-    for (const { unit, reply } of replies) settleReply(run, unit, 'RECEIVED', reply);
+    for (const { unit, reply } of replies) {
+      if (work.changed?.has(unit.unit_id) === true) {
+        resetUnit(store, unit.unit_id);
+        run.rewound += 1;
+        continue;
+      }
+      settleReply(run, unit, 'RECEIVED', reply);
+    }
   });
   return GO_ON;
 }
@@ -552,7 +569,7 @@ export function report(run: Run, stop: Finding | null, findings: readonly Findin
       book: run.slug,
       mode,
       requests: run.sent,
-      ...(mode === 'batch' ? { batches: run.batches } : {}),
+      ...(mode === 'batch' ? { batches: run.batches, cards_changed: run.rewound } : {}),
       done,
       kept,
       fielded,
@@ -568,6 +585,7 @@ export function report(run: Run, stop: Finding | null, findings: readonly Findin
     findings: [
       ...(stop === null ? [] : [stop]),
       finding('translate.done', stuck > 0 ? 'fail' : 'info', params),
+      ...(run.rewound === 0 ? [] : [finding('batch.cards_changed', 'info', { count: String(run.rewound), book: run.slug })]),
       ...fieldedFindings(fielded),
       ...outsideFindings(run.slug, chapters, outside),
       ...run.notes,
@@ -644,6 +662,7 @@ export async function withRun(
       notes: [],
       sent: 0,
       batches: 0,
+      rewound: 0,
     };
     return await work(run, findings);
   } finally {

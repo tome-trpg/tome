@@ -250,3 +250,63 @@ describe('S-16: changing a locked card (ADR-0120)', () => {
     expect(codes(output)).not.toContain('glossary.renamed');
   });
 });
+
+describe('a batch whose cards change before it comes back (ADR-0123)', () => {
+  /** 送出一批，查詢一直失敗，停在送出之後；之後的查詢會成功。 */
+  async function sentBatch(cards?: readonly Card[]): Promise<{ lib: Library; provider: FakeProvider }> {
+    const lib = await book(cards);
+    const provider = await startFakeProvider(
+      ({ user }) => ({ text: translated(user).replaceAll(WARDEN.source, WARDEN.target) }),
+      { pollStatus: 500 },
+    );
+    await tome(lib, null, 'estimate', 'book', '--budget', '100', '--confirm');
+    const { exit } = await tome(lib, provider, 'translate', 'book');
+    expect(exit).toBe(1);
+    expect(units(lib.home).map(({ state }) => state)).toEqual(['IN_FLIGHT', 'IN_FLIGHT', 'IN_FLIGHT']);
+    provider.batch.pollStatus = null;
+    return { lib, provider };
+  }
+
+  it('keeps out of memory, and sends again, the units whose locked card changed its pronoun after they went out', async () => {
+    const { lib, provider } = await sentBatch();
+    await tome(lib, null, 'glossary', 'import', 'book', csv('source,target,class,gender,pronoun\nGrey Warden,灰色守望者,person,female,他\n'));
+    const { exit, output } = await tome(lib, provider, 'batch', 'collect', 'book');
+    expect(exit).toBe(0);
+    expect(output.findings.find(({ code }) => code === 'batch.cards_changed')).toMatchObject({ level: 'info', params: { count: '2', book: 'book' } });
+    expect(output.data).toMatchObject({ cards_changed: 2 });
+    expect(units(lib.home).map(({ state, translation }) => [state, translation === null])).toEqual([
+      ['PENDING', true],
+      ['PENDING', true],
+      ['DONE', false],
+    ]);
+    expect(count(lib.home, 'memory')).toBe(1);
+    // 回應付過錢，照樣留著。
+    expect(count(lib.home, 'response')).toBe(3);
+  });
+
+  it('does the same for a card locked after the batch went out', async () => {
+    const { lib, provider } = await sentBatch([{ ...WARDEN, status: 'proposed' }, TONGUE]);
+    await tome(lib, null, 'glossary', 'import', 'book', csv('source,target,class,gender,pronoun\nGrey Warden,灰色守望者,person,female,她\n'));
+    const { output } = await tome(lib, provider, 'batch', 'collect', 'book');
+    expect(output.findings.find(({ code }) => code === 'batch.cards_changed')?.params).toMatchObject({ count: '2' });
+    expect(units(lib.home).map(({ state }) => state)).toEqual(['PENDING', 'PENDING', 'DONE']);
+  });
+
+  it('says nothing of batches or changed cards in real time', async () => {
+    const lib = await book();
+    const provider = await fake();
+    await tome(lib, null, 'estimate', 'book', '--realtime', '--budget', '100', '--confirm');
+    const { output } = await tome(lib, provider, 'translate', 'book', '--realtime');
+    expect(output.data).not.toHaveProperty('cards_changed');
+    expect(output.data).not.toHaveProperty('batches');
+  });
+
+  it('keeps every unit when no card changed', async () => {
+    const { lib, provider } = await sentBatch();
+    const { output } = await tome(lib, provider, 'batch', 'collect', 'book');
+    expect(codes(output)).not.toContain('batch.cards_changed');
+    expect(output.data).toMatchObject({ cards_changed: 0 });
+    expect(units(lib.home).map(({ state }) => state)).toEqual(['DONE', 'DONE', 'DONE']);
+    expect(count(lib.home, 'memory')).toBe(3);
+  });
+});

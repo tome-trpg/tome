@@ -430,6 +430,91 @@ describe('the wording check, which only reports', () => {
   });
 });
 
+describe('pronouns against the entity card, which only reports (ADR-0123)', () => {
+  const source = 'Mara draws the old sword and waits by the gate until dawn.';
+  const card = (text: string, target: string, pronoun?: string): LocalizedTerm => ({
+    text,
+    term: { source: { en: text }, target },
+    ...(pronoun === undefined ? {} : { attributes: { pronoun } }),
+  });
+  const mara = card('Mara', '瑪拉', '她');
+  const check = (translation: string, terms: readonly LocalizedTerm[] = [mara], text = source) =>
+    verifyFragment(unit(text), `<s id="1">${translation}</s>`, context({ terms }));
+
+  it('reports another pronoun where the one card the unit hits wants its own, and does not send it back', () => {
+    const verdict = check('瑪拉拔出他的舊劍，在城門邊等到天亮。');
+    expect(verdict.passed).toBe(true);
+    expect(verdict.problems).toEqual([
+      { code: 'pronoun_mismatch', level: 'report', detail: { term: 'Mara', expected: '她', found: '他' } },
+    ]);
+    expect(check('瑪拉看見他與牠，在城門邊等到天亮。').problems[0]?.detail).toEqual({ term: 'Mara', expected: '她', found: '他 牠' });
+  });
+
+  it('says nothing when the card’s own pronoun is there, or no pronoun at all', () => {
+    expect(codes(check('瑪拉把舊劍交給他，她在城門邊等到天亮。'))).toEqual([]);
+    expect(codes(check('瑪拉拔出舊劍，在城門邊等到天亮。'))).toEqual([]);
+  });
+
+  it('takes out the exceptions and the plural forms first', () => {
+    expect(codes(check('瑪拉和其他守衛在城門邊等到天亮。'))).toEqual([]);
+    expect(codes(check('瑪拉看著他們在城門邊等到天亮。'))).toEqual([]);
+  });
+
+  it('takes out the targets of the terms the unit hits first', () => {
+    const taga = card('Taga', '塔他', '她');
+    expect(codes(check('塔他拔出舊劍，在城門邊等到天亮。', [taga], source.replace('Mara', 'Taga')))).toEqual([]);
+  });
+
+  it('does not judge two cards with pronouns, a card without one, or a unit with no card', () => {
+    const tor = card('Tor', '托爾', '他');
+    const both = 'Mara and Tor draw the old swords and wait by the gate until dawn.';
+    expect(codes(check('瑪拉與托爾拔出他的舊劍，在城門邊等到天亮。', [mara, tor], both))).toEqual([]);
+    expect(codes(check('瑪拉拔出他的舊劍，在城門邊等到天亮。', [card('Mara', '瑪拉')]))).toEqual([]);
+    expect(codes(check('瑪拉拔出他的舊劍，在城門邊等到天亮。', []))).toEqual([]);
+  });
+});
+
+describe('translationese, which only reports (ADR-0123)', () => {
+  const check = (tail: string, language = profile) =>
+    verifyFragment(unit(LONG_SOURCE), `<s id="1">${LONG_TRANSLATION}${tail}</s>`, context({ language }));
+
+  it('reports a listed phrase and what to write instead, once per unit, and does not send it back', () => {
+    const verdict = check('作為一個獵人，作為一個守衛');
+    expect(verdict.passed).toBe(true);
+    expect(verdict.problems).toEqual([{ code: 'translationese', level: 'report', detail: { text: '作為一個', prefer: '身為' } }]);
+  });
+
+  it('reports a pair in one sentence, with what lies between', () => {
+    expect(check('他被巫師所詛咒').problems).toEqual([
+      { code: 'translationese', level: 'report', detail: { text: '被巫師所', prefer: '拿掉「所」' } },
+    ]);
+  });
+
+  it('leaves a pair that spans the end of a sentence or lies too far apart', () => {
+    expect(codes(check('他被抓了。所幸無事'))).toEqual([]);
+    expect(codes(check('他被抓了'))).toEqual([]);
+    expect(codes(check(`被${'甲'.repeat(16)}所`))).toEqual([]);
+    expect(check(`被${'甲'.repeat(15)}所`).problems[0]?.detail).toEqual({ text: `被${'甲'.repeat(15)}所`, prefer: '拿掉「所」' });
+  });
+
+  it('finds a pair at the very start of the translation', () => {
+    const verdict = verifyFragment(unit(LONG_SOURCE), `<s id="1">被巫師所詛咒的人，${LONG_TRANSLATION}</s>`, context());
+    expect(verdict.problems).toEqual([{ code: 'translationese', level: 'report', detail: { text: '被巫師所', prefer: '拿掉「所」' } }]);
+  });
+
+  it('tries each first half until one fits', () => {
+    expect(check('被抓了。又被巫師所詛咒').problems[0]?.detail).toEqual({ text: '被巫師所', prefer: '拿掉「所」' });
+  });
+
+  it('takes out the exceptions first, and checks nothing when the language has no list', () => {
+    const rules = profile.translationese;
+    if (rules === undefined) throw new Error('zh-TW has a translationese list');
+    expect(codes(check('作為一個獵人', { ...profile, translationese: { ...rules, exceptions: ['作為一個'] } }))).toEqual([]);
+    const { translationese: _unused, ...plain } = profile;
+    expect(codes(check('作為一個獵人', plain))).toEqual([]);
+  });
+});
+
 describe('what the model flagged (ADR-0100)', () => {
   it('keeps new terms, and the translation stays in the text', () => {
     const fragment = `<s id="1">${LONG_TRANSLATION}<new-term source="Salt Marsh">鹽沼</new-term></s>`;
