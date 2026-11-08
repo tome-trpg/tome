@@ -49,6 +49,8 @@ interface EntityRow {
   readonly origin: string;
   readonly occurrences: number;
   readonly decided_by: string | null;
+  /** 上次寫進審定檔時，可修改欄位正規化後的 JSON（`stored()`）。 */
+  readonly review_written: string | null;
 }
 
 interface Match {
@@ -208,9 +210,11 @@ interface Applied {
   readonly kept: ReadonlyMap<number, Entry>;
   /** id 不對、找不到卡的列，也照原樣寫回去。 */
   readonly orphans: readonly Entry[];
+  /** 人改了、資料庫在上次寫出審定檔之後也被改了的卡（例如匯入），保留人填的，要人確認。 */
+  readonly diverged: readonly number[];
 }
 
-const NOTHING_APPLIED: Applied = { locked: 0, rejected: 0, problems: [], kept: new Map(), orphans: [] };
+const NOTHING_APPLIED: Applied = { locked: 0, rejected: 0, problems: [], kept: new Map(), orphans: [], diverged: [] };
 
 /** 讀回審定檔，只套用 `decision` 填了 `lock` 或 `reject` 的列（ADR-0119 第 4 項）。檔案壞了回 null，什麼都不改。 */
 function readDecisions(path: string): Entry[] | null {
@@ -272,12 +276,27 @@ function stored(row: EntityRow): string {
   ]);
 }
 
+type Change = 'none' | 'database' | 'person' | 'both';
+
+/**
+ * 沒填 decision 的列是誰改的（ADR-0119，維護者選的）：人填的（`mine`）、`book.db` 的（`theirs`）各跟上次寫進審定檔的
+ * （`written`）比。`none` 與 `database` 照 `book.db` 重寫，匯入改的譯名才會出現在檔案裡；`person` 與 `both` 保留人填的。
+ * 舊版寫的檔或人自己加的列沒有 `written`，就跟 `book.db` 比。人填的跟 `book.db` 一樣時重寫也不會少東西。
+ */
+function whatChanged(mine: string, theirs: string, written: string | null): Change {
+  if (mine === theirs) return 'none';
+  if (written === null) return 'person';
+  if (mine === written) return 'database';
+  return theirs === written ? 'person' : 'both';
+}
+
 function applyDecisions(store: Store, entries: readonly Entry[], rules: Rules): Applied {
   let locked = 0;
   let rejected = 0;
   const problems: string[] = [];
   const kept = new Map<number, Entry>();
   const orphans: Entry[] = [];
+  const diverged: number[] = [];
   store.transaction(() => {
     entries.forEach((entry, index) => {
       const decision = typeof entry['decision'] === 'string' ? entry['decision'].trim().toLowerCase() : entry['decision'];
@@ -286,8 +305,14 @@ function applyDecisions(store: Store, entries: readonly Entry[], rules: Rules): 
       const row = typeof id === 'number' && Number.isInteger(id) ? entityById(store, id) : undefined;
       if (blank(decision)) {
         // 沒填 decision 的修改不套用，但照人填的樣子留在檔案裡（Manager 審 PR 68 時找到，維護者選的，ADR-0119）。
-        if (row === undefined) orphans.push(entry);
-        else if (editable(entry) !== stored(row)) kept.set(row.id, entry);
+        if (row === undefined) {
+          orphans.push(entry);
+          return;
+        }
+        const change = whatChanged(editable(entry), stored(row), row.review_written);
+        if (change === 'none' || change === 'database') return;
+        kept.set(row.id, entry);
+        if (change === 'both') diverged.push(row.id);
         return;
       }
       if (row === undefined) {
@@ -315,7 +340,7 @@ function applyDecisions(store: Store, entries: readonly Entry[], rules: Rules): 
       locked += 1;
     });
   });
-  return { locked, rejected, problems, kept, orphans };
+  return { locked, rejected, problems, kept, orphans, diverged };
 }
 
 /** 類別的審定權重，繼承鏈由子到父，子包的優先，沒設是 1（ADR-0119 第 5 項）。 */
@@ -440,7 +465,12 @@ function sections(store: Store, weightOf: (kind: string | null) => number): Reco
   };
 }
 
+/**
+ * 寫出審定檔。從 `book.db` 寫出的列記下寫了什麼（`review_written`），下次讀回才分得出誰改的；照人填的樣子寫回的列
+ * 不記，下次還是看得出人改過。先寫暫存檔、記好再改名。
+ */
 function writeReview(
+  store: Store,
   path: string,
   groups: Record<Section, EntityRow[]>,
   seen: ReadonlyMap<string, Sighting>,
@@ -473,6 +503,11 @@ function writeReview(
   }
   const temporary = `${path}.tmp`;
   writeFileSync(temporary, document.toString({ nullStr: '', lineWidth: 0 }));
+  store.transaction(() => {
+    for (const row of SECTIONS.flatMap((section) => groups[section])) {
+      if (!applied.kept.has(row.id)) store.run('UPDATE entity SET review_written = ? WHERE id = ?', stored(row), row.id);
+    }
+  });
   renameSync(temporary, path);
 }
 
@@ -508,7 +543,7 @@ async function reviewLocked({ home, slug, texts }: ReviewOptions): Promise<PlanO
     const groups = sections(store, weightOf);
     const { profile } = loadSourceLanguage(book.config.source_lang);
     const seen = sightings(document, profile, [...groups.review, ...groups.skipped].map(({ source }) => source));
-    writeReview(path, groups, seen, texts, applied);
+    writeReview(store, path, groups, seen, texts, applied);
     const totals = countEntities(store);
     const params = {
       book: slug,
@@ -524,6 +559,10 @@ async function reviewLocked({ home, slug, texts }: ReviewOptions): Promise<PlanO
     const problems = applied.problems.length === 0
       ? []
       : [finding('glossary.bad_entries', 'fail', { count: String(applied.problems.length), entries: listed(applied.problems) })];
+    // 人改了、資料庫也改了：保留人填的，只印筆數與編號，提醒確認後再填 decision（ADR-0119）。
+    const diverged = applied.diverged.length === 0
+      ? []
+      : [finding('glossary.diverged', 'warn', { count: String(applied.diverged.length), entries: listed(applied.diverged.map(String)) })];
     return {
       data: {
         book: slug,
@@ -533,8 +572,9 @@ async function reviewLocked({ home, slug, texts }: ReviewOptions): Promise<PlanO
         auto,
         entities: totals,
         problems: applied.problems.length,
+        diverged: applied.diverged.length,
       },
-      findings: [finding('glossary.reviewed', 'info', params), ...problems, ...findings],
+      findings: [finding('glossary.reviewed', 'info', params), ...problems, ...diverged, ...findings],
     };
   } finally {
     store.close();

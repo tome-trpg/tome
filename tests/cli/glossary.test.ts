@@ -143,6 +143,12 @@ function codes(output: Envelope): string[] {
   return output.findings.map(({ code }) => code);
 }
 
+function csvFile(text: string): string {
+  const path = join(tempDir(), 'terms.csv');
+  writeFileSync(path, text);
+  return path;
+}
+
 describe('tome glossary review (ADR-0119)', () => {
   it('writes the review file, locks the low-impact proposals on its own, and prints counts only', async () => {
     const lib = await book();
@@ -268,6 +274,9 @@ describe('tome glossary review (ADR-0119)', () => {
     const warden = readReview(lib.home).review.find(({ source }) => source === 'Grey Warden');
     expect(warden).toMatchObject({ target: '灰衣守望者', pronoun: '他' });
     expect(cards(lib.home)['Grey Warden']).toMatchObject({ target: '灰色守望者', pronoun: '她', status: 'proposed' });
+    // 再跑一次也還在。
+    await review(lib);
+    expect(readReview(lib.home).review.find(({ source }) => source === 'Grey Warden')).toMatchObject({ target: '灰衣守望者' });
     edit(lib.home, { 'Grey Warden': { decision: 'lock' } });
     await review(lib);
     expect(cards(lib.home)['Grey Warden']).toMatchObject({ target: '灰衣守望者', pronoun: '他', status: 'locked' });
@@ -285,6 +294,35 @@ describe('tome glossary review (ADR-0119)', () => {
     await review(lib);
     const marsh = readReview(lib.home).review.find(({ source }) => source === 'Salt Marsh');
     expect(marsh).toMatchObject({ count: 9, gender: null, register: null });
+  });
+
+  it('shows what an import changed in an entry nobody touched in the file', async () => {
+    const lib = await book();
+    await review(lib);
+    await tome(lib, 'glossary', 'import', 'book', csvFile('source,target,class\nSalt Marsh,鹽澤,place\n'));
+    const { exit, output } = await review(lib);
+    expect(exit).toBe(0);
+    expect(codes(output)).toEqual(['glossary.reviewed']);
+    const marsh = readReview(lib.home).locked.find(({ source }) => source === 'Salt Marsh');
+    expect(marsh).toMatchObject({ target: '鹽澤', decided_by: 'import' });
+  });
+
+  it('keeps what a person typed when an import changed the same entry, and says which entries differ', async () => {
+    const lib = await book();
+    await review(lib);
+    const id = readReview(lib.home).review.find(({ source }) => source === 'Grey Warden')?.id;
+    edit(lib.home, { 'Grey Warden': { target: '灰衣守望者' } });
+    await tome(lib, 'glossary', 'import', 'book', csvFile('source,target,class,gender,pronoun\nGrey Warden,灰袍守望者,person,female,她\n'));
+    const { exit, output, text } = await review(lib);
+    expect(exit).toBe(0);
+    const warning = output.findings.find(({ code }) => code === 'glossary.diverged');
+    expect(warning).toMatchObject({ level: 'warn', params: { count: '1', entries: String(id) } });
+    expect(readReview(lib.home).locked.find(({ source }) => source === 'Grey Warden')).toMatchObject({ target: '灰衣守望者' });
+    expect(cards(lib.home)['Grey Warden']).toMatchObject({ target: '灰袍守望者', status: 'locked' });
+    for (const word of ['灰衣守望者', '灰袍守望者', 'Grey Warden']) expect(text).not.toContain(word);
+    // 人確認之前每次都提醒：照人填的樣子寫回的列，不記成上次寫出的內容。
+    const again = await review(lib);
+    expect(codes(again.output)).toContain('glossary.diverged');
   });
 
   it('changes nothing and keeps the file when it cannot read it', async () => {
@@ -374,12 +412,6 @@ describe('tome glossary review (ADR-0119)', () => {
 });
 
 describe('tome glossary import (ADR-0119)', () => {
-  function csvFile(text: string): string {
-    const path = join(tempDir(), 'terms.csv');
-    writeFileSync(path, text);
-    return path;
-  }
-
   it('locks the terms of a CSV, updating the ones already there', async () => {
     const lib = await book();
     const path = csvFile(

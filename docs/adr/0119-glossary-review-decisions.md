@@ -16,7 +16,7 @@ ADR-0113 第 22 項把回合 028 排成「審定與詞庫：`tome glossary revie
 
 **量測（開工前）**：`book1`（ADR-0115 的書 8）的 `document.json` 複本，用 ADR-0118 的規則挖詞，只印數字，跑完刪掉：744 個候選詞，出現 3 次以上 385 個、5 次以上 207 個、10 次以上 97 個、20 次以上 40 個，只出現 1 次 142 個。這本書用 `generic`，沒有真的 Pass 0 提議，類別與代名詞的分布量不到。
 
-開工前的 16 項問題寫在共用筆記 `brief-028-questions.md`，維護者在 2026-11-08 選定：第 1 項 S-16 移到 037，第 2 項審定介面用 YAML 檔，第 5 項門檻 5，其餘照建議。實作時的細節 17 項寫在 `brief-028-details.md`，維護者在同一天全部照建議選定；其中第 8 項「有性別或代名詞」照字面算，是提案（見第 9 項）。Manager 審 PR 68 時找到沒填 `decision` 的修改會被蓋掉，維護者選了保留（第 7 項）。
+開工前的 16 項問題寫在共用筆記 `brief-028-questions.md`，維護者在 2026-11-08 選定：第 1 項 S-16 移到 037，第 2 項審定介面用 YAML 檔，第 5 項門檻 5，其餘照建議。實作時的細節 17 項寫在 `brief-028-details.md`，維護者在同一天全部照建議選定；其中第 8 項「有性別或代名詞」照字面算，是提案（見第 9 項）。Manager 審 PR 68 時找到沒填 `decision` 的修改會被蓋掉，維護者選了保留，並且跟上次寫進審定檔的內容比（第 7 項）。
 
 ## 決定
 
@@ -37,7 +37,13 @@ ADR-0113 第 22 項把回合 028 排成「審定與詞庫：`tome glossary revie
 7. **`tome glossary review <book>`** 一個指令做兩件事：檔案在就先讀回來，**只套用 `decision` 填了 `lock` 或 `reject` 的列**（不分大小寫）；然後收 `<new-term>`、自動鎖定、重寫檔案。
    * `lock` 依該列的欄位鎖定，`decided_by` 是 `human`；`reject` 不驗證其他欄位。已拒絕的要救回，用 `tome glossary import` 或在檔案裡寫它的 `id`。
    * 有問題的列不套用，其他照樣套用；訊息是 fail（結束碼 1），只印 `編號:欄位`，最多列 20 個。**有問題的列照人填的樣子寫回原來的段落**，只要改點名的欄位；`id` 不對、或卡不在任何一段（例如已拒絕）的放在 `review` 最前面。人這次改過但沒套用成功的卡不自動鎖定。
-   * **沒填 `decision` 的修改也照人填的樣子留著**：可修改的欄位（`target`、`class`、`gender`、`pronoun`、`register`、`keep_source`、`match`）跟 `book.db` 不同的列，寫回原來的段落，不套用，這次也不自動鎖定；內容沒變的照舊從 `book.db` 重寫。比對前先正規化：空白、null 與預設的比對條件跟 `book.db` 的 NULL 視為相同，YAML 讀回來的 `false` 或寫出來的 `case_sensitive: true` 才不會被當成有改。`id` 對不到卡、沒填 `decision` 的列也留著，人刪掉才會不見。人改到一半、為了套用別的列跑一次指令，改的東西不會不見。這是 Manager 審 PR 68 時找到的（第一版會用 `book.db` 的內容蓋掉），維護者選了「照改的樣子保留」。
+   * **沒填 `decision` 的修改也照人填的樣子留著**。寫出審定檔時，每一列從 `book.db` 寫出的可修改欄位（`target`、`class`、`gender`、`pronoun`、`register`、`keep_source`、`match`）正規化後記進 `entity` 的 `review_written`；讀回時，人填的與 `book.db` 的各跟它比：
+     * 人沒動（跟 `review_written` 相同）：照 `book.db` 重寫，`tome glossary import` 改過的譯名就會出現在檔案裡；
+     * 只有人改：照人填的寫回原來的段落，不套用，這次也不自動鎖定；
+     * 兩邊都改了（人改了，`book.db` 也被匯入等流程改了）：保留人填的，不套用，另印 `glossary.diverged`（warn），只印筆數與編號，提醒確認後再填 `decision`；人確認之前每次都提醒；
+     * 人填的跟 `book.db` 一樣：照 `book.db` 重寫，不會少東西；
+     * 沒有 `review_written` 的列（舊版寫的檔、人自己加的列）：跟 `book.db` 比，不同就保留。
+     照人填的樣子寫回的列不更新 `review_written`，下次還分得出人改過。比對前先正規化：空白、null 與預設的比對條件跟 NULL 視為相同，YAML 讀回來的 `false` 或寫出來的 `case_sensitive: true` 才不會被當成有改。`id` 對不到卡、沒填 `decision` 的列也留著，人刪掉才會不見。人改到一半、為了套用別的列跑一次指令，改的東西不會不見。這是 Manager 審 PR 68 時找到的（第一版會用 `book.db` 的內容蓋掉）；維護者先選了「照改的樣子保留」，再選了「記住上次寫出的內容」，匯入之後才不會把舊譯名當成人改的。
    * 檔案讀不懂（YAML 壞了、段落不是清單、列不是物件）時什麼都不套用、不覆寫檔案，人改到一半的內容才不會不見。
    * 先寫暫存檔再改名。要先解析過（`document.json`）。拿書的鎖（ADR-0054）。
 8. **驗證人填的內容**：`target` 不能是空的、不能混入簡體字（ADR-0102 的 `script_check`）；`class` 要在規則包的類別裡；`pronoun` 要在目標語言的代名詞清單裡；`gender` 只收 female、male、none；`keep_source`、`case_sensitive`、`whole_word` 是布林；`roles` 是核心角色或 `規則包:角色`。預設的比對條件存 NULL，跟 ADR-0118 第 12 項一樣。
@@ -60,7 +66,7 @@ ADR-0113 第 22 項把回合 028 排成「審定與詞庫：`tome glossary revie
 
 **儲存與訊息**
 
-13. `book.db` 遷移第 10 版：`entity` 加 **`decided_by`**（`human`、`auto`、`import`）、**`decided_at`**、**`previous_target`**。`status` 多了 `locked`、`rejected`，`origin` 多了 `import`、`new_term`（ADR-0118 第 12 項留給 028 的）。
+13. `book.db` 遷移第 10 版：`entity` 加 **`decided_by`**（`human`、`auto`、`import`）、**`decided_at`**、**`previous_target`**、**`review_written`**（上次寫進審定檔的可修改欄位，第 7 項）。`status` 多了 `locked`、`rejected`，`origin` 多了 `import`、`new_term`（ADR-0118 第 12 項留給 028 的）。
 14. 訊息、`--json` 與紀錄**只有數量、編號、列號與欄位名**；審定檔裡有書本文字（`source`、`target`、`seen_in`），只留在工作區（ADR-0059）。檔頭說明提醒不要分享。
 15. **`tome status`** 多一行實體卡的數量：待人審（`proposed` 加 `failed`，其中幾筆沒提議）、已鎖定（人審、自動、匯入）、已拒絕。沒有任何實體卡時不印。
 16. 程式放 `src/core/glossary.ts`（審定與匯入）、`src/core/csv.ts`（CSV 解析）與 `src/core/entities.ts`（實體卡的計數，`tome status` 與審定共用，`status.ts` 不必依賴審定的程式）。
@@ -74,7 +80,10 @@ ADR-0113 第 22 項把回合 028 排成「審定與詞庫：`tome glossary revie
 <!-- @assert-count target="src/core/glossary.ts" symbol="row.occurrences * weightOf(row.class) >= REVIEW_THRESHOLD" expected="1" reason="第 9 項：出現次數乘權重" -->
 <!-- @assert-count target="src/core/glossary.ts" symbol="row.origin === 'new_term' ||" expected="1" reason="第 9 項：new-term 一律人審" -->
 <!-- @assert-count target="src/core/glossary.ts" symbol="if (needsHuman(row, weightOf) || row.target === null || touched.has(row.id)) continue;" expected="1" reason="第 7、9 項：要人審的、沒譯名的、人改壞的不自動鎖定" -->
-<!-- @assert-count target="src/core/glossary.ts" symbol="else if (editable(entry) !== stored(row)) kept.set(row.id, entry);" expected="1" reason="第 7 項：沒填 decision 的列不套用，改過的照人填的樣子留著" -->
+<!-- @assert-count target="src/core/glossary.ts" symbol="const change = whatChanged(editable(entry), stored(row), row.review_written);" expected="1" reason="第 7 項：沒填 decision 的列跟上次寫出的內容比" -->
+<!-- @assert-count target="src/core/glossary.ts" symbol="if (mine === written) return 'database';" expected="1" reason="第 7 項：人沒動的照 book.db 重寫，匯入的譯名才會出現" -->
+<!-- @assert-count target="src/core/glossary.ts" symbol="if (!applied.kept.has(row.id)) store.run('UPDATE entity SET review_written = ? WHERE id = ?', stored(row), row.id);" expected="1" reason="第 7 項：照人填的樣子寫回的列不記成上次寫出的內容" -->
+<!-- @assert-count target="src/core/store.ts" symbol="ALTER TABLE entity ADD COLUMN review_written TEXT;" expected="1" reason="第 7、13 項：上次寫進審定檔的內容" -->
 <!-- @assert-count target="src/core/glossary.ts" symbol="findings: [finding('glossary.file_invalid', 'fail', { path })]" expected="1" reason="第 7 項：讀不懂就什麼都不改" -->
 <!-- @assert-count target="src/core/glossary.ts" symbol="const previous = row.status === 'locked' && row.target !== null && row.target !== card.target ? row.target : null;" expected="1" reason="第 10 項：已鎖定的改了譯名才記" -->
 <!-- @assert-count target="src/core/glossary.ts" symbol="const GENDERS: ReadonlySet<string> = new Set(['female', 'male', 'none']);" expected="1" reason="第 8 項：性別只收三種" -->
@@ -89,7 +98,7 @@ ADR-0113 第 22 項把回合 028 排成「審定與詞庫：`tome glossary revie
 
 維護者第一次跑 `tome glossary review` 時，低影響的提議已經自動鎖定，檔案裡要審的是高影響、有性別或代名詞、要保留原文、沒提議或翻譯回報的新詞。照 `book1` 的出現次數，5 次以上的約占候選詞的四分之一（207／744）；加上有代名詞的提議，實際要人審的比例要等真的 Pass 0 才知道，可能更高（第 9 項照字面算代名詞）。
 
-審定檔在工作區、有書本文字，跟 `book.db` 一樣只在本機；維護者可以分好幾次審，改壞的列與還沒決定的修改都不會不見。代價是：用 `tome glossary import` 改了檔案裡已有的詞之後，檔案裡那一列的舊內容跟 `book.db` 不同，會被當成人改的留著；刪掉那一列（或整個檔案）再跑一次，就會照 `book.db` 重寫。鎖定的卡還不會進翻譯，要等 037；S-16 也在 037。
+審定檔在工作區、有書本文字，跟 `book.db` 一樣只在本機；維護者可以分好幾次審，改壞的列與還沒決定的修改都不會不見；匯入改了檔案裡人沒動過的詞，下次跑就換成新的譯名，人也改了的就提醒。審定檔寫出後被別的程式改了 `book.db`、又被人改了同一列時，要人自己決定留哪一個。鎖定的卡還不會進翻譯，要等 037；S-16 也在 037。
 
 `entity` 多三欄，舊的列是 NULL。`tome glossary import` 讓使用者自己的譯名不必經過 Pass 0。
 
@@ -102,7 +111,7 @@ ADR-0113 第 22 項把回合 028 排成「審定與詞庫：`tome glossary revie
 * **分成兩個指令或 `--apply` 旗標**：多一個要記的東西。
 * **門檻 3 或 10**、**不自動鎖定**、**自動鎖定只限只出現一次的詞**：門檻是提案，等真的 Pass 0 再調；全部人審做不到。
 * **性別 `none` 與類別預設代名詞不算**：可能讓更多詞自動鎖定；維護者選了先照字面，只會多審，等 Pass 0 的分布再調。
-* **有問題的列用 `book.db` 的內容重寫**：人填的東西會不見。**有問題就整份不套用**：一處打錯就卡住其他幾百筆。**沒填 `decision` 的列一律用 `book.db` 重寫**（第一版的做法）：人改到一半跑一次指令，改的東西沒有提示就不見。
+* **有問題的列用 `book.db` 的內容重寫**：人填的東西會不見。**有問題就整份不套用**：一處打錯就卡住其他幾百筆。**沒填 `decision` 的列一律用 `book.db` 重寫**（第一版的做法）：人改到一半跑一次指令，改的東西沒有提示就不見。**只跟 `book.db` 比**（第二版的做法）：匯入改了檔案裡已有的詞之後，檔案裡的舊譯名會被當成人改的留著，要刪掉那一列才會更新。**兩邊都改了時用 `book.db` 的**：人改的沒有提示就不見。
 * **`rejected` 也列成一段**：檔案變長；救回可以用匯入或寫 `id`。
 * **Pass 0 送出時把句子存進 `entity`**：多存一份書本文字，舊的候選詞沒有。
 * **用套件解析 CSV**：要過授權與冷卻期，RFC 4180 手寫不長。

@@ -317,10 +317,12 @@ describe('migrations', () => {
       .run();
     old.close();
     const store = openStore(path, 'book');
-    const rows = store.all('SELECT source, target, decided_by, decided_at, previous_target FROM entity');
+    const rows = store.all('SELECT source, target, decided_by, decided_at, previous_target, review_written FROM entity');
     store.close();
     expect(pragma(path, 'user_version')).toBe(10);
-    expect(rows).toEqual([{ source: 'Salt Marsh', target: '鹽沼', decided_by: null, decided_at: null, previous_target: null }]);
+    expect(rows).toEqual([
+      { source: 'Salt Marsh', target: '鹽沼', decided_by: null, decided_at: null, previous_target: null, review_written: null },
+    ]);
   });
 });
 

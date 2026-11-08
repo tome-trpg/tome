@@ -49,6 +49,7 @@ export const FINDING_CODES = [
   'glossary.bad_rows',
   'glossary.csv_columns',
   'glossary.csv_invalid',
+  'glossary.diverged',
   'glossary.file_invalid',
   'glossary.imported',
   'glossary.reviewed',

@@ -194,12 +194,14 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
       `,
     },
     {
-      // 審定（ADR-0119）：誰決定、何時決定，鎖定後改譯名時記下上一個譯名，037 的 S-16 要用。
+      // 審定（ADR-0119）：誰決定、何時決定，鎖定後改譯名時記下上一個譯名，037 的 S-16 要用；上次寫進審定檔的
+      // 可修改欄位，讀回時分得出是人改的還是資料庫改的。
       version: 10,
       sql: `
         ALTER TABLE entity ADD COLUMN decided_by TEXT;
         ALTER TABLE entity ADD COLUMN decided_at TEXT;
         ALTER TABLE entity ADD COLUMN previous_target TEXT;
+        ALTER TABLE entity ADD COLUMN review_written TEXT;
       `,
     },
   ],
