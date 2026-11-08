@@ -66,7 +66,9 @@ protectedFiles:
 - [x] 41 個沒偵測到的變異的分類、前後分數寫成 ADR-0117，白皮書的 ADR 索引加一列
 
   開工前估的是殺 29、等價 12，對照後是殺 28、等價 13：96 號是 `residual` 裡 `run.marks ?? []` 的 `[]`，不是 `whole.marks` 的，殺得掉；90 號因為 `styleOf` 會拿掉 undefined 的連結而等價；205 號因為排序是穩定的、切點本來就依序放進去而等價。
-- [ ] 在分支上用 `workflow_dispatch` 跑 `mutation.yml`，遮蔽還原的分數在 95 以上，其他模組的分數也記下
+- [x] 在分支上用 `workflow_dispatch` 跑 `mutation.yml`，遮蔽還原的分數在 95 以上，其他模組的分數也記下
+
+  `182e930` 的 run 42447828630 第一次就全綠：遮蔽還原 95.67，其他 5 個模組跟 `main` 的 run 42444515055 相同，寫在 ADR-0117 第 5 項。
 
 ## Measured
 
@@ -77,3 +79,5 @@ protectedFiles:
 **本機確認**：scratchpad 的 Node 小工具把 `src`、`tests` 與設定複製到暫存資料夾，`node_modules` 用目錄連結，一次套一個變異，只跑 `tests/core/mask.test.ts`，跑完刪掉複本。新測試加上去之前，抽查的 3 個都存活；加上去之後 41 個裡殺掉 28 個、存活 13 個、沒有逾時，存活的就是 ADR-0117 的等價清單。41 個約 55 秒。
 
 本機結果：`npm test` 62 個測試檔通過、1 個跳過，1,611 個測試通過、5 個跳過；`npm run spec` 273 個斷言都成立，也都看過失敗；`npm run licenses` 沒有違規。
+
+**CI 的 mutation**：`182e930` 用 `workflow_dispatch` 觸發 `mutation.yml`（run 42447828630），6 個 job 第一次都通過。下載各 job 的 JSON 報告算分數：遮蔽還原 95.67（323 個變異，殺掉 292、逾時 17、存活 12、沒涵蓋 2），比預估的 95.98 少一個，是 169 號由逾時變成存活，它是等價的。
