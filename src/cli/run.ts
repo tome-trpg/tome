@@ -36,6 +36,7 @@ import {
 } from '../core/secrets.ts';
 import { bookStatus } from '../core/status.ts';
 import { collectScans, countOutstanding, scanTerms } from '../core/scan.ts';
+import { importGlossary, reviewGlossary } from '../core/glossary.ts';
 import { translateBook } from '../core/translate.ts';
 import { verifyBook } from '../core/verify.ts';
 import {
@@ -52,6 +53,7 @@ import {
   progressText,
   promptText,
   usageText,
+  glossaryReviewTexts,
   workspaceTemplate,
   type ArgumentKey,
 } from './messages.ts';
@@ -454,6 +456,28 @@ const COMMANDS: readonly Command[] = [
     options: {},
     positionals: 1,
     run: ({ positionals }, io) => withBook(positionals, io, (options) => cancelBatches(options)),
+  },
+  {
+    path: ['glossary', 'review'],
+    options: {},
+    positionals: 1,
+    // 審定檔的說明與段落標題從訊息檔帶進去，核心不放給人看的文字（ADR-0119）。
+    run: async ({ positionals }, io) => {
+      const slug = positionals[0];
+      if (slug === undefined) throw missing('book');
+      return reviewGlossary({ home: resolveHome(io.env, io.platform), slug, texts: glossaryReviewTexts });
+    },
+  },
+  {
+    path: ['glossary', 'import'],
+    options: {},
+    positionals: 2,
+    run: async ({ positionals }, io) => {
+      const [slug, csv] = positionals;
+      if (slug === undefined) throw missing('book');
+      if (csv === undefined) throw missing('csv');
+      return importGlossary({ home: resolveHome(io.env, io.platform), slug, csv });
+    },
   },
   {
     path: ['status'],

@@ -15,6 +15,23 @@ export type CoreRole =
   | 'credits'
   | 'furniture';
 
+/** 跟 `tome-ir-1.schema.json` 的 `coreRole` 同一份清單。 */
+export const CORE_ROLES: readonly CoreRole[] = [
+  'title',
+  'heading',
+  'paragraph',
+  'list_item',
+  'table',
+  'sidebar',
+  'figure',
+  'caption',
+  'footnote',
+  'toc',
+  'index',
+  'credits',
+  'furniture',
+];
+
 /** 規則包宣告的角色，寫成 `<規則包 ID>:<角色>`。核心不認得，只原樣傳遞（ADR-0023）。 */
 export type PackRole = `${string}:${string}`;
 

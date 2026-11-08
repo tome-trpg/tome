@@ -22,6 +22,7 @@ export const ERROR_CODES = [
   'egress.denied',
   'engine.not_found',
   'file.corrupt',
+  'glossary.csv_missing',
   'language.unknown',
   'language.unknown_target',
   'model.missing',

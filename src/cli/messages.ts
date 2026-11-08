@@ -9,6 +9,16 @@ function fill(template: string, params: Params): string {
 export const usageText = catalog.usage;
 export const workspaceTemplate = catalog.template.workspace;
 
+/** 審定檔的說明與段落標題（ADR-0119）。 */
+export const glossaryReviewTexts = {
+  header: catalog.template.glossary_review.header,
+  sections: {
+    review: catalog.template.glossary_review.review,
+    locked: catalog.template.glossary_review.locked,
+    skipped: catalog.template.glossary_review.skipped,
+  },
+};
+
 /** `tome system new` 的骨架，檔名對應內容。 */
 export function packTemplate(id: string): Record<string, string> {
   return Object.fromEntries(
