@@ -1,0 +1,13 @@
+# An invented game system. Every field name here is made up for the tests (ADR-0121).
+# Knack has no translation in glossary.yaml on purpose: a block that uses it goes to the model.
+roles:
+  stat_block:
+    detect: [grit_line, wits_line]
+    style: Keep every number. Translate the labels only.
+    fields:
+      - { en: Grit }
+      - { en: Wits }
+      - { en: Reach }
+      - { en: Ward }
+      - { en: Stride }
+      - { en: Knack }

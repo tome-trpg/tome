@@ -22,6 +22,8 @@ import { hitCount, scanBody, type PiiRules } from './egress/gate.ts';
 import { TomeError } from './errors.ts';
 import { bookSummary, entityCards, type EntityCard } from './entities.ts';
 import { estimateRequest, outputTokens, sumEstimates, type Estimate } from './estimate.ts';
+import { fieldUnits } from './fields.ts';
+import { fieldedFindings } from './status.ts';
 import { readDocument } from './extract.ts';
 import { finding, type Finding } from './findings.ts';
 import type { IrDocument } from './ir.ts';
@@ -44,7 +46,7 @@ import {
 import { openBookStore, type Store } from './store.ts';
 import { escapeAttribute, escapeText, unitTag } from './tags.ts';
 import { buildUnits, syncUnits, type TranslationUnit } from './units.ts';
-import { hitTerms, loadBookPack, visibleText } from './verify.ts';
+import { bookTerms, hitTerms, loadBookPack, visibleText } from './verify.ts';
 import { piiFindings, workspaceModel, workspacePii, workspaceTargetLang } from './workspace.ts';
 
 // 把單位組成請求（白皮書 §5.7、ADR-0103）。這裡只組資料與估價，不連網。
@@ -455,6 +457,8 @@ export interface BookPlan {
   readonly unitCount: number;
   /** 範圍內不需翻譯、原樣保留的單位，跟 `tome translate` 的總數對得起來（ADR-0111）。 */
   readonly keptCount: number;
+  /** 範圍內在本機欄位化的單位，不算原樣保留（ADR-0121）。 */
+  readonly fieldedCount: number;
   readonly chars: number;
   readonly estimate: Estimate;
   /** 單位、模型、回退模型、價格、範圍、預算、提示、規則包、來源語言與模式的內容指紋（ADR-0103、ADR-0104、ADR-0106）。 */
@@ -503,8 +507,15 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
   if (pack === null) return { plan: null, findings: loaded };
   const packFindings = [...loaded, ...pendingFindings(book.slug, cards)];
   const { source_lang: sourceLang } = book.config;
-  const { units, findings } = await buildUnits(document, pack, sourceLang, terms);
+  const { units: built, findings } = await buildUnits(document, pack, sourceLang, terms);
   if (findings.some(({ level }) => level === 'fail')) return { plan: null, findings };
+  const { profile: language } = loadTargetLanguage(workspaceTargetLang(home));
+  // 整塊對得上的數值塊在本機用詞條翻好，不送 LLM；譯名會變，每次都重算（ADR-0121）。
+  const fielded = fieldUnits(built, { pack, sourceLang, terms, names: bookTerms([], cards), language });
+  const units = built.map((unit) => {
+    const local = fielded.get(unit.unit_id);
+    return local === undefined ? unit : { ...unit, needs_llm: false, fielded: local };
+  });
   syncUnits(store, units);
 
   const level = checkedLevel(document, levelOf(book));
@@ -516,7 +527,6 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
   const pending = pendingUnits(store);
   const requests = planRequests(units, chapterOf, (unit) => pending.has(unit.unit_id) && inScope(unit));
 
-  const { profile: language } = loadTargetLanguage(workspaceTargetLang(home));
   const prefix = staticPrefix(language, pack, bookSummary(store));
   const recent = activeEntities(units, terms, chapterOf);
   const sized = requests.map((request) =>
@@ -555,7 +565,8 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
       requests,
       bodies: sized.map(({ body }) => body),
       unitCount: planned.length,
-      keptCount: units.filter((unit) => !unit.needs_llm && inScope(unit)).length,
+      keptCount: units.filter((unit) => !unit.needs_llm && unit.fielded === undefined && inScope(unit)).length,
+      fieldedCount: units.filter((unit) => unit.fielded !== undefined && inScope(unit)).length,
       chars: sized.reduce((total, { sourceChars }) => total + sourceChars, 0),
       estimate: sumEstimates(sized.map(({ estimate }) => estimate)),
       fingerprint,
@@ -603,6 +614,7 @@ function planData(plan: BookPlan): Readonly<Record<string, unknown>> {
     requests: plan.requests.length,
     units: plan.unitCount,
     kept: plan.keptCount,
+    fielded: plan.fieldedCount,
     chars: plan.chars,
     low_usd: plan.estimate.low_usd,
     high_usd: plan.estimate.high_usd,
@@ -733,7 +745,7 @@ async function estimateLocked(options: EstimateOptions): Promise<PlanOutcome> {
     const { confirmed, findings: decided } = confirmation(store, plan, budget, spent, confirm);
     return {
       data: { book: slug, ...planData(plan), budget_usd: budget ?? null, spent_usd: spent, confirmed },
-      findings: [summary, ...plan.levelFindings, ...decided, ...warnings, ...prices],
+      findings: [summary, ...fieldedFindings(plan.fieldedCount), ...plan.levelFindings, ...decided, ...warnings, ...prices],
     };
   } finally {
     store.close();
@@ -771,6 +783,7 @@ async function dryRunLocked(home: string, slug: string, mode: RequestMode): Prom
       data: { book: slug, ...planData(plan) },
       findings: [
         finding('dry_run.done', 'info', planParams(plan)),
+        ...fieldedFindings(plan.fieldedCount),
         ...(prefixes.size > 1 ? [finding('dry_run.prefix_unstable', 'fail')] : []),
         ...gateFindings(plan.bodies, piiRulesOf(home, book)),
         ...findings,

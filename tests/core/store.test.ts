@@ -319,10 +319,28 @@ describe('migrations', () => {
     const store = openStore(path, 'book');
     const rows = store.all('SELECT source, target, decided_by, decided_at, previous_target, review_written FROM entity');
     store.close();
-    expect(pragma(path, 'user_version')).toBe(10);
+    expect(pragma(path, 'user_version')).toBe(LATEST_BOOK);
     expect(rows).toEqual([
       { source: 'Salt Marsh', target: '鹽沼', decided_by: null, decided_at: null, previous_target: null, review_written: null },
     ]);
+  });
+
+  it('marks the units translated on this machine from stat block fields, none at first (ADR-0121)', () => {
+    const path = join(tempDir(), 'book.db');
+    openStore(path, 'book', MIGRATIONS.book.slice(0, 10)).close();
+    const old = new DatabaseSync(path);
+    old
+      .prepare(
+        `INSERT INTO unit (unit_id, block_id, role, seq, source, masked, placeholders, state, attempts)
+         VALUES ('p0000-aaaaaa', 'p0000-aaaaaa', 'paragraph', 0, 'Grit 3', 'Grit 3', '[]', 'DONE', 1)`,
+      )
+      .run();
+    old.close();
+    const store = openStore(path, 'book');
+    const rows = store.all('SELECT unit_id, fielded FROM unit');
+    store.close();
+    expect(pragma(path, 'user_version')).toBe(11);
+    expect(rows).toEqual([{ unit_id: 'p0000-aaaaaa', fielded: 0 }]);
   });
 });
 

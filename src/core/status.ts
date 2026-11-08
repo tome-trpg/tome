@@ -56,6 +56,8 @@ export interface ScopedUnit {
   readonly state: UnitState;
   /** 不需翻譯、原樣保留（ADR-0111）。 */
   readonly kept: boolean;
+  /** 本機欄位化，不算原樣保留（ADR-0121）。 */
+  readonly fielded: boolean;
   readonly inScope: boolean;
 }
 
@@ -64,6 +66,8 @@ export interface ScopeCounts {
   readonly total: number;
   /** 範圍內不需翻譯、原樣保留的。 */
   readonly kept: number;
+  /** 範圍內在本機欄位化的。 */
+  readonly fielded: number;
   /** 範圍內各狀態的單位數。 */
   readonly states: Readonly<Record<UnitState, number>>;
   /** 範圍外、還沒完成的。換過範圍之後，舊範圍留下的 `FAILED_QA` 也在這裡。 */
@@ -79,9 +83,15 @@ export function scopeCounts(units: readonly ScopedUnit[]): ScopeCounts {
   return {
     total: inside.length,
     kept: inside.filter(({ kept }) => kept).length,
+    fielded: inside.filter(({ fielded }) => fielded).length,
     states: unitCounts(inside.map(({ state }) => ({ state, count: 1 }))),
     outside: units.filter(({ inScope, state }) => !inScope && state !== 'DONE').length,
   };
+}
+
+/** 本機欄位化的單位數，有才印，只有數字（ADR-0121）。估價、試算、翻譯完成與 `tome status` 共用。 */
+export function fieldedFindings(count: number): Finding[] {
+  return count === 0 ? [] : [finding('units.fielded', 'info', { count: String(count) })];
 }
 
 /** 設了範圍、範圍外又有沒完成的單位時，接在數字後面說明（ADR-0114）。 */
@@ -165,6 +175,7 @@ interface UnitRow {
   readonly state: UnitState;
   readonly source: string;
   readonly placeholders: string;
+  readonly fielded: number;
 }
 
 /**
@@ -172,9 +183,10 @@ interface UnitRow {
  * 範圍的判定見 `scopeOf`。
  */
 function scopedUnits(rows: readonly UnitRow[], inScope: ((blockId: string) => boolean) | null): ScopedUnit[] {
-  return rows.map(({ block_id, state, source, placeholders }) => ({
+  return rows.map(({ block_id, state, source, placeholders, fielded }) => ({
     state,
     kept: !needsLlm(source, JSON.parse(placeholders) as Placeholder[]),
+    fielded: fielded === 1,
     inScope: inScope === null || inScope(block_id),
   }));
 }
@@ -187,7 +199,7 @@ export function bookStatus(home: string, slug: string, offsetOf: ZoneOffset = lo
     const total = Object.values(units).reduce((sum, count) => sum + count, 0);
     const inScope = scopeOf(home, book);
     const chapters = inScope === null ? null : (book.config.chapters ?? null);
-    const rows = store.all<UnitRow>('SELECT block_id, state, source, placeholders FROM unit');
+    const rows = store.all<UnitRow>('SELECT block_id, state, source, placeholders, fielded FROM unit');
     const scoped = scopeCounts(scopedUnits(rows, inScope));
     const buckets = bucketCounts(scoped.states);
     const spent = spentUsd(store);
@@ -199,8 +211,9 @@ export function bookStatus(home: string, slug: string, offsetOf: ZoneOffset = lo
       book: slug,
       units,
       kept: scoped.kept,
+      fielded: scoped.fielded,
       // 訊息裡的數字：範圍內，範圍外沒完成的另算（ADR-0114）。`units` 是整本書各狀態的原值。
-      scope: { chapters, total: scoped.total, kept: scoped.kept, ...buckets, outside: scoped.outside },
+      scope: { chapters, total: scoped.total, kept: scoped.kept, fielded: scoped.fielded, ...buckets, outside: scoped.outside },
       spent_usd: spent,
       budget_usd: budget,
       batches: batchRows.map(({ remote_id, state, requests, submitted_at, expires_at, deleted_at }) => ({
@@ -227,6 +240,7 @@ export function bookStatus(home: string, slug: string, offsetOf: ZoneOffset = lo
       data,
       findings: [
         finding('status.units', 'info', params),
+        ...fieldedFindings(scoped.fielded),
         ...outsideFindings(slug, chapters, scoped.outside),
         ...entities,
         money,

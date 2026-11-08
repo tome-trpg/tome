@@ -782,6 +782,8 @@ source_langs: [en]
 
 **數值塊欄位化**：`roles.yaml` 可以宣告數值塊有哪些欄位。標籤用術語翻，數字直接保留；整塊都對得上就不送 LLM（H-15）。
 
+**已實作**（ADR-0121）：`fields` 是標籤的清單，每一項是「語言 → 標籤」，譯名從詞條來，書可以用實體卡或匯入蓋掉。段落區塊判到有 `fields` 的角色時，扣掉有譯名的標籤與鎖定的實體卡後一個字母都不剩，就在本機換成譯名、走跟模型回覆同一條驗證與排版，不送 LLM；兩個欄位之間的空白換成全形空白。每次估價與翻譯都重算，另外算數，不算「原樣保留」。`tome system test` 的案例可以寫預期的 `fielded`，`tome system lint` 提醒沒有譯名的標籤。只用合成的測試規則包 `stat-fixture` 驗證過，真書的涵蓋率**沒有量測**，等 M4 的 `d100-orc`。
+
 **單書覆寫**寫在 `book.yaml`，調整這本書的年代、基調與額外模式，不用為了一本書另開規則包。實體類別可以設預設代名詞，例如神祇用祂，代名詞集合來自目標語言設定檔。
 
 **安全**：規則包是不受信任的資料。
@@ -795,7 +797,7 @@ source_langs: [en]
 | 指令 | 作用 |
 | :--- | :--- |
 | `tome system lint` | 檢查 schema、危險的正則寫法。公開包另查 `LICENSE`、必要聲明與署名，由 CI 把關，因為 ORC 的聲明寫漏會讓授權自動終止 |
-| `tome system test` | 不花 token，驗證模式抓得到骰子與數值塊。公開包必備 |
+| `tome system test` | 不花 token，驗證模式抓得到骰子與數值塊，數值塊在本機欄位化的譯文對不對（ADR-0121）。公開包必備 |
 | `tome glossary why <詞>` | 顯示這個譯名來自哪一層、哪個規則包 |
 
 翻譯記憶的風格版本用該角色風格文字的雜湊，不用規則包版本號。改一個角色的文風，其他段落不用重翻。`tome probe` 可以依關鍵詞與骰子格式建議規則包，但只建議，`--system` 仍由使用者指定。
@@ -1266,6 +1268,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0118](adr/0118-pass-0-decisions.md) | Pass 0：候選詞、實體卡的提議與全書提要 | M3 |
 | [ADR-0119](adr/0119-glossary-review-decisions.md) | 實體卡的審定、匯入與 `<new-term>` 佇列 | M3 |
 | [ADR-0120](adr/0120-entities-in-translation-decisions.md) | 實體卡進翻譯與 S-16 | M3 |
+| [ADR-0121](adr/0121-stat-block-fields-decisions.md) | 數值塊欄位化與合成測試規則包 | M3 |
 
 ---
 
@@ -1312,7 +1315,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | H-12 | `tome sync` 能把 vault 的修改可靠對回區塊 | 對錯段落等於把人工譯文寫到別的地方 | 合成修改集：改字、併段、搬動段落，量對應正確率 |
 | H-13 | 關閉思考後，翻譯品質仍足以上桌 | 思考計入輸出費，開著可能明顯超出附錄 A | 同一段素材開關思考各翻一次，盲評並比較 `usage` |
 | H-14 | `@napi-rs/keyring` 在 Windows 憑證管理員可用。**已驗證**：2026-11-01 在參考機器實測 2.1.2，存、取、覆寫、刪都正常，跨行程讀得到，`cmdkey /list` 列得出這筆憑證，刪除後消失；值的上限是 2,560 位元組（UTF-16） | 文件沒提 Windows，不可行就要退回環境變數 | 在參考機器實測存、取、刪：`TOME_TEST_KEYRING=1 npx --no-install vitest run tests/core/secrets.test.ts` |
-| H-15 | 數值塊欄位化能涵蓋多數數值塊 | 涵蓋率低的話，省不到錢，數字風險也還在 | 公開素材與本機語料統計整塊對上的比例 |
+| H-15 | 數值塊欄位化能涵蓋多數數值塊 | 涵蓋率低的話，省不到錢，數字風險也還在 | 公開素材與本機語料統計整塊對上的比例。欄位化已實作，只用合成的測試規則包驗證過規則照設計運作，那不是涵蓋率的證據；真書的量測等 M4 的 `d100-orc`（ADR-0121） |
 | H-16 | worker 限時足以擋下失控的正則 | 擋不住的話，一個壞規則包就能卡死流程 | 用已知的災難性回溯模式測試，並量正常模式的額外耗時。**已驗證**：2026-11-01 在參考機器重新量過（`tests/core/patterns.test.ts`、`tests/core/patterns-timer.test.ts`）。限時算的是 worker 跑單段文字用掉的 CPU 時間，上限 1 秒，模組載入與等 CPU 的時間都不算。閒置時 `(a+)+$`、`(a|aa)+$`、`(.*)*x`、`.*a.*b` 都在約 1.06 到 1.12 秒內被終止，回報是哪個模式，主執行緒沒有被卡住。正常模式 2,000 段、3 個模式走 worker 約 45 毫秒，直接跑 1.4 毫秒，多出來的幾乎都是啟動 worker。綁在一個邏輯處理器、旁邊 12 個忙碌行程時，正常模式 8 次都沒有被誤停，失控模式要 15 到 18 秒才被終止：牆鐘隨負載拉長，CPU 用量仍是 1 秒。兩個已知限制：每段都慢但不超過 1 秒的模式擋不下來；Node 24.6 以前沒有 `worker.cpuUsage()`，退回牆鐘 |
 | H-17 | 批次意圖紀錄足以避免當機後重複付費 | 送出後、記下遠端 ID 前當機，可能重送一批 | 注入當機故障，確認續跑時能認回遠端批次 |
 | H-18 | LLM 指令語言會影響譯文品質 | 指令用中文或英文，決定提示與快取前綴怎麼寫 | 併入盲評（ADR-0065） |
@@ -1410,7 +1413,7 @@ Gemini 顯式快取也算過：Flash-Lite 上 8k 前綴省下約 0.13，但排�
 | M3 譯名與輸出 | Pass 0、審定、`tome glossary import`、數值塊欄位化、vault、`tome sync`、`tome run`、交付報告、一致性報告、`tome purge`、`tome backup` | 能帶團閱讀的成品 |
 | M4 首版 | `d100-orc`、試翻校準、盲評、發佈流程、著作權律師審查（ADR-0105） | Q-1 到 Q-8 達標，發佈 0.1.0 |
 
-**目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。M2 已完成（ADR-0099、ADR-0112）：維護者用自己的金鑰翻過一篇公有領域短篇與一本規則書的第 3 到 108 頁，兩次第一輪的花費都在估價區間內，規則書因為重送比估價上限多 $0.0047；估價比例仍是未校準，只有 Sonnet 5.5、批次的兩筆數據。目前在 M3，範圍、10 個回合與開工前的決定見 ADR-0113；行內 `runs` 拆成回合 035，排在 026 之後（ADR-0115），粗體、斜體與連結翻譯時以 `<pc>` 保留（ADR-0116）。Pass 0 產出實體卡的提議與全書提要（ADR-0118），實體卡進翻譯拆成回合 037，排在審定（028）之後。審定用工作區裡的 YAML 檔，低影響的提議自動鎖定，S-16 移到 037（ADR-0119）。鎖定的實體卡、活躍實體與全書提要已進翻譯請求，改已鎖定的譯名不必重翻（ADR-0120）。M2 規則書的重送查明是 `max_tokens` 截斷，不是漏段（ADR-0114）。那本規則書其實沒有書籤，174 個章節是用標題建的；沒有書籤的書怎麼分章等引擎評估（ADR-0115）。
+**目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。M2 已完成（ADR-0099、ADR-0112）：維護者用自己的金鑰翻過一篇公有領域短篇與一本規則書的第 3 到 108 頁，兩次第一輪的花費都在估價區間內，規則書因為重送比估價上限多 $0.0047；估價比例仍是未校準，只有 Sonnet 5.5、批次的兩筆數據。目前在 M3，範圍、10 個回合與開工前的決定見 ADR-0113；行內 `runs` 拆成回合 035，排在 026 之後（ADR-0115），粗體、斜體與連結翻譯時以 `<pc>` 保留（ADR-0116）。Pass 0 產出實體卡的提議與全書提要（ADR-0118），實體卡進翻譯拆成回合 037，排在審定（028）之後。審定用工作區裡的 YAML 檔，低影響的提議自動鎖定，S-16 移到 037（ADR-0119）。鎖定的實體卡、活躍實體與全書提要已進翻譯請求，改已鎖定的譯名不必重翻（ADR-0120）。整塊對上的數值塊在本機用詞條翻好、不送 LLM，只用合成的測試規則包驗證過（ADR-0121）。M2 規則書的重送查明是 `max_tokens` 截斷，不是漏段（ADR-0114）。那本規則書其實沒有書籤，174 個章節是用標題建的；沒有書籤的書怎麼分章等引擎評估（ADR-0115）。
 
 M3 已實作的項目：
 
@@ -1427,6 +1430,7 @@ M3 已實作的項目：
 | 行內 `runs` 與 `<pc>` | `src/core/pdf.ts`、`src/core/runs.ts`、`src/core/assemble.ts`、`src/core/mask.ts`、`src/core/store.ts`、`src/core/preview.ts` | `tests/core/runs.test.ts`、`tests/core/pdf.test.ts`、`tests/core/mask.test.ts`、`tests/core/assemble.test.ts`、`tests/cli/translate.test.ts`、`tests/cli/preview.test.ts` |
 | Pass 0：`tome scan-terms`、`entity` 與 `summary` | `src/core/candidates.ts`、`src/core/cards.ts`、`src/core/scan.ts`、`prompts/scan-terms.md`、`prompts/summary.md`、`languages/source/en.yaml` | `tests/core/candidates.test.ts`、`tests/core/cards.test.ts`、`tests/core/prompt.test.ts`、`tests/cli/scan.test.ts` |
 | 審定與匯入：`tome glossary review`、`import`，遷移第 10 版 | `src/core/glossary.ts`、`src/core/entities.ts`、`src/core/csv.ts`、`src/core/store.ts`、`src/core/status.ts` | `tests/cli/glossary.test.ts`、`tests/core/csv.test.ts`、`tests/core/store.test.ts`、ADR-0119 的斷言 |
+| 數值塊欄位化、遷移第 11 版、合成測試規則包 `stat-fixture` | `src/core/fields.ts`、`src/core/units.ts`、`src/core/request.ts`、`src/core/pack-test.ts`、`src/core/pack-lint.ts`、`schemas/tome-pack-1.schema.json`、`tests/fixtures/packs/stat-fixture/` | `tests/core/fields.test.ts`、`tests/core/units.test.ts`、`tests/cli/fields.test.ts`、`tests/core/schema.test.ts`、ADR-0121 的斷言 |
 | 實體卡進翻譯、活躍實體、全書提要、S-16 | `src/core/verify.ts`、`src/core/memory.ts`、`src/core/request.ts`、`src/core/prompt.ts`、`src/core/units.ts`、`src/core/rename.ts`、`prompts/translate.md` | `tests/core/verify.test.ts`、`tests/core/memory.test.ts`、`tests/core/request.test.ts`、`tests/core/prompt.test.ts`、`tests/core/units.test.ts`、`tests/cli/entities.test.ts`、ADR-0120 的斷言 |
 
 M2 已實作的項目：

@@ -204,6 +204,13 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
         ALTER TABLE entity ADD COLUMN review_written TEXT;
       `,
     },
+    {
+      // 數值塊欄位化（ADR-0121）：本機用詞條翻好、沒送 LLM 的單位。`tome status` 只讀 `book.db` 也數得出來。
+      version: 11,
+      sql: `
+        ALTER TABLE unit ADD COLUMN fielded INTEGER NOT NULL DEFAULT 0;
+      `,
+    },
   ],
   series: [
     { version: 1, sql: metaTable('series') },

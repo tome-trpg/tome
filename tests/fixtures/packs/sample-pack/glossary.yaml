@@ -3,3 +3,9 @@ terms:
       en: Tide Warden
     target: 潮汐守衛
     class: npc
+  - source:
+      en: HP
+    target: 生命值
+  - source:
+      en: AC
+    target: 防禦

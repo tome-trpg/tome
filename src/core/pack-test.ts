@@ -1,12 +1,16 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { parse } from 'yaml';
+import { fieldUnits } from './fields.ts';
 import { finding, type Finding } from './findings.ts';
-import { detectRole, patternInputs, resolvePack, type PackLocation } from './pack.ts';
+import { loadTargetLanguage } from './language.ts';
+import { detectRole, patternInputs, resolvePack, termsFor, type PackLocation, type ResolvedPack } from './pack.ts';
 import { runPatterns, type MatchRange } from './patterns.ts';
 import { validatePackFile } from './schema.ts';
+import { maskSources } from './units.ts';
+import { DEFAULT_TARGET_LANG } from './workspace.ts';
 
-// tome system test（ADR-0050）。不花 token，驗證模式抓得到什麼、判定出什麼角色。
+// tome system test（ADR-0050）。不花 token，驗證模式抓得到什麼、判定出什麼角色，數值塊怎麼欄位化（ADR-0121）。
 
 const TEST_DIR = 'tests';
 const TEST_EXTENSIONS = ['.yaml', '.yml'];
@@ -18,6 +22,30 @@ export interface PackTestCase {
   readonly matches?: Readonly<Record<string, readonly string[]>>;
   /** 預期判定出的角色，不帶命名空間。null 表示不該判定出任何角色。 */
   readonly role?: string | null;
+  /** 預期本機欄位化的譯文（zh-TW，用規則包自己的詞條）。null 表示該送 LLM（ADR-0121）。 */
+  readonly fielded?: string | null;
+}
+
+/**
+ * 有寫 `fielded` 的案例：照判到的角色遮蔽、欄位化，跟翻譯時同一條路，只用規則包的詞條（沒有書，也沒有實體卡）。
+ * 案例的文字照規則包的第一個來源語言，譯文照 zh-TW 寫。
+ */
+async function fieldedProblems(
+  pack: ResolvedPack,
+  cases: readonly { readonly item: PackTestCase; readonly role: string | null }[],
+): Promise<Finding[]> {
+  const wanted = cases.filter(({ item }) => item.fielded !== undefined);
+  if (wanted.length === 0) return [];
+  const sourceLang = pack.chain[0]?.content.manifest.source_langs[0] ?? 'en';
+  const terms = termsFor(pack, sourceLang);
+  const sources = wanted.map(({ item, role }) => ({ unit_id: item.id, block_id: item.id, role: role ?? 'paragraph', source: item.text }));
+  const { units, findings } = await maskSources(sources, pack, terms);
+  if (findings.length > 0) return [...findings];
+  const { profile: language } = loadTargetLanguage(DEFAULT_TARGET_LANG);
+  const fielded = fieldUnits(units, { pack, sourceLang, terms, names: [], language });
+  return wanted.flatMap(({ item }) =>
+    (fielded.get(item.id)?.translation ?? null) === item.fielded ? [] : [finding('pack.test_fielded_failed', 'fail', { case: item.id })],
+  );
 }
 
 export function readPackTests(dir: string): {
@@ -68,7 +96,7 @@ export async function testPack(home: string, location: PackLocation): Promise<Fi
   if (outcome.status !== 'ok') {
     return [...findings, finding('pack.slow_regex', 'fail', { pattern: outcome.pattern })];
   }
-  cases.forEach((item, index) => {
+  const roles = cases.map((item, index) => {
     const rangesOf = (pattern: string): readonly MatchRange[] =>
       outcome.matches[pattern]?.[index] ?? [];
     for (const [pattern, expected] of Object.entries(item.matches ?? {})) {
@@ -77,13 +105,13 @@ export async function testPack(home: string, location: PackLocation): Promise<Fi
         findings.push(finding('pack.test_failed', 'fail', { case: item.id, pattern }));
       }
     }
-    if (item.role !== undefined) {
-      const detected = detectRole(pack, rangesOf)?.split(':')[1] ?? null;
-      if (detected !== item.role) {
-        findings.push(finding('pack.test_role_failed', 'fail', { case: item.id }));
-      }
+    const role = detectRole(pack, rangesOf);
+    if (item.role !== undefined && (role?.split(':')[1] ?? null) !== item.role) {
+      findings.push(finding('pack.test_role_failed', 'fail', { case: item.id }));
     }
+    return { item, role };
   });
+  findings.push(...(await fieldedProblems(pack, roles)));
   if (!findings.some((item) => item.level === 'fail')) {
     findings.push(finding('pack.test_passed', 'info', { count: String(cases.length) }));
   }

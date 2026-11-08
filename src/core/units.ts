@@ -1,3 +1,4 @@
+import type { Fielded } from './fields.ts';
 import { finding, type Finding } from './findings.ts';
 import type { DocumentBlock, IrDocument, Run } from './ir.ts';
 import { findTerm, maskText, pairedJson, type MaskRange, type Placeholder, type UnitFormats } from './mask.ts';
@@ -12,7 +13,7 @@ import type { Store } from './store.ts';
 export const UNTRANSLATED: ReadonlySet<string> = new Set(['furniture', 'toc', 'index', 'credits', 'figure']);
 const KEEP_SOURCE_KIND = 'keep_source';
 
-interface UnitSource {
+export interface UnitSource {
   readonly unit_id: string;
   readonly block_id: string;
   readonly role: string;
@@ -27,6 +28,8 @@ export interface TranslationUnit extends UnitSource {
   readonly needs_llm: boolean;
   /** 行內樣式，沒有時是 null（ADR-0116）。 */
   readonly formats: UnitFormats | null;
+  /** 本機欄位化的譯文（ADR-0121）。有的時候 `needs_llm` 是 false。 */
+  readonly fielded?: Fielded;
 }
 
 interface SourceWithRuns extends UnitSource {
@@ -88,7 +91,15 @@ export async function buildUnits(
   sourceLang: string,
   terms: readonly LocalizedTerm[] = termsFor(pack, sourceLang),
 ): Promise<UnitResult> {
-  const sources = document.blocks.flatMap(sourcesOf);
+  return maskSources(document.blocks.flatMap(sourcesOf), pack, terms);
+}
+
+/** 照規則包的模式與 `keep_source` 詞條遮蔽。`tome system test` 也用，跟翻譯時一樣（ADR-0121）。 */
+export async function maskSources(
+  sources: readonly (UnitSource & { readonly runs?: readonly Run[] })[],
+  pack: ResolvedPack,
+  terms: readonly LocalizedTerm[],
+): Promise<UnitResult> {
   const masks = pack.patterns.filter(({ use }) => use === 'mask');
   const outcome = await runPatterns(
     patternInputs(pack, 'mask'),
@@ -118,14 +129,24 @@ function keptOffsets(unit: TranslationUnit): string | null {
   return unit.needs_llm ? null : pairedJson(unit.formats?.paired ?? []);
 }
 
+/** 欄位化的譯文與 `<pc>` 的位置來自本機產生的譯文（ADR-0121）。 */
+function localTranslation(unit: TranslationUnit): string | null {
+  if (unit.fielded !== undefined) return unit.fielded.translation;
+  return unit.needs_llm ? null : unit.source;
+}
+
+function localOffsets(unit: TranslationUnit): string | null {
+  return unit.fielded === undefined ? keptOffsets(unit) : pairedJson(unit.fielded.paired);
+}
+
 function insertUnit(store: Store, unit: TranslationUnit, seq: number): void {
-  // 不需要 LLM 的單位原樣輸出（ADR-0100）。
+  // 不需要 LLM 的單位原樣輸出（ADR-0100），欄位化的用本機的譯文（ADR-0121）。
   const state = unit.needs_llm ? INITIAL_STATE : nextState(INITIAL_STATE, 'hit');
   store.run(
     `INSERT OR REPLACE INTO unit
        (unit_id, block_id, role, group_id, section, seq, source, masked, placeholders, state, attempts, translation,
-        formats, translation_pc)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+        formats, translation_pc, fielded)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
     unit.unit_id,
     unit.block_id,
     unit.role,
@@ -136,9 +157,20 @@ function insertUnit(store: Store, unit: TranslationUnit, seq: number): void {
     unit.masked,
     JSON.stringify(unit.placeholders),
     state,
-    unit.needs_llm ? null : unit.source,
+    localTranslation(unit),
     formatsJson(unit),
-    keptOffsets(unit),
+    localOffsets(unit),
+    unit.fielded === undefined ? 0 : 1,
+  );
+}
+
+/** 欄位化的單位每次照最新的譯名改寫；原本送 LLM 翻的也改用本機的譯文，舊的回應留著（ADR-0121）。 */
+function fieldUnit(store: Store, unit: TranslationUnit & { readonly fielded: Fielded }): void {
+  store.run(
+    "UPDATE unit SET state = 'DONE', translation = ?, translation_pc = ?, fielded = 1 WHERE unit_id = ?",
+    unit.fielded.translation,
+    pairedJson(unit.fielded.paired),
+    unit.unit_id,
   );
 }
 
@@ -154,28 +186,46 @@ function moveUnit(store: Store, unit: TranslationUnit, seq: number): void {
     formatsJson(unit),
     unit.unit_id,
   );
-  if (!unit.needs_llm) store.run('UPDATE unit SET translation_pc = ? WHERE unit_id = ?', keptOffsets(unit), unit.unit_id);
+  if (!unit.needs_llm && unit.fielded === undefined) {
+    store.run('UPDATE unit SET translation_pc = ? WHERE unit_id = ?', keptOffsets(unit), unit.unit_id);
+  }
+}
+
+interface KnownUnit {
+  readonly masked: string;
+  readonly state: UnitState;
+  readonly fielded: number;
 }
 
 /**
  * 把單位寫進 `book.db`（ADR-0102）。同一個 `unit_id` 且遮蔽後文字相同就保留狀態，
  * 文字變了回到起點，`document` 裡沒有的單位刪除，回應保留。有 `<pc>` 的單位遮蔽後的文字含 `<pc>`，
- * 樣式的範圍變了也會回到起點（ADR-0116）。
+ * 樣式的範圍變了也會回到起點（ADR-0116）。欄位化的單位每次照最新的譯名改寫；原本欄位化、現在對不上的
+ * 回到起點；還在批次裡的單位這次不欄位化，收回之後的下一次才換（ADR-0121）。
  */
 export function syncUnits(store: Store, units: readonly TranslationUnit[]): void {
   store.transaction(() => {
     const known = new Map(
       store
-        .all<{ unit_id: string; masked: string }>('SELECT unit_id, masked FROM unit')
-        .map(({ unit_id, masked }) => [unit_id, masked]),
+        .all<KnownUnit & { unit_id: string }>('SELECT unit_id, masked, state, fielded FROM unit')
+        .map(({ unit_id, ...row }) => [unit_id, row]),
     );
     const current = new Set(units.map(({ unit_id }) => unit_id));
     for (const id of known.keys()) {
       if (!current.has(id)) store.run('DELETE FROM unit WHERE unit_id = ?', id);
     }
     units.forEach((unit, seq) => {
-      if (known.get(unit.unit_id) === unit.masked) moveUnit(store, unit, seq);
-      else insertUnit(store, unit, seq);
+      const before = known.get(unit.unit_id);
+      if (before?.masked !== unit.masked) {
+        insertUnit(store, unit, seq);
+        return;
+      }
+      if (unit.fielded === undefined && before.fielded === 1) {
+        insertUnit(store, unit, seq);
+        return;
+      }
+      moveUnit(store, unit, seq);
+      if (unit.fielded !== undefined && before.state !== 'IN_FLIGHT') fieldUnit(store, { ...unit, fielded: unit.fielded });
     });
   });
 }
