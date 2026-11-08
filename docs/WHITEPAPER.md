@@ -1256,6 +1256,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0114](adr/0114-truncation-and-scope-counts.md) | 截斷、單位數上限與範圍內的數字 | M3 |
 | [ADR-0115](adr/0115-document-structure-decisions.md) | 文件結構：索引、版權頁、書籤層級、`full_image` 與放行 | M3 |
 | [ADR-0116](adr/0116-inline-runs-decisions.md) | 行內樣式：`runs` 與 `<pc>` | M3 |
+| [ADR-0117](adr/0117-mask-mutation-tests.md) | 遮蔽還原的變異測試補強 | M3 |
 
 ---
 
