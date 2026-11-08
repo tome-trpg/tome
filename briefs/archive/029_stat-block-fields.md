@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-08
 type: feature
 wave: 29
@@ -34,7 +34,15 @@ protectedFiles:
   - schemas/tome-provider-1.schema.json
   - stryker.config.mjs
   - systems/**
+integrity: sha256-128d7f51f00b45aeabef8b4635ab035614e4dcd444f67e59b6ed1dc51f6d9fbf
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-08.**
+> Merged in pull request [#70](https://github.com/tome-trpg/tome/pull/70).
+> Recorded at commit `681700e`: 32 files changed, +1231 −43.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 029 — 數值塊欄位化與合成測試包
 
