@@ -334,6 +334,77 @@ describe('syncUnits (ADR-0102)', () => {
     database.close();
   });
 
+  describe('stat blocks translated on this machine (ADR-0121)', () => {
+    const fielded = (translation: string, paired: { id: number; start: number; end: number }[] = []) =>
+      unit('a', 'Grit 12', { needs_llm: false, fielded: { translation, paired } });
+    const local = (database: Store) =>
+      database.get<{ state: string; translation: string | null; translation_pc: string | null; fielded: number; attempts: number }>(
+        "SELECT state, translation, translation_pc, fielded, attempts FROM unit WHERE unit_id = 'a'",
+      );
+
+    it('stores the local translation as done, and marks the unit', () => {
+      const database = store();
+      syncUnits(database, [fielded('韌性12', [{ id: 1, start: 0, end: 2 }])]);
+      expect(local(database)).toEqual({ state: 'DONE', translation: '韌性12', translation_pc: '[{"id":1,"start":0,"end":2}]', fielded: 1, attempts: 0 });
+      database.close();
+    });
+
+    it('writes the newest local translation every time, since a label translation can change', () => {
+      const database = store();
+      syncUnits(database, [fielded('韌性12')]);
+      syncUnits(database, [fielded('堅毅12')]);
+      expect(local(database)).toMatchObject({ state: 'DONE', translation: '堅毅12', fielded: 1 });
+      database.close();
+    });
+
+    it('takes over a unit the model translated, keeping its attempts and replies', () => {
+      const database = store();
+      syncUnits(database, [unit('a', 'Grit 12')]);
+      database.run("UPDATE unit SET state = 'DONE', attempts = 1, translation = '模型的譯文'");
+      syncUnits(database, [fielded('韌性12')]);
+      expect(local(database)).toMatchObject({ state: 'DONE', translation: '韌性12', fielded: 1, attempts: 1 });
+      database.close();
+    });
+
+    it('sends a unit to the model again once it no longer matches', () => {
+      const database = store();
+      syncUnits(database, [fielded('韌性12')]);
+      syncUnits(database, [unit('a', 'Grit 12')]);
+      expect(local(database)).toMatchObject({ state: 'PENDING', translation: null, fielded: 0 });
+      database.close();
+    });
+
+    it('leaves a unit still in a batch alone this time, offsets included', () => {
+      const database = store();
+      const formats = { paired: [{ id: 1, start: 0, end: 4, marks: ['bold' as const] }] };
+      syncUnits(database, [unit('a', 'Grit 12', { formats })]);
+      database.run("UPDATE unit SET state = 'IN_FLIGHT'");
+      syncUnits(database, [{ ...fielded('韌性12'), formats }]);
+      expect(local(database)).toMatchObject({ state: 'IN_FLIGHT', translation: null, translation_pc: null, fielded: 0 });
+      database.close();
+    });
+
+    it('keeps the offsets the model gave a unit it translated', () => {
+      const database = store();
+      const formats = { paired: [{ id: 1, start: 0, end: 4, marks: ['bold' as const] }] };
+      syncUnits(database, [unit('a', 'Grit 12', { formats })]);
+      database.run(`UPDATE unit SET state = 'DONE', translation = '韌性 12', translation_pc = '[{"id":1,"start":0,"end":2}]'`);
+      syncUnits(database, [unit('a', 'Grit 12', { formats })]);
+      expect(local(database)).toMatchObject({ state: 'DONE', translation_pc: '[{"id":1,"start":0,"end":2}]' });
+      database.close();
+    });
+
+    it('keeps the offsets of a unit kept as it is, not those of a local translation', () => {
+      const database = store();
+      const kept = unit('a', '12', { formats: { paired: [{ id: 1, start: 0, end: 2, marks: ['bold'] }] } });
+      syncUnits(database, [kept]);
+      database.run("UPDATE unit SET translation_pc = NULL");
+      syncUnits(database, [kept]);
+      expect(local(database)).toMatchObject({ translation: '12', translation_pc: '[{"id":1,"start":0,"end":2}]', fielded: 0 });
+      database.close();
+    });
+  });
+
   it('stores the group, the section and the placeholders', () => {
     const database = store();
     const hidden = { ...maskText('Roll 1D6 now.', [{ start: 5, end: 8, kind: 'dice' }]) };

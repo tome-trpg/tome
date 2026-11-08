@@ -205,7 +205,7 @@ describe('tome-pack/1', () => {
             detect: ['stat_line'],
             style: 'terse',
             review: false,
-            fields: ['str', 'con'],
+            fields: [{ en: 'Grit' }, { en: 'Wits', ja: '機知' }],
           },
         },
       },
@@ -262,6 +262,15 @@ describe('tome-pack/1', () => {
   it('cannot hide an endpoint inside a role', () => {
     const data = { roles: { stat_block: { endpoint: 'https://example.com' } } };
     expect(validatePackFile('roles', data).ok).toBe(false);
+  });
+
+  it.each([
+    ['a field written as a name', ['grit']],
+    ['an empty field', [{}]],
+    ['a field with an empty label', [{ en: '' }]],
+    ['a field keyed by something that is not a language', [{ english: 'Grit' }]],
+  ])('refuses %s (ADR-0121)', (_name, fields) => {
+    expect(validatePackFile('roles', { roles: { stat_block: { fields } } }).ok).toBe(false);
   });
 
   it('refuses a pattern with an unknown use', () => {

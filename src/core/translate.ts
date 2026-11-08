@@ -36,7 +36,7 @@ import {
   type SizedRequest,
 } from './request.ts';
 import { failureEvent, nextState, type UnitEvent, type UnitState } from './state.ts';
-import { outsideFindings, scopeCounts, type ScopeCounts } from './status.ts';
+import { fieldedFindings, outsideFindings, scopeCounts, type ScopeCounts } from './status.ts';
 import { openBookStore, openSeriesStore, type Store } from './store.ts';
 import { parseUnits } from './tags.ts';
 import type { TranslationUnit } from './units.ts';
@@ -496,7 +496,9 @@ function counts({ store, plan }: Run): ScopeCounts {
   return scopeCounts(
     plan.units.flatMap((unit) => {
       const state = states.get(unit.unit_id);
-      return state === undefined ? [] : [{ state, kept: !unit.needs_llm, inScope: plan.inScope(unit) }];
+      if (state === undefined) return [];
+      const fielded = unit.fielded !== undefined;
+      return [{ state, kept: !unit.needs_llm && !fielded, fielded, inScope: plan.inScope(unit) }];
     }),
   );
 }
@@ -528,7 +530,7 @@ async function drain(run: Run): Promise<Finding | null> {
  * 不需翻譯的單位建立時就原樣完成，算在 `done` 裡（ADR-0111）。
  */
 export function report(run: Run, stop: Finding | null, findings: readonly Finding[]): PlanOutcome {
-  const { total, kept, states, outside } = counts(run);
+  const { total, kept, fielded, states, outside } = counts(run);
   const [done, blockedUnits, failed, refusedUnits] = [states.DONE, states.BLOCKED, states.FAILED_QA, states.REFUSED];
   const stuck = blockedUnits + failed + refusedUnits;
   const left = total - done - stuck;
@@ -553,6 +555,7 @@ export function report(run: Run, stop: Finding | null, findings: readonly Findin
       ...(mode === 'batch' ? { batches: run.batches } : {}),
       done,
       kept,
+      fielded,
       total,
       blocked: blockedUnits,
       failed,
@@ -565,6 +568,7 @@ export function report(run: Run, stop: Finding | null, findings: readonly Findin
     findings: [
       ...(stop === null ? [] : [stop]),
       finding('translate.done', stuck > 0 ? 'fail' : 'info', params),
+      ...fieldedFindings(fielded),
       ...outsideFindings(run.slug, chapters, outside),
       ...run.notes,
       ...findings,

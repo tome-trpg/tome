@@ -45,7 +45,8 @@ export interface RoleDefinition {
   readonly detect?: readonly string[];
   readonly style?: string;
   readonly review?: boolean;
-  readonly fields?: readonly string[];
+  /** 數值塊的欄位標籤，每項是「語言 → 標籤」，譯名從詞條來（ADR-0121）。 */
+  readonly fields?: readonly Readonly<Record<string, string>>[];
 }
 
 export interface PatternDefinition {

@@ -1,0 +1,8 @@
+# A stat block of the invented system has Grit and Wits, each followed by a number.
+patterns:
+  - id: grit_line
+    use: detect
+    regex: '\bGrit\s+[+\-−]?\d+'
+  - id: wits_line
+    use: detect
+    regex: '\bWits\s+[+\-−]?\d+'

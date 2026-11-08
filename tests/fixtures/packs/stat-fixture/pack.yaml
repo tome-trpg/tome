@@ -1,0 +1,6 @@
+schema: tome-pack/1
+id: stat-fixture
+version: 0.1.0
+extends: generic
+license: Apache-2.0
+source_langs: [en]

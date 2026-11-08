@@ -56,7 +56,7 @@ assets:
   - path: tests/fixtures/packs/sample-pack/glossary.yaml
     source: written for this repository
     license: Apache-2.0
-    sha256: 194d407960f69968df82e163ce9940d73b4b722a93ca7770244e39776a5ba2a3
+    sha256: 60bb94972e19b477916e66e9f271096e314e2bd899dbd720628436c9b6523f0d
   - path: tests/fixtures/packs/sample-pack/pack.yaml
     source: written for this repository
     license: Apache-2.0
@@ -68,7 +68,7 @@ assets:
   - path: tests/fixtures/packs/sample-pack/roles.yaml
     source: written for this repository
     license: Apache-2.0
-    sha256: 6df8715af394ce52f66de06b13f12dfb105a5c291070f512682f8220ba96e446
+    sha256: 8a5d01592a3d346132cc5cd9354d3d71ce472945dd4de7528474da34d5e53ec7
   - path: tests/fixtures/packs/sample-pack/syntax_patterns.yaml
     source: written for this repository
     license: Apache-2.0
@@ -77,3 +77,32 @@ assets:
     source: written for this repository
     license: Apache-2.0
     sha256: 95fea2a57e45d765845c4fa653ac0e2c59f388f959004039c4b8191000835e89
+  # 合成測試規則包：虛構的遊戲系統與數值塊，全部為這個 repo 自行撰寫（ADR-0121）。
+  - path: tests/fixtures/packs/stat-fixture/LICENSE
+    source: written for this repository
+    license: Apache-2.0
+    sha256: 1a981d908a45fb43f02a7d3d74323053dcf63c44fdab3f4e6f0817bf23013a04
+  - path: tests/fixtures/packs/stat-fixture/NOTICE
+    source: written for this repository
+    license: Apache-2.0
+    sha256: bca40b6b925ee04a24fc924b192f5b3e2fde9d7b6024c171124b315936455434
+  - path: tests/fixtures/packs/stat-fixture/glossary.yaml
+    source: written for this repository
+    license: Apache-2.0
+    sha256: 0c72b9fc373ecaf670d324988b8664109a7127421e40761570e51bac64f5271e
+  - path: tests/fixtures/packs/stat-fixture/pack.yaml
+    source: written for this repository
+    license: Apache-2.0
+    sha256: b6f10f7df912ced68bd3836e976e1768055ae82b82648a1ce359f8bd0872081c
+  - path: tests/fixtures/packs/stat-fixture/roles.yaml
+    source: written for this repository
+    license: Apache-2.0
+    sha256: fd19dc8cb5c2a6defdb6b439b14b393a815e20c7ef1339febca56746ef22dba8
+  - path: tests/fixtures/packs/stat-fixture/syntax_patterns.yaml
+    source: written for this repository
+    license: Apache-2.0
+    sha256: cc1c10b03c7cf3779a6a2783fb05c9e1216f165ef5436b127300bc72a7bb5e8c
+  - path: tests/fixtures/packs/stat-fixture/tests/basic.yaml
+    source: written for this repository
+    license: Apache-2.0
+    sha256: 8a32c380956f07389d17f789a8a561075c661c63d955d42f1eb13d843d126bbe

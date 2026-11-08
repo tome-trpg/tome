@@ -7,6 +7,7 @@ import { readPackTests } from './pack-test.ts';
 import {
   readPack,
   resolvePack,
+  termsFor,
   type PackContent,
   type PackLocation,
   type ResolvedPack,
@@ -194,6 +195,23 @@ function lintReferences(content: PackContent, resolved: ResolvedPack, targetLang
     if (pronoun !== undefined && !pronouns.includes(pronoun)) {
       findings.push(finding('pack.unknown_pronoun', 'fail', { class: name }));
     }
+  }
+  return [...findings, ...untranslatedFields(content, resolved)];
+}
+
+/**
+ * 欄位標籤在繼承鏈的詞條裡沒有譯名時提醒（ADR-0121）：整塊會默默送 LLM。只是 warn，書可以用實體卡或匯入補。
+ * 只印角色名與第幾個欄位，標籤是規則包的資料，但不必印出來。
+ */
+function untranslatedFields(content: PackContent, resolved: ResolvedPack): Finding[] {
+  const findings: Finding[] = [];
+  for (const [role, definition] of Object.entries(content.roles)) {
+    (definition.fields ?? []).forEach((label, index) => {
+      const missing = Object.entries(label).some(
+        ([lang, text]) => !termsFor(resolved, lang).some((term) => term.text === text),
+      );
+      if (missing) findings.push(finding('pack.field_untranslated', 'warn', { role, field: String(index + 1) }));
+    });
   }
   return findings;
 }

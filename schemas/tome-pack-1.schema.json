@@ -78,8 +78,14 @@
               "style": { "type": "string" },
               "review": { "type": "boolean" },
               "fields": {
+                "description": "Stat block field labels, each written per source language like a glossary source. Their translations come from the glossary.",
                 "type": "array",
-                "items": { "$ref": "#/$defs/name" }
+                "items": {
+                  "type": "object",
+                  "minProperties": 1,
+                  "propertyNames": { "$ref": "#/$defs/lang" },
+                  "additionalProperties": { "type": "string", "minLength": 1 }
+                }
               }
             }
           }
@@ -199,6 +205,10 @@
               "role": {
                 "description": "The role that must be detected, without its namespace. Null means none.",
                 "anyOf": [{ "$ref": "#/$defs/name" }, { "type": "null" }]
+              },
+              "fielded": {
+                "description": "The translation the stat block fields must give on this machine, in zh-TW, from the pack's own glossary. Null means it must go to the model.",
+                "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
               }
             }
           }

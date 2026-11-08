@@ -1,0 +1,14 @@
+# Translations made up for the invented fields. Lantern is a term but not a field.
+terms:
+  - source: { en: Grit }
+    target: 韌性
+  - source: { en: Wits }
+    target: 機智
+  - source: { en: Reach }
+    target: 觸及
+  - source: { en: Ward }
+    target: 護甲
+  - source: { en: Stride }
+    target: 步幅
+  - source: { en: Lantern }
+    target: 提燈

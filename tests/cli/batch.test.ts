@@ -839,6 +839,7 @@ describe('tome status (ADR-0107 item 18)', () => {
       chapters: '1',
       total: 2,
       kept: 0,
+      fielded: 0,
       done: 2,
       in_flight: 0,
       blocked: 0,

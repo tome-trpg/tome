@@ -1,0 +1,36 @@
+# Cases for tome system test. Every stat block here is made up for an invented game system (ADR-0121).
+cases:
+  - id: whole_block
+    text: Grit 12, Wits 9, Reach 3, Ward 2/4, Stride 10%
+    role: stat_block
+    fielded: 韌性12，機智9，觸及3，護甲2/4，步幅10%
+  - id: fields_with_spaces_only
+    text: Grit 12 Wits 9 Reach 1D6+1
+    matches:
+      dice: [1D6+1]
+    role: stat_block
+    fielded: 韌性12　機智9　觸及1D6+1
+  - id: signs_ranges_and_thousands
+    text: Grit −1; Wits +2; Reach 1–3; Ward 1,200
+    role: stat_block
+    fielded: 韌性 −1；機智 +2；觸及1–3；護甲1,200
+  - id: brackets_and_colons
+    text: 'Grit 12 Wits 9 (Ward: 3)'
+    role: stat_block
+    fielded: 韌性12　機智9（護甲：3）
+  - id: a_sentence_goes_to_the_model
+    text: Grit 12, Wits 9. She guards the ford.
+    role: stat_block
+    fielded: null
+  - id: a_field_without_a_translation
+    text: Grit 12 Wits 9 Knack 4
+    role: stat_block
+    fielded: null
+  - id: a_term_that_is_not_a_field
+    text: Grit 12 Wits 9 Lantern 1
+    role: stat_block
+    fielded: null
+  - id: not_a_stat_block
+    text: Wits are tested at dusk.
+    role: null
+    fielded: null
