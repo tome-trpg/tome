@@ -467,7 +467,11 @@ function sections(store: Store, weightOf: (kind: string | null) => number): Reco
 
 /**
  * 寫出審定檔。從 `book.db` 寫出的列記下寫了什麼（`review_written`），下次讀回才分得出誰改的；照人填的樣子寫回的列
- * 不記，下次還是看得出人改過。先寫暫存檔、記好再改名。
+ * 不記，下次還是看得出人改過。
+ *
+ * 先寫暫存檔、改名，**改名成功才記**。Windows 上檔案被編輯器、防毒或同步軟體鎖住時改名會失敗；先記的話，
+ * `book.db` 記成新的內容而檔案還是舊的，下次人沒動、資料庫改過的列會被當成人改的，舊譯名又留下來。反過來，
+ * 改名成功、記錄失敗時，檔案是剛從 `book.db` 寫出的，下次讀回跟 `book.db` 相同，不會判錯。
  */
 function writeReview(
   store: Store,
@@ -503,12 +507,12 @@ function writeReview(
   }
   const temporary = `${path}.tmp`;
   writeFileSync(temporary, document.toString({ nullStr: '', lineWidth: 0 }));
+  renameSync(temporary, path);
   store.transaction(() => {
     for (const row of SECTIONS.flatMap((section) => groups[section])) {
       if (!applied.kept.has(row.id)) store.run('UPDATE entity SET review_written = ? WHERE id = ?', stored(row), row.id);
     }
   });
-  renameSync(temporary, path);
 }
 
 function listed(problems: readonly string[]): string {
