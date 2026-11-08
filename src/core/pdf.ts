@@ -66,6 +66,8 @@ export interface PdfHandle {
   /** 長度等於頁數，沒有標籤的頁是空字串。整份都沒有時是 null。 */
   pageLabels(): Promise<readonly string[] | null>;
   page(index: number): Promise<PageFacts>;
+  /** PDF 中繼資料的書名與作者，沒有或不是文字時不給（ADR-0122）。是書本內容，只寫進 vault。 */
+  info(): Promise<{ readonly title?: string; readonly author?: string }>;
   close(): Promise<void>;
 }
 
@@ -352,8 +354,17 @@ function wrap(
         ...summary,
       };
     },
+    info: async () => metadataInfo(((await doc.getMetadata()) as { info: { Title?: unknown; Author?: unknown } }).info),
     close: destroy,
   };
+}
+
+/** PDF 中繼資料的書名與作者：去掉前後空白，沒有、空白或不是文字就不給（ADR-0122）。 */
+export function metadataInfo(info: { readonly Title?: unknown; readonly Author?: unknown }): { readonly title?: string; readonly author?: string } {
+  const text = (value: unknown): string | undefined => (typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined);
+  const title = text(info.Title);
+  const author = text(info.Author);
+  return { ...(title === undefined ? {} : { title }), ...(author === undefined ? {} : { author }) };
 }
 
 function isPasswordError(error: unknown): boolean {

@@ -1,5 +1,5 @@
 {
-  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   將 API 金鑰存入作業系統憑證庫\n  provider list                列出 TOME 知道怎麼呼叫的模型與價格\n  provider test                確認金鑰可用，並對照模型資料，不消耗 token\n  add <pdf>                    加入書籍並執行探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <名稱>                 探測文件結構與頁面類型\n  extract <名稱>               以解析引擎解析書籍頁面\n  scan-terms <名稱>            挖出專有名詞並提議譯名，不加 --confirm 只估價\n    [--budget <美元>] [--realtime] [--confirm]\n  glossary review <名稱>       產生或讀回實體卡審定檔，鎖定或拒絕譯名\n  glossary import <名稱> <csv> 匯入自己整理的譯名並鎖定\n  estimate <名稱>              在本機估算翻譯費用，不連網\n    [--budget <美元>] [--chapters <範圍>] [--chapter-level <層>]\n    [--realtime] [--confirm]\n  translate <名稱>             以批次翻譯，加上 --realtime 則逐一送出\n    [--realtime] [--retry-failed]\n  translate <名稱> --dry-run   組出所有請求但不送出\n  batch status <名稱>          查詢這本書尚未收回的批次\n  batch collect <名稱>         收回已完成的批次，不送出新的批次\n  batch cancel <名稱>          取消這本書尚未收回的批次\n  verify <名稱>                以已儲存的回應重新驗證譯文，不消耗 token\n  preview <名稱>               在本機產生原文與譯文對照\n  status <名稱>                顯示翻譯進度與花費，不連網\n  engine add <名稱或路徑>      安裝解析引擎，加上 --gpu 則安裝 CUDA 版\n  engine list                  列出已安裝的解析引擎\n  engine remove <名稱>         移除解析引擎\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加上 --public 則一併檢查公開規則包的要求\n  system test <ID 或路徑>      執行規則包的測試案例，不消耗 token\n\n選項：\n  --json     以 JSON 格式輸出\n  --help     顯示本說明\n  --version  顯示版本\n",
+  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   將 API 金鑰存入作業系統憑證庫\n  provider list                列出 TOME 知道怎麼呼叫的模型與價格\n  provider test                確認金鑰可用，並對照模型資料，不消耗 token\n  add <pdf>                    加入書籍並執行探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <名稱>                 探測文件結構與頁面類型\n  extract <名稱>               以解析引擎解析書籍頁面\n  scan-terms <名稱>            挖出專有名詞並提議譯名，不加 --confirm 只估價\n    [--budget <美元>] [--realtime] [--confirm]\n  glossary review <名稱>       產生或讀回實體卡審定檔，鎖定或拒絕譯名\n  glossary import <名稱> <csv> 匯入自己整理的譯名並鎖定\n  estimate <名稱>              在本機估算翻譯費用，不連網\n    [--budget <美元>] [--chapters <範圍>] [--chapter-level <層>]\n    [--realtime] [--confirm]\n  translate <名稱>             以批次翻譯，加上 --realtime 則逐一送出\n    [--realtime] [--retry-failed]\n  translate <名稱> --dry-run   組出所有請求但不送出\n  batch status <名稱>          查詢這本書尚未收回的批次\n  batch collect <名稱>         收回已完成的批次，不送出新的批次\n  batch cancel <名稱>          取消這本書尚未收回的批次\n  verify <名稱>                以已儲存的回應重新驗證譯文，不消耗 token\n  preview <名稱>               在本機產生原文與譯文對照\n  assemble <名稱> [--force]    將譯文輸出到 Obsidian vault\n  status <名稱>                顯示翻譯進度與花費，不連網\n  engine add <名稱或路徑>      安裝解析引擎，加上 --gpu 則安裝 CUDA 版\n  engine list                  列出已安裝的解析引擎\n  engine remove <名稱>         移除解析引擎\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加上 --public 則一併檢查公開規則包的要求\n  system test <ID 或路徑>      執行規則包的測試案例，不消耗 token\n\n選項：\n  --json     以 JSON 格式輸出\n  --help     顯示本說明\n  --version  顯示版本\n",
   "prompt": {
     "secret": "請輸入 {provider} 的 API 金鑰（輸入內容不會顯示）："
   },
@@ -41,6 +41,22 @@
     "no": "無"
   },
   "template": {
+    "vault": {
+      "keys": { "book": "書", "chapter": "章", "title": "標題", "pages": "原書頁碼" },
+      "front": "卷首",
+      "info": {
+        "file": "00-書目與來源",
+        "title": "書名",
+        "author": "作者",
+        "hash": "來源 PDF 的 SHA-256",
+        "unknown": "不明",
+        "notice": "本 vault 由 TOME 從使用者自行持有的書籍在本機翻譯而成，僅供持有者自用，不得散布、上傳或分享。",
+        "credits": "原書版權頁（保留原文）"
+      },
+      "figure": "原書 p.{page} 的圖",
+      "entity": { "source": "原文", "target": "譯名", "class": "類別", "gender": "性別", "pronoun": "代名詞", "register": "語域" },
+      "map": { "file": "00-區塊對應表", "block": "區塊", "chapter": "章節檔" }
+    },
     "glossary_review": {
       "header": " 實體卡審定檔，由 tome glossary review 產生。\n 修改後再執行一次 tome glossary review <名稱>，只有 decision 填寫的列會套用：\n   lock 表示鎖定，依該列的 target 等欄位；reject 表示拒絕，不把這個詞當成專有名詞。\n 沒填 decision 的修改會保留在檔案中，不會套用；填了 decision 才套用。\n 可修改 target、class、gender、pronoun、register、keep_source 與 match；id、source、count、origin、seen_in、decided_by 修改後不會套用。\n class 必須是規則包宣告的類別；gender 為 female、male 或 none；pronoun 必須在目標語言的代名詞清單中；留白表示沒有。\n 此檔案含有書籍內容，只存放在本機，請勿分享。",
       "review": " 待人審：影響較大、有性別或代名詞、需保留原文、沒有提議，或翻譯時回報的新詞。影響較大的排在前面。",
@@ -60,7 +76,10 @@
     }
   },
   "finding": {
-    "batch.archived": "批次 {id} 的結果已超過供應商的保留期限，無法收回。單位已放回佇列，重新送出會再付一次費用。",
+    "assemble.done": "vault 已更新：{root}。共 {files} 個檔案、{units} 個翻譯單位，其中 {untranslated} 個尚未翻譯，保留原文並以 [!untranslated] 標示。",
+    "assemble.edited": "vault 中有 {count} 個檔案在上次輸出後被修改過，為避免覆蓋修改，未輸出任何檔案。回收修改的 tome sync 尚未提供；確定要覆蓋時，請加上 --force。",
+    "assemble.structure_mismatch": "輸出的結構與文件不符：標題應有 {headings} 個、實際 {found_headings} 個，表格應有 {tables} 個、實際 {found_tables} 個。未寫入任何檔案。這是程式錯誤，請回報。",
+    "batch.archived":"批次 {id} 的結果已超過供應商的保留期限，無法收回。單位已放回佇列，重新送出會再付一次費用。",
     "batch.budget_exceeded": "下一批的估價上限 ${next} 美元加上已花費的 ${spent} 美元，超過預算 ${budget} 美元，已停止並保留進度。請以 tome estimate {book} --budget <美元> --confirm 提高預算後續跑。",
     "batch.canceling": "批次 {id} 正在取消。已處理完的請求仍會有結果，請稍後以 tome batch collect {book} 收回。",
     "batch.delete_failed": "批次 {id} 的資料沒有從供應商端刪除，下次執行 tome translate 或 tome batch collect 時會再試。",
@@ -216,7 +235,8 @@
     "translate.provider_failed": "供應商沒有完成請求，已停止並保留進度。狀態碼：{status}，- 表示沒有收到回應。稍後再執行一次即可續跑。",
     "uv.missing": "找不到 uv。只有安裝解析引擎時才需要 uv，需要時再安裝即可。",
     "uv.ok": "uv 版本 {version}。",
-    "vault.in_git_repo": "vault 路徑 {path} 位於 git 儲存庫 {repo} 內。譯文不得進入儲存庫，請改用其他位置。",
+    "vault.default": "尚未設定 vault 路徑，已寫入工作區的 {path}。要改用自己的 Obsidian vault，請執行 tome init --vault <路徑>。",
+    "vault.in_git_repo":"vault 路徑 {path} 位於 git 儲存庫 {repo} 內。譯文不得進入儲存庫，請改用其他位置。",
     "vault.sync_folder": "vault 路徑 {path} 位於 {provider} 同步資料夾內，譯文會上傳至雲端。建議將 tome.yaml 的 vault_path 改為本機資料夾。",
     "verify.done": "已重新驗證 {checked} 個翻譯單位，全部通過。",
     "verify.failed": "已重新驗證 {checked} 個翻譯單位：{passed} 個通過，{failed} 個未通過，其中 {gave_up} 個已達重試上限。",

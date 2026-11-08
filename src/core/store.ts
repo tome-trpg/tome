@@ -211,6 +211,24 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
         ALTER TABLE unit ADD COLUMN fielded INTEGER NOT NULL DEFAULT 0;
       `,
     },
+    {
+      // vault 的上次輸出（ADR-0122）：每個區塊輸出的 Markdown 給 031 的 `tome sync`；每個檔案的雜湊，
+      // 用來看出 vault 被人改過。路徑是書的資料夾底下的相對路徑。
+      version: 12,
+      sql: `
+        CREATE TABLE render (
+          block_id TEXT PRIMARY KEY,
+          path TEXT NOT NULL,
+          markdown TEXT NOT NULL,
+          rendered_at TEXT NOT NULL
+        ) STRICT;
+        CREATE TABLE render_file (
+          path TEXT PRIMARY KEY,
+          sha256 TEXT NOT NULL,
+          rendered_at TEXT NOT NULL
+        ) STRICT;
+      `,
+    },
   ],
   series: [
     { version: 1, sql: metaTable('series') },

@@ -1,6 +1,9 @@
 import type { Params } from './errors.ts';
 
 export const FINDING_CODES = [
+  'assemble.done',
+  'assemble.edited',
+  'assemble.structure_mismatch',
   'batch.archived',
   'batch.budget_exceeded',
   'batch.canceling',
@@ -157,6 +160,7 @@ export const FINDING_CODES = [
   'units.fielded',
   'uv.missing',
   'uv.ok',
+  'vault.default',
   'vault.in_git_repo',
   'verify.done',
   'verify.failed',

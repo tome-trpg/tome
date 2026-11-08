@@ -37,7 +37,8 @@ export function resolveHome(
   }
 }
 
-function pathFindings(
+/** 路徑在 git repo 裡就失敗，在同步資料夾裡就警告（ADR-0053 第 2 項）。`tome assemble` 寫 vault 前也查（ADR-0122）。 */
+export function pathFindings(
   subject: 'workspace' | 'vault',
   path: string,
   env: NodeJS.ProcessEnv,
