@@ -27,7 +27,7 @@ ADR-0113 第 22 項把回合 030 排成「vault 與報告：`tome assemble`、`r
 2. vault 的根目錄是 `tome.yaml` 的 `vault_path`；**沒設時寫到工作區的 `vault/`**，訊息印出根目錄並提醒可以用 `tome init --vault` 設。寫之前查路徑：在 git repo 裡就拒絕（`vault.in_git_repo`），在同步資料夾裡就警告。一本書一個資料夾，用書的名稱（`slug`）。
 3. 書的資料夾裡：`00-書目與來源.md`、一章一檔、`entities/`、`review/`。章節照 `chapter_level`，跟 `--chapters` 與 `tome preview` 同一個分法（ADR-0115）；第一章之前的部分寫進 `00-卷首.md`。檔名是兩位數編號加章名（這章第一個標題的譯文，沒翻成用原文，沒有標題只用編號），清理掉檔名與 Obsidian 連結不能用的 ASCII 字元，最多 60 字。輸出整本書，不看 `--chapters`。
 4. **不抽圖**：圖的位置寫一行 `> [!figure] 原書 p.N 的圖`（N 是原書印的頁碼），不建 `assets/`；抽圖另開回合，交付報告（038）列出沒抽的圖。
-5. `00-書目與來源.md`：PDF 中繼資料的書名與作者（沒有就用書的名稱、作者寫「不明」）、來源 PDF 的 SHA-256、不得散布的聲明、版權頁的原文（ADR-0011、PC-5）。`entities/`：每張鎖定、有譯名的卡一個檔（檔名是清理過的譯名，撞名時加卡的 id；內容是原文、譯名、類別、性別、代名詞、語域，有值才寫），章節裡不自動加連結。`review/`：每章一個對照檔，格式跟 `tome preview` 相同，另有 `00-區塊對應表.md`（每個區塊一列，連到它的章節檔）；`tome preview` 照舊寫在 `books/<slug>/review/`。
+5. `00-書目與來源.md`：PDF 中繼資料的書名與作者（沒有就用書的名稱、作者寫「不明」）、來源 PDF 的 SHA-256、不得散布的聲明、版權頁的原文（ADR-0011、PC-5）。`entities/`：每張鎖定、有譯名的卡一個檔（檔名是清理過的譯名，撞名時加卡的 id；內容是原文、譯名、類別、性別、代名詞、語域，有值才寫），章節裡不自動加連結。實體卡的檔名另有兩項，是 Manager 審 PR 71 時找到的：**撞名照不分大小寫判斷**（NFC 正規化後轉小寫，Windows 與 macOS 的檔案系統不分大小寫，macOS 也不分 NFC 與 NFD），例如 `Ward` 與 `WARD` 算撞名，撞了加卡的 id，加了 id 還撞就再加；**Windows 保留給裝置的名稱**（`CON`、`PRN`、`AUX`、`NUL`、`COM1`–`COM9`、`LPT1`–`LPT9`，另外加上上標數字的 `COM¹`–`COM³`、`LPT¹`–`LPT³` 與 `CONIN$`、`CONOUT$`；不分大小寫，加了副檔名也一樣）後面加卡的 id，否則在 Windows 上寫檔會失敗，寫到一半中斷，下次就要 `--force`。章節檔前面有兩位數編號、`review/` 用同一個名字，不受影響。`review/`：每章一個對照檔，格式跟 `tome preview` 相同，另有 `00-區塊對應表.md`（每個區塊一列，連到它的章節檔）；`tome preview` 照舊寫在 `books/<slug>/review/`。
 
 **章節檔**
 
@@ -49,6 +49,8 @@ ADR-0113 第 22 項把回合 030 排成「vault 與報告：`tome assemble`、`r
 <!-- @assert-count target="src/core/vault.ts" symbol="const placement = pathFindings('vault', root, process.env, process.platform);" expected="1" reason="第 2 項：vault 不得在 git repo 裡" -->
 <!-- @assert-count target="src/core/vault.ts" symbol="if (block.role === 'figure') return" expected="1" reason="第 4 項：圖只寫 callout，不抽圖" -->
 <!-- @assert-count target="src/core/vault.ts" symbol="assets/" expected="0" comments="include" reason="第 4 項：不建 assets/" -->
+<!-- @assert-count target="src/core/vault.ts" symbol="while (taken.has(key(name))) name = `${name} ${card.id}`;" expected="1" reason="第 5 項：實體卡的檔名不分大小寫判斷撞名" -->
+<!-- @assert-count target="src/core/vault.ts" symbol="if (RESERVED.test(name)) name = `${name} ${card.id}`;" expected="1" reason="第 5 項：Windows 的保留名稱加卡的 id" -->
 <!-- @assert-count target="src/core/vault.ts" symbol="return unit.state === 'BLOCKED' ? quote(head) : `${quote(head)}\n${quote(escapeLines(unit.source))}`;" expected="1" reason="第 8 項：BLOCKED 不放原文" -->
 <!-- @assert-count target="src/core/vault.ts" symbol="const link = `[[${target}|${reference}]]`;" expected="1" reason="第 9 項：連結顯示譯文裡原本的字" -->
 <!-- @assert-count target="src/core/store.ts" symbol="CREATE TABLE render (" expected="1" reason="第 10 項：上次輸出的區塊" -->

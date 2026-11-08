@@ -59,6 +59,8 @@ const UNSAFE = /[\\/:*?"<>|#^[\]%\p{Cc}]/gu;
 /** 標題裡有這些字元，連到標題的連結可能失效，改連區塊。 */
 const LINK_BREAKERS = /[#|^:%[\]]/u;
 const MAX_NAME = 60;
+/** Windows 保留給裝置的檔名，不分大小寫，加了副檔名也一樣（含上標數字與 `CONIN$`、`CONOUT$`）。 */
+const RESERVED = /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³]|conin\$|conout\$)(\..*)?$/iu;
 const NUMBER = /\d+/u;
 
 /** 檔名與連結用的名字：拿掉不能用的字元、合併空白、去掉結尾的點與空白、太長截斷。 */
@@ -340,12 +342,16 @@ export function renderVault(input: RenderInput): RenderedVault {
   files.set(`${texts.info.file}.md`, info);
 
   // 實體卡：每張鎖定的卡一個檔，章節裡不自動加連結（ADR-0122）。
+  // Windows 與 macOS 的檔案系統不分大小寫（macOS 也不分 NFC、NFD），撞名照這樣判斷，撞了加卡的 id；
+  // 加了 id 還撞就再加。Windows 的保留名稱也加 id（Manager 審 PR 71 時找到的）。
   const taken = new Set<string>();
+  const key = (name: string): string => name.normalize('NFC').toLowerCase();
   for (const card of cards) {
     if (card.status !== 'locked' || card.target === null) continue;
     let name = safeName(card.target) || String(card.id);
-    if (taken.has(name)) name = `${name} ${card.id}`;
-    taken.add(name);
+    if (RESERVED.test(name)) name = `${name} ${card.id}`;
+    while (taken.has(key(name))) name = `${name} ${card.id}`;
+    taken.add(key(name));
     const line = (label: string, value: string | null): string[] => (value === null ? [] : [`- ${label}: ${value}`]);
     files.set(
       `entities/${name}.md`,

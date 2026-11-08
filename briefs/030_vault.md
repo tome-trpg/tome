@@ -96,9 +96,11 @@ protectedFiles:
 * 排版：章節樹裡沒有 `block_id` 的節點也寫進深度表（用 `undefined` 當鍵，查不到）；只對翻好的單位呼叫的 `translation ?? ''` 三處（翻好就一定有譯文）；規則包角色一定有命名空間（IR schema 的 pattern），`:` 不會在第 0 個字；每個章都在章名表裡，`stemOf` 與 frontmatter 的備用值兩處走不到；沒有標題時也寫進標題表（存的是 `undefined`）；頁碼沒有數字時提早回傳（不回傳也找不到 `NaN` 頁）；表格計數的 5 個（表格列一定以 `|` 開頭也結尾，分隔線前面一定是表頭，`?? ''` 的備用字串換什麼都不會是 `|` 或分隔線）。
 * 寫檔：`openPdf` 不是 `ok` 時不提早回傳也會在 `try` 裡丟錯、回傳空的；讀檔的編碼拿掉時拿到同樣位元組的 Buffer，雜湊一樣。
 
+Manager 審 PR 71 時找到實體卡檔名的兩個問題（不分大小寫的檔案系統上撞名、Windows 的保留名稱），先寫會失敗的測試再修。改過的行 18 個變異，殺掉 17、逾時 1（加 id 的 `while` 迴圈停不下來，算抓到），沒有存活。
+
 走不到的 9 個：寫檔前結構對不上的分支。IR 是合法的（schema 要求表格至少一列一欄）時，排版產生的標題與表格數一定跟預期相同，這個分支只在程式錯誤時才走到，CLI 測試觸發不了；計數本身在 `tests/core/vault.test.ts` 測了（含故意寫不出來的表格）。
 
-本機結果：`npm test` 72 個測試檔通過、1 個跳過，1,830 個測試通過、5 個跳過；`npm run spec` 346 個斷言都成立，也都看過失敗；`npm run typecheck` 通過；`npm run licenses` 299 個套件沒有違規。
+本機結果（修完實體卡檔名後）：`npm test` 72 個測試檔通過、1 個跳過，1,832 個測試通過、5 個跳過；`npm run spec` 348 個斷言都成立，也都看過失敗；`npm run typecheck` 通過；`npm run licenses` 299 個套件沒有違規。
 
 | 測試 | 怎麼確認會失敗 |
 | :--- | :--- |
@@ -107,3 +109,4 @@ protectedFiles:
 | 遷移第 12 版（`tests/core/store.test.ts`） | 舊程式的版本是 11 |
 | PDF 中繼資料（`tests/core/pdf.test.ts`） | 舊程式沒有 `info()` 與 `metadataInfo` |
 | 格子裡的 `---`（`counts a table once even when its cells hold dashes`） | 第一版的計數把每一列 `\| --- \|` 都算成分隔線，這個測試會得到 2 個表格 |
+| 實體卡檔名（`tells entity names apart the way a case-insensitive file system does`、`adds the card id to a name Windows reserves for a device`） | 在 PR 71 第一版的程式上跑過，兩個都失敗（`Café` 與 NFD 的 `Café`、`COM1` 沒有加 id） |

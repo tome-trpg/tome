@@ -500,6 +500,33 @@ describe('renderVault: the other files', () => {
     expect(vault.files.get('entities/守 望者.md')).toBe('# 守/望者\n\n- 原文: Name 1\n- 譯名: 守/望者\n- 類別: person\n- 代名詞: 她\n');
   });
 
+  // Manager 審 PR 71 時找到的兩項（ADR-0122 第 5 項）。
+  const lockedCard = (id: number, target: string): EntityCard => ({
+    id,
+    source: `Name ${id}`,
+    target,
+    class: 'person',
+    gender: null,
+    pronoun: null,
+    register: null,
+    keep_source: true,
+    match: null,
+    status: 'locked',
+  });
+  const entityFiles = (cards: EntityCard[]) =>
+    [...render({ document: BOOK, units: BOOK_UNITS, cards }).files.keys()].filter((path) => path.startsWith('entities/')).sort();
+
+  it('tells entity names apart the way a case-insensitive file system does', () => {
+    const files = entityFiles([lockedCard(1, 'Ward'), lockedCard(2, 'WARD'), lockedCard(3, 'ward 2'), lockedCard(4, 'Café'), lockedCard(5, 'Café')]);
+    expect(files).toEqual(['entities/Café 5.md', 'entities/Café.md', 'entities/WARD 2.md', 'entities/Ward.md', 'entities/ward 2 3.md']);
+    expect(new Set(files.map((path) => path.normalize('NFC').toLowerCase())).size).toBe(files.length);
+  });
+
+  it('adds the card id to a name Windows reserves for a device', () => {
+    const files = entityFiles([lockedCard(1, 'Con'), lockedCard(2, 'nul.txt'), lockedCard(3, 'COM1'), lockedCard(4, 'lpt9'), lockedCard(5, 'Console'), lockedCard(6, 'COM10')]);
+    expect(files).toEqual(['entities/COM1 3.md', 'entities/COM10.md', 'entities/Con 1.md', 'entities/Console.md', 'entities/lpt9 4.md', 'entities/nul.txt 2.md']);
+  });
+
   it('writes the side-by-side files and the block map in review/', () => {
     const vault = render({ document: BOOK, units: BOOK_UNITS });
     expect(vault.files.get('review/01-渡口.md')).toContain('<!-- p1 -->\nThe warden waits.\n\n> 守望者在等待。');
