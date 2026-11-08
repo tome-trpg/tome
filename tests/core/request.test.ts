@@ -7,6 +7,9 @@ import { staticPrefix } from '../../src/core/prompt.ts';
 import { findModel, loadProvider } from '../../src/core/provider.ts';
 import { chapterMap, parseChapters } from '../../src/core/chapters.ts';
 import {
+  ACTIVE_BLOCKS,
+  ACTIVE_LIMIT,
+  activeEntities,
   BATCH_CHARS,
   CONTEXT_CHARS,
   maxTokens,
@@ -421,6 +424,137 @@ describe('userMessage', () => {
     expect(body.match(/<s /g)).toHaveLength(1);
     expect(body.match(/<\/context>/g)).toHaveLength(1);
     expect(parseUnits(body).units.map(({ id }) => id)).toEqual(['1']);
+  });
+});
+
+describe('entity cards in the request (ADR-0120)', () => {
+  const card = (from: string, target: string, attributes?: LocalizedTerm['attributes']): LocalizedTerm => ({
+    text: from,
+    term: { source: {}, target },
+    ...(attributes === undefined ? {} : { attributes }),
+  });
+
+  function request(units: readonly TranslationUnit[], sent: readonly string[]): PlannedRequest {
+    const [planned] = planRequests(units, ONE_CHAPTER, ({ unit_id }) => sent.includes(unit_id));
+    if (planned === undefined) throw new Error('no request');
+    return planned;
+  }
+
+  it('writes the gender, pronoun and register of a card in a fixed order, escaped', () => {
+    const units = [unit('a', 'The Warden waits.')];
+    const terms = [card('Warden', '守望者', { register: 'formal "old"', pronoun: '她', gender: 'female' })];
+    expect(userMessage(request(units, ['a']), { terms, pack: generic() })).toContain(
+      '<glossary>\n<term source="Warden" target="守望者" gender="female" pronoun="她" register="formal &quot;old&quot;"/>\n</glossary>',
+    );
+  });
+
+  it('leaves out the attributes a card does not have', () => {
+    const units = [unit('a', 'The Warden waits.')];
+    const body = userMessage(request(units, ['a']), { terms: [card('Warden', '守望者', { pronoun: '她' })], pack: generic() });
+    expect(body).toContain('<term source="Warden" target="守望者" pronoun="她"/>');
+  });
+
+  it('puts <recent> after the glossary and before the roles', () => {
+    const units = [unit('before', 'The Warden spoke.'), unit('a', 'The Ferry waits.', { role: 'generic:read_aloud' })];
+    const terms = [card('Warden', '守望者', { pronoun: '她' }), card('Ferry', '渡口')];
+    const body = userMessage(request(units, ['a']), { terms, pack: generic(), recent: activeEntities(units, terms, ONE_CHAPTER) });
+    const order = ['<context>', '<glossary>', '<recent>', '<roles>', '<s id="1"'].map((tag) => body.indexOf(tag));
+    expect(order.every((at) => at >= 0)).toBe(true);
+    expect([...order].sort((left, right) => left - right)).toEqual(order);
+    expect(body).toContain('<recent>\n<term source="Warden" target="守望者" pronoun="她"/>\n</recent>');
+  });
+
+  it('writes one line per card in <glossary> and in <recent>', () => {
+    const units = [
+      unit('before', 'The Warden met the Ferryman.'),
+      unit('a', 'The Ferry waits by the Marsh.'),
+    ];
+    const terms = [
+      card('Warden', '守望者', { pronoun: '她' }),
+      card('Ferryman', '擺渡人', { pronoun: '他' }),
+      card('Ferry', '渡口'),
+      card('Marsh', '鹽沼'),
+    ];
+    const body = userMessage(request(units, ['a']), { terms, pack: generic(), recent: activeEntities(units, terms, ONE_CHAPTER) });
+    expect(body).toContain('<glossary>\n<term source="Ferry" target="渡口"/>\n<term source="Marsh" target="鹽沼"/>\n</glossary>');
+    expect(body).toContain(
+      '<recent>\n<term source="Warden" target="守望者" pronoun="她"/>\n<term source="Ferryman" target="擺渡人" pronoun="他"/>\n</recent>',
+    );
+  });
+
+  it('has no <recent> when nothing is active', () => {
+    const units = [unit('a', 'The Warden waits.')];
+    const terms = [card('Warden', '守望者', { pronoun: '她' })];
+    const body = userMessage(request(units, ['a']), { terms, pack: generic(), recent: activeEntities(units, terms, ONE_CHAPTER) });
+    expect(body).not.toContain('<recent>');
+  });
+});
+
+describe('activeEntities (ADR-0120)', () => {
+  const person = (from: string, pronoun = '她'): LocalizedTerm => ({ text: from, term: { source: {}, target: from }, attributes: { pronoun } });
+  const names = (found: readonly LocalizedTerm[]): string[] => found.map(({ text }) => text);
+  const active = (
+    units: readonly TranslationUnit[],
+    terms: readonly LocalizedTerm[],
+    first: string,
+    chapterOf: (unit: TranslationUnit) => number = ONE_CHAPTER,
+  ) =>
+    names(activeEntities(units, terms, chapterOf)({ id: 'r1', units: units.filter(({ unit_id }) => unit_id === first), context: '' }));
+
+  it(`looks back ${ACTIVE_BLOCKS} blocks, and no further`, () => {
+    const units = [
+      unit('b0', 'Far Name was here.'),
+      ...['b1', 'b2', 'b3', 'b4'].map((id) => unit(id, 'Nothing here.')),
+      unit('b5', 'Near Name was here.'),
+      unit('now', 'It moves.'),
+    ];
+    const terms = [person('Far Name'), person('Near Name')];
+    expect(active(units, terms, 'now')).toEqual(['Near Name']);
+    expect(active(units.filter(({ unit_id }) => unit_id !== 'b4'), terms, 'now')).toEqual(['Near Name', 'Far Name']);
+  });
+
+  it('counts the cells of one table as one block', () => {
+    const cells = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6'].map((id) => unit(id, 'Cell.', { block_id: 'table' }));
+    const units = [unit('b0', 'Old Name spoke.'), ...cells, unit('now', 'It moves.')];
+    expect(active(units, [person('Old Name')], 'now')).toEqual(['Old Name']);
+  });
+
+  it('stops at the start of the chapter', () => {
+    const units = [unit('b0', 'Old Name spoke.'), unit('now', 'It moves.')];
+    const chapterOf = ({ unit_id }: TranslationUnit): number => (unit_id === 'now' ? 2 : 1);
+    expect(active(units, [person('Old Name')], 'now', chapterOf)).toEqual([]);
+  });
+
+  it('keeps only cards with a gender or a pronoun', () => {
+    const units = [unit('b0', 'Plain Name, Styled Name, She Name, He Name.'), unit('now', 'It moves.')];
+    const terms: LocalizedTerm[] = [
+      { text: 'Plain Name', term: { source: {}, target: '甲' } },
+      { text: 'Styled Name', term: { source: {}, target: '乙' }, attributes: { register: 'formal' } },
+      { text: 'She Name', term: { source: {}, target: '丙' }, attributes: { gender: 'female' } },
+      person('He Name', '他'),
+    ];
+    expect(active(units, terms, 'now')).toEqual(['She Name', 'He Name']);
+  });
+
+  it('leaves out a card the request already hits, and lists each card once, nearest first', () => {
+    const units = [unit('b0', 'First Name.'), unit('b1', 'Second Name and First Name.'), unit('now', 'Second Name moves.')];
+    expect(active(units, [person('First Name'), person('Second Name')], 'now')).toEqual(['First Name']);
+    const both = [unit('b0', 'First Name.'), unit('b1', 'Second Name.'), unit('now', 'It moves.')];
+    expect(active(both, [person('First Name'), person('Second Name')], 'now')).toEqual(['Second Name', 'First Name']);
+  });
+
+  it(`sends at most ${ACTIVE_LIMIT}`, () => {
+    const crowd = Array.from({ length: ACTIVE_LIMIT + 2 }, (_, index) => person(`Name${String.fromCharCode(65 + index)}`));
+    const units = [unit('b0', crowd.map(({ text }) => text).join(' and ')), unit('now', 'It moves.')];
+    expect(active(units, crowd, 'now')).toHaveLength(ACTIVE_LIMIT);
+  });
+
+  it('has nothing before the first unit of the book, or without cards, or for a request with no units', () => {
+    const units = [unit('now', 'Old Name moves.')];
+    expect(active(units, [person('Old Name')], 'now')).toEqual([]);
+    expect(active([unit('b0', 'Old Name.'), unit('now', 'It.')], [], 'now')).toEqual([]);
+    const recent = activeEntities([unit('b0', 'Old Name.'), unit('now', 'It.')], [person('Old Name')], ONE_CHAPTER);
+    expect(recent({ id: 'r1', units: [], context: '' })).toEqual([]);
   });
 });
 

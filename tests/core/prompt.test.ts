@@ -20,7 +20,8 @@ import { tempDir } from '../helpers.ts';
 const { profile } = loadTargetLanguage('zh-TW');
 
 const REVIEWED: readonly (readonly [string, string])[] = [
-  ['prompts/translate.md', '14ae6b1e8bc5ace671478366d9a94bb21963ef601df77f8a5c0c1ce6b9ca7a2f'],
+  // 加上實體卡的屬性、`<recent>` 與 `<book>`，維護者在 2026-11-08 照草稿審過（ADR-0120）。
+  ['prompts/translate.md', 'ce6e78be3d3257b4f8353eb940a2e0b7b13848f98814c8199394ea8238b03f2e'],
   ['prompts/feedback.yaml', '6bc9c49dc67a813dff3af3b2993be625aa4cf4830126445ffc3fcb2944b0beaf'],
   // Pass 0 的兩份提示，維護者在 2026-11-08 照草稿審過（ADR-0118）。
   ['prompts/scan-terms.md', 'a040adccbc4b4767690b4edd0c73c846353a84744342531734263d3a3f824c58'],
@@ -182,6 +183,17 @@ describe('staticPrefix', () => {
     expect(closed).toContain('Before.After.');
     const open = staticPrefix(profile, childPack({ 'persona_and_tone.md': 'Before.<!-- never closed\n' }));
     expect(open).toContain('Before.<!-- never closed');
+  });
+
+  it('ends with the book summary in <book>, escaped, and has no <book> without one (ADR-0120)', () => {
+    const summary = { era: 'A river kingdom <old>.', tone: 'Grim & terse.', factions: 'The Wardens; the Ferry Guild.' };
+    const prefix = staticPrefix(profile, generic(), summary);
+    expect(prefix.endsWith(
+      '\n\n<book>\n<era>A river kingdom &lt;old&gt;.</era>\n<tone>Grim &amp; terse.</tone>\n<factions>The Wardens; the Ferry Guild.</factions>\n</book>',
+    )).toBe(true);
+    expect(prefix.startsWith(staticPrefix(profile, generic()))).toBe(true);
+    expect(staticPrefix(profile, generic(), null)).toBe(staticPrefix(profile, generic()));
+    expect(staticPrefix(profile, generic())).not.toContain('<era>');
   });
 
   it('reads a long run of comment marks in linear time', () => {

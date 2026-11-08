@@ -3,14 +3,15 @@ import { join } from 'node:path';
 import { Document, isMap, isScalar, parse, type Pair, type Scalar } from 'yaml';
 import { bookDir, readBook, withBookLock, type Book } from './book.ts';
 import { sightings, type Sighting } from './candidates.ts';
-import { countEntities } from './entities.ts';
+import { countEntities, entityCards } from './entities.ts';
 import { TomeError } from './errors.ts';
 import { readDocument } from './extract.ts';
-import { finding } from './findings.ts';
+import { finding, type Finding } from './findings.ts';
 import { CORE_ROLES, type IrDocument } from './ir.ts';
 import { loadSourceLanguage, loadTargetLanguage, scriptViolations, type ScriptCheck } from './language.ts';
 import { parseCsv } from './csv.ts';
 import type { ResolvedPack } from './pack.ts';
+import { applyRenames, type RenameCounts } from './rename.ts';
 import type { PlanOutcome } from './request.ts';
 import { openBookStore, type Store } from './store.ts';
 import { loadBookPack } from './verify.ts';
@@ -536,12 +537,15 @@ async function reviewLocked({ home, slug, texts }: ReviewOptions): Promise<PlanO
   const store = openBookStore(home, slug);
   try {
     let applied = NOTHING_APPLIED;
+    const before = entityCards(store);
     if (existsSync(path)) {
       const entries = readDecisions(path);
       // 檔案讀不懂時什麼都不改，也不覆蓋，改到一半的內容才不會不見。
       if (entries === null) return { data: { book: slug, path }, findings: [finding('glossary.file_invalid', 'fail', { path })] };
       applied = applyDecisions(store, entries, rules);
     }
+    // 改了已鎖定的卡，當下做 S-16（ADR-0120）。
+    const renamed = await applyRenames({ home, book, store, pack, before });
     const added = collectNewTerms(store, document, book);
     const auto = autoLock(store, weightOf, applied.kept);
     const groups = sections(store, weightOf);
@@ -577,8 +581,9 @@ async function reviewLocked({ home, slug, texts }: ReviewOptions): Promise<PlanO
         entities: totals,
         problems: applied.problems.length,
         diverged: applied.diverged.length,
+        ...(renamed === null ? {} : { renamed }),
       },
-      findings: [finding('glossary.reviewed', 'info', params), ...problems, ...diverged, ...findings],
+      findings: [finding('glossary.reviewed', 'info', params), ...renamedFindings(slug, renamed), ...problems, ...diverged, ...findings],
     };
   } finally {
     store.close();
@@ -662,8 +667,10 @@ async function importLocked({ home, slug, csv }: ImportOptions): Promise<PlanOut
   let added = 0;
   let updated = 0;
   let unchanged = 0;
+  let renamed: RenameCounts | null = null;
   const store = openBookStore(home, slug);
   try {
+    const before = entityCards(store);
     store.transaction(() => {
       for (const { row, cells } of rows) {
         // 列號跟試算表一樣，第一列是欄名。
@@ -720,18 +727,34 @@ async function importLocked({ home, slug, csv }: ImportOptions): Promise<PlanOut
         updated += 1;
       }
     });
+    // 覆蓋了已鎖定的卡，當下做 S-16（ADR-0120）。
+    renamed = await applyRenames({ home, book, store, pack, before });
   } finally {
     store.close();
   }
   const params = { book: slug, added: String(added), updated: String(updated), unchanged: String(unchanged) };
   return {
-    data: { book: slug, added, updated, unchanged, problems: problems.length },
+    data: { book: slug, added, updated, unchanged, problems: problems.length, ...(renamed === null ? {} : { renamed }) },
     findings: [
       finding('glossary.imported', 'info', params),
+      ...renamedFindings(slug, renamed),
       ...(problems.length === 0 ? [] : [finding('glossary.bad_rows', 'fail', { count: String(problems.length), rows: listed(problems) })]),
       ...findings,
     ],
   };
+}
+
+/** S-16 的結果，只印數量（ADR-0059、ADR-0120）。沒有鎖定卡改動時不印。 */
+function renamedFindings(slug: string, renamed: RenameCounts | null): Finding[] {
+  if (renamed === null) return [];
+  const params = {
+    book: slug,
+    replaced: String(renamed.replaced),
+    resend: String(renamed.resend),
+    reset: String(renamed.reset),
+    in_flight: String(renamed.in_flight),
+  };
+  return [finding('glossary.renamed', 'info', params)];
 }
 
 /** `tome glossary import`。 */

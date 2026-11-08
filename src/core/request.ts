@@ -20,6 +20,7 @@ import {
 } from './chapters.ts';
 import { hitCount, scanBody, type PiiRules } from './egress/gate.ts';
 import { TomeError } from './errors.ts';
+import { bookSummary, entityCards, type EntityCard } from './entities.ts';
 import { estimateRequest, outputTokens, sumEstimates, type Estimate } from './estimate.ts';
 import { readDocument } from './extract.ts';
 import { finding, type Finding } from './findings.ts';
@@ -271,20 +272,76 @@ export interface FeedbackItem {
 /** 依 `unit_id`。上次的問題，存在 `issue`，所以中斷之後還在。 */
 export type Feedback = ReadonlyMap<string, readonly FeedbackItem[]>;
 
+/** 一個請求的活躍實體（ADR-0120）。 */
+export type ActiveEntities = (request: PlannedRequest) => readonly LocalizedTerm[];
+
 export interface MessageContext {
-  /** 這本書適用的詞條。 */
+  /** 這本書適用的詞條，含鎖定的實體卡（ADR-0120）。 */
   readonly terms: readonly LocalizedTerm[];
   readonly pack: ResolvedPack;
   readonly feedback?: Feedback;
+  /** 沒給就沒有 `<recent>`。 */
+  readonly recent?: ActiveEntities;
+}
+
+const ATTRIBUTES = ['gender', 'pronoun', 'register'] as const;
+
+/** `<glossary>` 與 `<recent>` 的一行。屬性順序固定、沒有的不寫，規則包的詞條跟以前逐字相同（ADR-0120）。 */
+function termLine({ text, term, attributes }: LocalizedTerm): string {
+  const extra = ATTRIBUTES.map((name) => {
+    const value = attributes?.[name];
+    return value === undefined ? '' : ` ${name}="${escapeAttribute(value)}"`;
+  }).join('');
+  return `<term source="${escapeAttribute(text)}" target="${escapeAttribute(term.target)}"${extra}/>`;
 }
 
 function glossaryBlock(units: readonly TranslationUnit[], terms: readonly LocalizedTerm[]): string | null {
   const hits = new Map(units.flatMap((unit) => hitTerms(unit, terms)).map((hit) => [hit.text, hit]));
   if (hits.size === 0) return null;
-  const lines = [...hits.values()].map(
-    ({ text, term }) => `<term source="${escapeAttribute(text)}" target="${escapeAttribute(term.target)}"/>`,
-  );
-  return `<glossary>\n${lines.join('\n')}\n</glossary>`;
+  return `<glossary>\n${[...hits.values()].map(termLine).join('\n')}\n</glossary>`;
+}
+
+function recentBlock(request: PlannedRequest, recent: ActiveEntities | undefined): string | null {
+  const found = recent?.(request) ?? [];
+  return found.length === 0 ? null : `<recent>\n${found.map(termLine).join('\n')}\n</recent>`;
+}
+
+/** 往前看幾個區塊。白皮書 §5.6 的數字。 */
+export const ACTIVE_BLOCKS = 5;
+/** 最多幾張，離請求最近的優先。是提案（ADR-0120）。 */
+export const ACTIVE_LIMIT = 10;
+
+/**
+ * 活躍實體（白皮書 §5.6、ADR-0120）：請求第一個單位之前、同一章的 5 個區塊裡命中、有性別或代名詞的卡，
+ * 扣掉這批已經命中的。表格的儲存格同一個區塊算一個。是為了選對代名詞，沒有這兩項的卡幫不上忙。
+ */
+export function activeEntities(
+  units: readonly TranslationUnit[],
+  terms: readonly LocalizedTerm[],
+  chapterOf: (unit: TranslationUnit) => number,
+): ActiveEntities {
+  const people = terms.filter(({ attributes }) => attributes?.gender !== undefined || attributes?.pronoun !== undefined);
+  const position = new Map(units.map(({ unit_id }, index) => [unit_id, index]));
+  return ({ units: sent }) => {
+    const [first] = sent;
+    if (first === undefined || people.length === 0) return [];
+    const taken = new Set(sent.flatMap((unit) => hitTerms(unit, people)).map(({ text }) => text));
+    const chapter = chapterOf(first);
+    const blocks = new Set<string>();
+    const found: LocalizedTerm[] = [];
+    for (let at = (position.get(first.unit_id) ?? 0) - 1; at >= 0; at -= 1) {
+      const unit = units[at];
+      if (unit === undefined || chapterOf(unit) !== chapter) break;
+      if (!blocks.has(unit.block_id) && blocks.size === ACTIVE_BLOCKS) break;
+      blocks.add(unit.block_id);
+      for (const hit of hitTerms(unit, people)) {
+        if (taken.has(hit.text)) continue;
+        taken.add(hit.text);
+        found.push(hit);
+      }
+    }
+    return found.slice(0, ACTIVE_LIMIT);
+  };
 }
 
 /** 只列這批出現、有寫 `style` 的角色，寫在 `user` 才不會動到靜態前綴。 */
@@ -310,10 +367,12 @@ function feedbackBlock(units: readonly TranslationUnit[], feedback: Feedback): s
   return lines.length === 0 ? null : `<feedback>\n${lines.join('\n')}\n</feedback>`;
 }
 
-export function userMessage({ units, context }: PlannedRequest, { terms, pack, feedback }: MessageContext): string {
+export function userMessage(request: PlannedRequest, { terms, pack, feedback, recent }: MessageContext): string {
+  const { units, context } = request;
   const parts = [
     context === '' ? null : `<context>\n${context}\n</context>`,
     glossaryBlock(units, terms),
+    recentBlock(request, recent),
     rolesBlock(units, pack),
     feedback === undefined ? null : feedbackBlock(units, feedback),
     units.map(({ role, masked }, index) => unitTag(String(index + 1), role, masked)).join('\n'),
@@ -413,6 +472,7 @@ export interface BookPlan {
   readonly prefix: string;
   readonly pack: ResolvedPack;
   readonly terms: readonly LocalizedTerm[];
+  readonly recent: ActiveEntities;
 }
 
 export interface PlanResult {
@@ -438,9 +498,12 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
   const fallbackId = workspaceModel(home, 'fallback_model');
   const fallback = fallbackId === undefined ? null : findModel(provider.profile, fallbackId);
   const document = readDocument(home, book.slug);
-  const { pack, terms, findings: packFindings } = loadBookPack(home, book);
-  if (pack === null) return { plan: null, findings: packFindings };
-  const { units, findings } = await buildUnits(document, pack, book.config.source_lang);
+  const cards = entityCards(store);
+  const { pack, terms, findings: loaded } = loadBookPack(home, book, cards);
+  if (pack === null) return { plan: null, findings: loaded };
+  const packFindings = [...loaded, ...pendingFindings(book.slug, cards)];
+  const { source_lang: sourceLang } = book.config;
+  const { units, findings } = await buildUnits(document, pack, sourceLang, terms);
   if (findings.some(({ level }) => level === 'fail')) return { plan: null, findings };
   syncUnits(store, units);
 
@@ -454,10 +517,12 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
   const requests = planRequests(units, chapterOf, (unit) => pending.has(unit.unit_id) && inScope(unit));
 
   const { profile: language } = loadTargetLanguage(workspaceTargetLang(home));
-  const prefix = staticPrefix(language, pack);
+  const prefix = staticPrefix(language, pack, bookSummary(store));
+  const recent = activeEntities(units, terms, chapterOf);
   const sized = requests.map((request) =>
-    sizeRequest(request, { prefix, terms, pack, model, provider: provider.profile, mode }),
+    sizeRequest(request, { prefix, terms, pack, recent, model, provider: provider.profile, mode }),
   );
+  const locked = cardsDigest(cards);
   const planned = requests.flatMap((request) => request.units);
   // 算範圍內全部的單位，不是還沒翻的：翻到一半中斷時，續跑不用重新確認（ADR-0054）。
   const scope = units.filter((unit) => unit.needs_llm && inScope(unit));
@@ -476,6 +541,8 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
         mode,
         // 同一個範圍在不同層級指到不同的章。沒設層級時不加，舊的確認才不會失效（ADR-0115）。
         ...(book.config.chapter_level === undefined ? [] : [book.config.chapter_level]),
+        // 鎖定的實體卡改了，請求就不同。沒有卡時不加（ADR-0120）；提要在靜態前綴裡，提示的雜湊已經算到。
+        ...(locked === null ? [] : [locked]),
       ]),
     )
     .digest('hex');
@@ -501,9 +568,32 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
       prefix,
       pack,
       terms,
+      recent,
     },
     findings: packFindings,
   };
+}
+
+/** 鎖定實體卡的雜湊，進估價的指紋（ADR-0120）。沒有鎖定的卡是 null。 */
+function cardsDigest(cards: readonly EntityCard[]): string | null {
+  const locked = cards
+    .filter(({ status, target }) => status === 'locked' && target !== null)
+    .map(({ source, target, gender, pronoun, register, keep_source, match }) => [
+      source,
+      target,
+      gender,
+      pronoun,
+      register,
+      keep_source,
+      match,
+    ]);
+  return locked.length === 0 ? null : createHash('sha256').update(JSON.stringify(locked)).digest('hex');
+}
+
+/** 還有要人審的卡時提醒，只印筆數，不擋翻譯；擋下是 `tome run` 的關卡（ADR-0119 第 2 項、ADR-0120）。 */
+function pendingFindings(slug: string, cards: readonly EntityCard[]): Finding[] {
+  const count = cards.filter(({ status }) => status === 'proposed' || status === 'failed').length;
+  return count === 0 ? [] : [finding('glossary.pending', 'warn', { book: slug, count: String(count) })];
 }
 
 function planData(plan: BookPlan): Readonly<Record<string, unknown>> {

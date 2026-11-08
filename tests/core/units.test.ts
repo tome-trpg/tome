@@ -2,9 +2,11 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
+import type { EntityCard } from '../../src/core/entities.ts';
 import type { DocumentBlock, IrDocument } from '../../src/core/ir.ts';
 import { maskText, restoreSegments } from '../../src/core/mask.ts';
-import { findPack, resolvePack, type ResolvedPack } from '../../src/core/pack.ts';
+import { findPack, resolvePack, termsFor, type ResolvedPack } from '../../src/core/pack.ts';
+import { bookTerms } from '../../src/core/verify.ts';
 import { openBookStore, type Store } from '../../src/core/store.ts';
 import { parseUnits, unitTag } from '../../src/core/tags.ts';
 import { buildUnits, syncUnits, type TranslationUnit } from '../../src/core/units.ts';
@@ -268,6 +270,26 @@ describe('keep_source terms (ADR-0100)', () => {
     const blocks = [block({ id: 'p0000-aaaaaa', text: 'The Glyph' })];
     const { units } = await buildUnits(documentOf(blocks), pack as ResolvedPack, 'en');
     expect(units[0]?.placeholders).toEqual([]);
+  });
+
+  it('hides a keep_source entity card it is given, and a card that says translate wins over the pack (ADR-0120)', async () => {
+    const pack = childPack({ 'glossary.yaml': glossary });
+    const card = (source: string, keep: boolean): EntityCard => ({
+      id: 1,
+      source,
+      target: source,
+      class: null,
+      gender: null,
+      pronoun: null,
+      register: null,
+      keep_source: keep,
+      match: null,
+      status: 'locked',
+    });
+    const terms = bookTerms(termsFor(pack, 'en'), [card('Old Tongue', true), card('Sigil of Reeds', false)]);
+    const text = 'The Sigil of Reeds speaks Old Tongue.';
+    const [unit] = (await buildUnits(documentOf([block({ id: 'p0000-aaaaaa', text })]), pack, 'en', terms)).units;
+    expect(unit?.masked).toBe('The Sigil of Reeds speaks <ph id="1" kind="keep_source"/>.');
   });
 });
 

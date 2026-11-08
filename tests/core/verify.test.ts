@@ -4,7 +4,8 @@ import { maskText, type MaskRange } from '../../src/core/mask.ts';
 import { loadPhraseCheck, type PhraseCheck } from '../../src/core/opencc.ts';
 import type { LocalizedTerm } from '../../src/core/pack.ts';
 import { parseUnits } from '../../src/core/tags.ts';
-import { hitTerms, matchUnits, verifyFragment, type VerifyContext } from '../../src/core/verify.ts';
+import type { EntityCard } from '../../src/core/entities.ts';
+import { bookTerms, hitTerms, matchUnits, verifyFragment, type VerifyContext } from '../../src/core/verify.ts';
 
 // 文字都是這裡編的，跟任何書都沒有關係。
 
@@ -212,6 +213,73 @@ describe('locked terms (ADR-0102)', () => {
   it('leaves keep_source terms alone, they are hidden', () => {
     const terms = [term('Warden', '看守人', { keep_source: true })];
     expect(hitTerms(unit(source), terms)).toEqual([]);
+  });
+});
+
+describe('bookTerms: the locked entity cards and the pack terms (ADR-0120)', () => {
+  const source = 'The Warden lights a lantern at the old Ferry before dawn.';
+  const translation = '在黎明之前，看守人點亮老渡口的提燈，等候第一班船靠岸。';
+
+  function card(source: string, target: string | null, extra: Partial<EntityCard> = {}): EntityCard {
+    return {
+      id: 1,
+      source,
+      target,
+      class: null,
+      gender: null,
+      pronoun: null,
+      register: null,
+      keep_source: false,
+      match: null,
+      status: 'locked',
+      ...extra,
+    };
+  }
+
+  it('uses only locked cards with a translation; proposals never go into the translation', () => {
+    const cards = ['candidate', 'sent', 'proposed', 'skipped', 'failed', 'rejected'].map((status) =>
+      card(`Not ${status}`, '甲', { status }),
+    );
+    expect(bookTerms([], [...cards, card('No Target', null)])).toEqual([]);
+    expect(bookTerms([], [card('Salt Marsh', '鹽沼')])).toEqual([{ text: 'Salt Marsh', term: { source: {}, target: '鹽沼' } }]);
+  });
+
+  it('prefers the card when a card and a pack term share a source, and keeps the other pack terms after the cards', () => {
+    const pack = [term('Warden', '看守人'), term('Ferry', '渡口')];
+    const terms = bookTerms(pack, [card('Warden', '守望者')]);
+    expect(terms.map(({ text, term: { target } }) => [text, target])).toEqual([
+      ['Warden', '守望者'],
+      ['Ferry', '渡口'],
+    ]);
+  });
+
+  it('carries the class, keep_source and the match settings of a card', () => {
+    const match = { case_sensitive: false, whole_word: false, roles: ['heading'] };
+    const [locked] = bookTerms([], [card('Warden', 'Warden', { class: 'person', keep_source: true, match })]);
+    expect(locked?.term).toEqual({ source: {}, target: 'Warden', class: 'person', keep_source: true, match });
+  });
+
+  it('adds the gender, pronoun and register only when a card has one of them', () => {
+    const [plain] = bookTerms([], [card('Warden', '守望者')]);
+    expect(plain).not.toHaveProperty('attributes');
+    const [full] = bookTerms([], [card('Warden', '守望者', { gender: 'female', pronoun: '她', register: 'formal' })]);
+    expect(full?.attributes).toEqual({ gender: 'female', pronoun: '她', register: 'formal' });
+    const [one] = bookTerms([], [card('Warden', '守望者', { register: 'archaic' })]);
+    expect(one?.attributes).toEqual({ register: 'archaic' });
+  });
+
+  it('gives cards to the verification like pack terms: a hit wants the locked translation, keep_source is hidden', () => {
+    const terms = bookTerms([], [card('Warden', '看守人'), card('Ferry', 'Ferry', { id: 2, keep_source: true })]);
+    expect(hitTerms(unit(source), terms).map(({ text }) => text)).toEqual(['Warden']);
+    const verdict = verifyFragment(unit(source), `<s id="1">${translation.replace('看守人', '守衛')}</s>`, context({ terms }));
+    expect(codes(verdict)).toEqual(['term_missing']);
+  });
+
+  it('follows the match settings of a card, with the defaults when it has none', () => {
+    const lower = bookTerms([], [card('warden', '看守人')]);
+    expect(hitTerms(unit(source), lower)).toEqual([]);
+    const folded = bookTerms([], [card('warden', '看守人', { match: { case_sensitive: false } })]);
+    expect(hitTerms(unit(source), folded).map(({ text }) => text)).toEqual(['warden']);
   });
 });
 
