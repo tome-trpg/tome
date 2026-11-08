@@ -77,7 +77,7 @@ protectedFiles:
 - [x] `tome status` 多一行實體卡的數量
 - [x] 白皮書與 CHANGELOG 更新
 
-  實作時多出的 17 項細節寫在共用筆記 `brief-028-details.md`，先照建議實作，寫進 ADR-0119。
+  實作時多出的 17 項細節寫在共用筆記 `brief-028-details.md`，維護者全部照建議選定，寫進 ADR-0119。第 8 項「有性別或代名詞」照字面算，是提案，等真的 Pass 0 再跟門檻一起調。
 
 ## Measured
 
