@@ -201,7 +201,10 @@ interface Applied {
   readonly rejected: number;
   /** `id:欄位`，id 不是整數時寫第幾筆。 */
   readonly problems: readonly string[];
-  /** 沒有套用的列照人填的樣子寫回去，只要改有問題的欄位（ADR-0119）。鍵是 id。 */
+  /**
+   * 照人填的樣子寫回去的列，鍵是 id（ADR-0119）：有問題沒套用的（只要改點名的欄位），以及改了內容、還沒填
+   * decision 的。這些卡這次不自動鎖定。
+   */
   readonly kept: ReadonlyMap<number, Entry>;
   /** id 不對、找不到卡的列，也照原樣寫回去。 */
   readonly orphans: readonly Entry[];
@@ -231,6 +234,44 @@ function readDecisions(path: string): Entry[] | null {
   return entries;
 }
 
+/** 空白、null 與預設值換成同一個樣子，YAML 讀回來的 `false`、寫出來的預設比對條件才不會被當成有改。 */
+function plain(value: unknown): unknown {
+  if (blank(value)) return null;
+  return typeof value === 'string' ? value.trim() : value;
+}
+
+/** 可修改的欄位：人填的（`entry`）與 `book.db` 的（`row`）正規化成同一種寫法再比。 */
+function editable(entry: Entry): string {
+  const flat = flatten(entry);
+  const flag = (value: unknown, fallback: boolean): unknown => (blank(value) ? fallback : value);
+  return JSON.stringify([
+    plain(flat['target']),
+    plain(flat['class']),
+    plain(flat['gender']),
+    plain(flat['pronoun']),
+    plain(flat['register']),
+    flag(flat['keep_source'], false),
+    flag(flat['case_sensitive'], true),
+    flag(flat['whole_word'], true),
+    blank(flat['roles']) ? [] : flat['roles'],
+  ]);
+}
+
+function stored(row: EntityRow): string {
+  const match = matchOf(row);
+  return JSON.stringify([
+    plain(row.target),
+    plain(row.class),
+    plain(row.gender),
+    plain(row.pronoun),
+    plain(row.register),
+    row.keep_source === 1,
+    match.case_sensitive,
+    match.whole_word,
+    match.roles ?? [],
+  ]);
+}
+
 function applyDecisions(store: Store, entries: readonly Entry[], rules: Rules): Applied {
   let locked = 0;
   let rejected = 0;
@@ -240,10 +281,15 @@ function applyDecisions(store: Store, entries: readonly Entry[], rules: Rules): 
   store.transaction(() => {
     entries.forEach((entry, index) => {
       const decision = typeof entry['decision'] === 'string' ? entry['decision'].trim().toLowerCase() : entry['decision'];
-      if (blank(decision)) return;
       const id = entry['id'];
       const label = typeof id === 'number' && Number.isInteger(id) ? String(id) : `#${index + 1}`;
       const row = typeof id === 'number' && Number.isInteger(id) ? entityById(store, id) : undefined;
+      if (blank(decision)) {
+        // 沒填 decision 的修改不套用，但照人填的樣子留在檔案裡（Manager 審 PR 68 時找到，維護者選的，ADR-0119）。
+        if (row === undefined) orphans.push(entry);
+        else if (editable(entry) !== stored(row)) kept.set(row.id, entry);
+        return;
+      }
       if (row === undefined) {
         problems.push(`${label}:id`);
         orphans.push(entry);

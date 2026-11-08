@@ -42,7 +42,7 @@
   },
   "template": {
     "glossary_review": {
-      "header": " 實體卡審定檔，由 tome glossary review 產生。\n 修改後再執行一次 tome glossary review <名稱>，只有 decision 填寫的列會套用：\n   lock 表示鎖定，依該列的 target 等欄位；reject 表示拒絕，不把這個詞當成專有名詞。\n 可修改 target、class、gender、pronoun、register、keep_source 與 match；id、source、count、origin、seen_in、decided_by 修改後不會套用。\n class 必須是規則包宣告的類別；gender 為 female、male 或 none；pronoun 必須在目標語言的代名詞清單中；留白表示沒有。\n 此檔案含有書籍內容，只存放在本機，請勿分享。",
+      "header": " 實體卡審定檔，由 tome glossary review 產生。\n 修改後再執行一次 tome glossary review <名稱>，只有 decision 填寫的列會套用：\n   lock 表示鎖定，依該列的 target 等欄位；reject 表示拒絕，不把這個詞當成專有名詞。\n 沒填 decision 的修改會保留在檔案中，不會套用；填了 decision 才套用。\n 可修改 target、class、gender、pronoun、register、keep_source 與 match；id、source、count、origin、seen_in、decided_by 修改後不會套用。\n class 必須是規則包宣告的類別；gender 為 female、male 或 none；pronoun 必須在目標語言的代名詞清單中；留白表示沒有。\n 此檔案含有書籍內容，只存放在本機，請勿分享。",
       "review": " 待人審：影響較大、有性別或代名詞、需保留原文、沒有提議，或翻譯時回報的新詞。影響較大的排在前面。",
       "locked": " 已鎖定：decided_by 為 human（人審）、auto（自動鎖定）或 import（匯入）。要改譯名時，修改後在 decision 填 lock。",
       "skipped": " 判定不是專有名詞：預設不必審。要改為專有名詞時，填寫 target，並在 decision 填 lock。"

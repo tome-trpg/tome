@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import type { DocumentBlock, IrDocument, SourceBlock, SourcePage } from '../../src/core/ir.ts';
+import { CORE_ROLES, type DocumentBlock, type IrDocument, type SourceBlock, type SourcePage } from '../../src/core/ir.ts';
 import {
   validateBook,
   validateIr,
@@ -351,5 +352,15 @@ describe('tome-lang/1', () => {
   it('refuses an incomplete profile', () => {
     expect(validateLanguage({ schema: 'tome-lang/1', kind: 'source', lang: 'en' }).ok).toBe(false);
     expect(validateLanguage({ schema: 'tome-lang/1', kind: 'target', lang: 'en' }).ok).toBe(false);
+  });
+});
+
+describe('CORE_ROLES', () => {
+  // 審定檔的 `match.roles` 用這份清單驗證（ADR-0119），schema 加了角色這裡也要跟上。
+  it('is the coreRole list of tome-ir-1.schema.json', () => {
+    const schema = JSON.parse(readFileSync('schemas/tome-ir-1.schema.json', 'utf8')) as {
+      $defs: { coreRole: { enum: string[] } };
+    };
+    expect([...CORE_ROLES]).toEqual(schema.$defs.coreRole.enum);
   });
 });

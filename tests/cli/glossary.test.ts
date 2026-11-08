@@ -246,7 +246,45 @@ describe('tome glossary review (ADR-0119)', () => {
     const fixed = await review(lib);
     expect(fixed.exit).toBe(0);
     expect(cards(lib.home)['Salt Marsh']).toMatchObject({ target: '鹽澤', class: 'place', status: 'locked' });
+    // 沒填 decision 的列照樣留著，人自己刪掉才會不見。
+    expect(readReview(lib.home).review[0]).toMatchObject({ id: 999, source: 'Nowhere Pier', decision: null });
+    const after = parse(readFileSync(path, 'utf8')) as Record<string, Entry[]>;
+    after['review'] = (after['review'] ?? []).filter(({ id }) => id !== 999);
+    writeFileSync(path, JSON.stringify(after));
+    await review(lib);
     expect(readReview(lib.home).review.map(({ source }) => source)).not.toContain('Nowhere Pier');
+    expect(cards(lib.home)['Nowhere Pier']).toBeUndefined();
+  });
+
+  it('keeps what a person changed in an entry without a decision, and applies none of it', async () => {
+    const lib = await book();
+    await review(lib);
+    edit(lib.home, {
+      'Grey Warden': { target: '灰衣守望者', pronoun: '他' },
+      'Salt Marsh': { decision: 'reject' },
+    });
+    const { exit } = await review(lib);
+    expect(exit).toBe(0);
+    const warden = readReview(lib.home).review.find(({ source }) => source === 'Grey Warden');
+    expect(warden).toMatchObject({ target: '灰衣守望者', pronoun: '他' });
+    expect(cards(lib.home)['Grey Warden']).toMatchObject({ target: '灰色守望者', pronoun: '她', status: 'proposed' });
+    edit(lib.home, { 'Grey Warden': { decision: 'lock' } });
+    await review(lib);
+    expect(cards(lib.home)['Grey Warden']).toMatchObject({ target: '灰衣守望者', pronoun: '他', status: 'locked' });
+  });
+
+  it('rewrites from book.db the entries nobody changed, however YAML reads their empty values back', async () => {
+    const lib = await book();
+    await review(lib);
+    const first = readFileSync(reviewPath(lib.home), 'utf8');
+    await review(lib);
+    expect(readFileSync(reviewPath(lib.home), 'utf8')).toBe(first);
+    // 同樣的內容換一種寫法：空字串、預設的比對條件寫出來、角色是空清單，都跟 book.db 的 NULL 相同。
+    edit(lib.home, { 'Salt Marsh': { gender: '', register: '  ', keep_source: false, match: { case_sensitive: true, whole_word: true, roles: [] } } });
+    withStore(lib.home, (store) => store.run("UPDATE entity SET occurrences = 9 WHERE source = 'Salt Marsh'"));
+    await review(lib);
+    const marsh = readReview(lib.home).review.find(({ source }) => source === 'Salt Marsh');
+    expect(marsh).toMatchObject({ count: 9, gender: null, register: null });
   });
 
   it('changes nothing and keeps the file when it cannot read it', async () => {
@@ -312,6 +350,18 @@ describe('tome glossary review (ADR-0119)', () => {
     const { output } = await review(lib);
     expect(output.data).toMatchObject({ auto: 0 });
     expect(cards(lib.home)['Old Ferry']).toMatchObject({ status: 'proposed', decided_by: null });
+  });
+
+  it('does not lock on its own a card a person changed without deciding yet', async () => {
+    const lib = await book(FERRY);
+    childPack(lib, 5);
+    await review(lib);
+    edit(lib.home, { 'Old Ferry': { target: '舊渡頭' } });
+    childPack(lib, 1);
+    const { output } = await review(lib);
+    expect(output.data).toMatchObject({ auto: 0 });
+    expect(cards(lib.home)['Old Ferry']).toMatchObject({ target: '老渡口', status: 'proposed' });
+    expect(readReview(lib.home).review[0]).toMatchObject({ source: 'Old Ferry', target: '舊渡頭' });
   });
 
   it('shows the counts in tome status', async () => {
