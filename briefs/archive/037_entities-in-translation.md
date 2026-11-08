@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-08
 type: feature
 wave: 37
@@ -30,7 +30,15 @@ protectedFiles:
   - schemas/**
   - stryker.config.mjs
   - systems/**
+integrity: sha256-2b2c12144e74e64b7c9085333d431bf9925037cec3e4fe6a292c7658e0095bb0
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-08.**
+> Merged in pull request [#69](https://github.com/tome-trpg/tome/pull/69).
+> Recorded at commit `0fbcfad`: 23 files changed, +1339 −43.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 037 — 實體卡進翻譯
 
