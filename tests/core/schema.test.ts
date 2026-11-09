@@ -296,6 +296,37 @@ describe('tome-book/1', () => {
   ])('refuses %s', (_name, value) => {
     expect(validateBook(value).ok).toBe(false);
   });
+
+  describe('patterns (ADR-0124)', () => {
+    const pattern = { id: 'tide-code', use: 'mask', regex: 'TC-\\d{3}' };
+
+    it('accepts masking patterns, written as in a rule pack', () => {
+      expect(validateBook({ ...book, patterns: [] }).ok).toBe(true);
+      expect(validateBook({ ...book, patterns: [pattern] }).ok).toBe(true);
+      expect(validateBook({ ...book, patterns: [{ ...pattern, id: 'page_ref', kind: 'tide_code', flags: 'ims' }] }).ok).toBe(true);
+    });
+
+    it.each([
+      ['a detect pattern', { ...pattern, use: 'detect' }],
+      ['no use', { id: 'tide-code', regex: 'x' }],
+      ['no id', { use: 'mask', regex: 'x' }],
+      ['no regex', { id: 'tide-code', use: 'mask' }],
+      ['an empty regex', { ...pattern, regex: '' }],
+      ['a bad id', { ...pattern, id: 'Tide Code' }],
+      ['an id that ends with a hyphen', { ...pattern, id: 'tide-' }],
+      ['a bad kind', { ...pattern, kind: 'Code!' }],
+      ['the g flag', { ...pattern, flags: 'g' }],
+      ['the u flag', { ...pattern, flags: 'u' }],
+      ['an unknown key', { ...pattern, endpoint: 'https://example.com' }],
+      ['a regex that is not text', { ...pattern, regex: 5 }],
+    ])('refuses %s', (_name, value) => {
+      expect(validateBook({ ...book, patterns: [value] }).ok).toBe(false);
+    });
+
+    it('refuses patterns that are not a list', () => {
+      expect(validateBook({ ...book, patterns: pattern }).ok).toBe(false);
+    });
+  });
 });
 
 describe('tome-probe/1', () => {

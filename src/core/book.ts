@@ -21,6 +21,7 @@ import {
   ROOT_PACK,
   suggestPack,
   type PackCandidate,
+  type PatternDefinition,
   type SuggestedPack,
 } from './pack.ts';
 import { openPdf } from './pdf.ts';
@@ -56,7 +57,12 @@ export interface BookConfig {
   /** 依第幾層書籤分章，沒寫是 1（ADR-0115）。 */
   readonly chapter_level?: number;
   readonly pii_exceptions?: readonly string[];
+  /** 這本書的額外遮蔽模式，併在規則包的前面（ADR-0124）。 */
+  readonly patterns?: readonly BookPattern[];
 }
+
+/** 寫法跟規則包的模式一樣，只收遮蔽（ADR-0124）。 */
+export type BookPattern = PatternDefinition & { readonly use: 'mask' };
 
 export interface Book {
   readonly slug: string;

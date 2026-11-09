@@ -792,6 +792,8 @@ source_langs: [en]
 
 **單書覆寫**寫在 `book.yaml`，調整這本書的年代、基調與額外模式，不用為了一本書另開規則包。實體類別可以設預設代名詞，例如神祇用祂，代名詞集合來自目標語言設定檔。
 
+**已實作**（ADR-0124）：只有額外的遮蔽模式，年代、基調與預設代名詞之後有需要再加。`book.yaml` 的 `patterns` 跟 `syntax_patterns.yaml` 同一種寫法，`use` 必填、只能是 `mask`。同一個 `id` 時書的蓋過規則包的，書的模式全部排在規則包的前面，重疊時書的優先；要讓規則包的某個模式在這本書不作用，就寫一個同 `id`、比對不到任何字的模式蓋過去。`tome estimate` 與 `tome translate` 組單位前先編譯、查重複的 `id`，有問題就停（`book.bad_pattern`），靜態的回溯風險只警告，執行時跟規則包的模式一樣在 worker 裡限時；`tome extract`、`tome system test`、`tome system lint` 只看規則包。估價的指紋本來就含每個單位遮蔽後的文字，模式改了、遮到的字變了才要重新確認，命中的單位要重翻。`tome estimate --budget` 這類選項寫回 `book.yaml` 時會重寫整份檔案，檔案裡的註解不會留。
+
 **安全**：規則包是不受信任的資料。
 
 * 模式在 worker thread 執行並設時限，卡住就終止並回報是哪個模式（H-16）。
@@ -1277,6 +1279,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0121](adr/0121-stat-block-fields-decisions.md) | 數值塊欄位化與合成測試規則包 | M3 |
 | [ADR-0122](adr/0122-vault-output-decisions.md) | vault 輸出 | M3 |
 | [ADR-0123](adr/0123-reports-and-checks-decisions.md) | 交付報告與報告類的檢查 | M3 |
+| [ADR-0124](adr/0124-book-patterns-decisions.md) | 單書的額外遮蔽模式 | M3 |
 
 ---
 
@@ -1421,7 +1424,7 @@ Gemini 顯式快取也算過：Flash-Lite 上 8k 前綴省下約 0.13，但排�
 | M3 譯名與輸出 | Pass 0、審定、`tome glossary import`、數值塊欄位化、vault、`tome sync`、`tome run`、交付報告、一致性報告、`tome purge`、`tome backup` | 能帶團閱讀的成品 |
 | M4 首版 | `d100-orc`、試翻校準、盲評、發佈流程、著作權律師審查（ADR-0105） | Q-1 到 Q-8 達標，發佈 0.1.0 |
 
-**目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。M2 已完成（ADR-0099、ADR-0112）：維護者用自己的金鑰翻過一篇公有領域短篇與一本規則書的第 3 到 108 頁，兩次第一輪的花費都在估價區間內，規則書因為重送比估價上限多 $0.0047；估價比例仍是未校準，只有 Sonnet 5.5、批次的兩筆數據。目前在 M3，範圍、10 個回合與開工前的決定見 ADR-0113；行內 `runs` 拆成回合 035，排在 026 之後（ADR-0115），粗體、斜體與連結翻譯時以 `<pc>` 保留（ADR-0116）。Pass 0 產出實體卡的提議與全書提要（ADR-0118），實體卡進翻譯拆成回合 037，排在審定（028）之後。審定用工作區裡的 YAML 檔，低影響的提議自動鎖定，S-16 移到 037（ADR-0119）。鎖定的實體卡、活躍實體與全書提要已進翻譯請求，改已鎖定的譯名不必重翻（ADR-0120）。整塊對上的數值塊在本機用詞條翻好、不送 LLM，只用合成的測試規則包驗證過（ADR-0121）。`tome assemble` 把譯文寫成 Obsidian 的 vault；原本的回合 030 拆成 030「vault 輸出」與 038「報告與檢查」（ADR-0122）。交付報告、`tome report`、代名詞與機翻腔的只報告檢查已實作，單書額外模式另開回合 039（ADR-0123）。M2 規則書的重送查明是 `max_tokens` 截斷，不是漏段（ADR-0114）。那本規則書其實沒有書籤，174 個章節是用標題建的；沒有書籤的書怎麼分章等引擎評估（ADR-0115）。
+**目前階段**：M0 與 M1 已完成（ADR-0084）。H-7、H-8 已用商業書量過，字元守恆的門檻定案；H-5 的閱讀順序由維護者對照本機檢視檔後通過，版面規則的比例定案（ADR-0092、ADR-0098）。M2 已完成（ADR-0099、ADR-0112）：維護者用自己的金鑰翻過一篇公有領域短篇與一本規則書的第 3 到 108 頁，兩次第一輪的花費都在估價區間內，規則書因為重送比估價上限多 $0.0047；估價比例仍是未校準，只有 Sonnet 5.5、批次的兩筆數據。目前在 M3，範圍、10 個回合與開工前的決定見 ADR-0113；行內 `runs` 拆成回合 035，排在 026 之後（ADR-0115），粗體、斜體與連結翻譯時以 `<pc>` 保留（ADR-0116）。Pass 0 產出實體卡的提議與全書提要（ADR-0118），實體卡進翻譯拆成回合 037，排在審定（028）之後。審定用工作區裡的 YAML 檔，低影響的提議自動鎖定，S-16 移到 037（ADR-0119）。鎖定的實體卡、活躍實體與全書提要已進翻譯請求，改已鎖定的譯名不必重翻（ADR-0120）。整塊對上的數值塊在本機用詞條翻好、不送 LLM，只用合成的測試規則包驗證過（ADR-0121）。`tome assemble` 把譯文寫成 Obsidian 的 vault；原本的回合 030 拆成 030「vault 輸出」與 038「報告與檢查」（ADR-0122）。交付報告、`tome report`、代名詞與機翻腔的只報告檢查已實作，單書額外模式另開回合 039（ADR-0123）。`book.yaml` 可以寫這本書的額外遮蔽模式，同一個 `id` 時書的優先（ADR-0124）。M2 規則書的重送查明是 `max_tokens` 截斷，不是漏段（ADR-0114）。那本規則書其實沒有書籤，174 個章節是用標題建的；沒有書籤的書怎麼分章等引擎評估（ADR-0115）。
 
 M3 已實作的項目：
 
@@ -1440,6 +1443,7 @@ M3 已實作的項目：
 | 審定與匯入：`tome glossary review`、`import`，遷移第 10 版 | `src/core/glossary.ts`、`src/core/entities.ts`、`src/core/csv.ts`、`src/core/store.ts`、`src/core/status.ts` | `tests/cli/glossary.test.ts`、`tests/core/csv.test.ts`、`tests/core/store.test.ts`、ADR-0119 的斷言 |
 | vault 輸出：`tome assemble`、`render` 表（遷移第 12 版） | `src/core/vault.ts`、`src/core/preview.ts`、`src/core/pdf.ts`、`src/core/store.ts` | `tests/core/vault.test.ts`、`tests/cli/assemble.test.ts`、`tests/core/store.test.ts`、ADR-0122 的斷言 |
 | 交付報告與 `tome report`、代名詞與機翻腔、`estimate` 表與批次的鍵（遷移第 13 版） | `src/core/report.ts`、`src/core/verify.ts`、`src/core/vault.ts`、`src/core/ledger.ts`、`src/core/batch.ts`、`src/core/translate.ts`、`languages/target/zh-TW.yaml`、`schemas/tome-lang-1.schema.json` | `tests/core/report.test.ts`、`tests/core/verify.test.ts`、`tests/cli/report.test.ts`、`tests/cli/entities.test.ts`、`tests/core/store.test.ts`、ADR-0123 的斷言 |
+| 單書的額外遮蔽模式（`book.yaml` 的 `patterns`） | `src/core/book-patterns.ts`、`src/core/request.ts`、`src/core/book.ts`、`schemas/tome-book-1.schema.json` | `tests/core/book-patterns.test.ts`、`tests/core/schema.test.ts`、`tests/cli/estimate.test.ts`、`tests/cli/translate.test.ts`、ADR-0124 的斷言 |
 | 數值塊欄位化、遷移第 11 版、合成測試規則包 `stat-fixture` | `src/core/fields.ts`、`src/core/units.ts`、`src/core/request.ts`、`src/core/pack-test.ts`、`src/core/pack-lint.ts`、`schemas/tome-pack-1.schema.json`、`tests/fixtures/packs/stat-fixture/` | `tests/core/fields.test.ts`、`tests/core/units.test.ts`、`tests/cli/fields.test.ts`、`tests/core/schema.test.ts`、ADR-0121 的斷言 |
 | 實體卡進翻譯、活躍實體、全書提要、S-16 | `src/core/verify.ts`、`src/core/memory.ts`、`src/core/request.ts`、`src/core/prompt.ts`、`src/core/units.ts`、`src/core/rename.ts`、`prompts/translate.md` | `tests/core/verify.test.ts`、`tests/core/memory.test.ts`、`tests/core/request.test.ts`、`tests/core/prompt.test.ts`、`tests/core/units.test.ts`、`tests/cli/entities.test.ts`、ADR-0120 的斷言 |
 

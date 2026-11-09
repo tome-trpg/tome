@@ -18,7 +18,7 @@ import {
   type FakeRequest,
   type FakeScript,
 } from '../helpers/fake-provider.ts';
-import { addSceneBreak, library, MODEL, setWorkspace, type Library } from '../helpers/library.ts';
+import { addBlock, addSceneBreak, library, MODEL, setWorkspace, type Library } from '../helpers/library.ts';
 
 // 文字都是合成 PDF 的假文字，模型的回覆都是這裡寫的。請求只到本機的假供應商，
 // 連到別的主機時對外出口會擋下來，這一輪沒有金鑰，也沒有連到本機以外的地方（ADR-0104）。
@@ -137,8 +137,30 @@ describe('tome translate --realtime (ADR-0104)', () => {
     expect(statesOf(lib.home)).toEqual(['DONE', 'DONE', 'DONE']);
     expect(rows(lib.home).every(({ translation }) => translation?.startsWith('譯：'))).toBe(true);
     expect(rows(lib.home).every(({ attempts }) => attempts === 1)).toBe(true);
-    expect(output.data).toMatchObject({ book: 'book', mode: 'realtime', requests: 1, done: 3, left: 0 });
+    expect(output.data).toMatchObject({ book: 'book', mode: 'realtime', requests: 1, done: 3, left: 0, book_patterns: 0 });
     expect(found(output, 'translate.done')?.level).toBe('info');
+    expect(codes(output)).not.toContain('book.patterns');
+  });
+
+  // 模式與那段文字都是這裡編的（ADR-0124）。
+  it('hides what a book pattern masks from the request, and puts it back in the translation', async () => {
+    const lib = await library();
+    addBlock(lib.home, 'p0009-000001', 'Open the gate with TC-104.');
+    const path = join(lib.home, 'books', 'book', 'book.yaml');
+    writeFileSync(path, `${readFileSync(path, 'utf8')}patterns:\n  - id: tide-code\n    use: mask\n    kind: code\n    regex: 'TC-\\d{3}'\n`);
+    await estimate(lib, '--realtime', '--budget', '100', '--confirm');
+    const { provider, host } = await fake(GOOD);
+    const { exit, output } = await translate(lib, host);
+    expect(exit).toBe(0);
+    expect(output.data).toMatchObject({ done: 4, book_patterns: 1 });
+    expect(found(output, 'book.patterns')?.params).toEqual({ count: '1' });
+    const user = provider.requests[0]?.user ?? '';
+    expect(user).toContain('Open the gate with <ph id="1" kind="code"/>.');
+    expect(user).not.toContain('TC-104');
+    const gate = withStore(lib.home, (store) =>
+      store.get<{ translation: string }>("SELECT translation FROM unit WHERE block_id = 'p0009-000001'"),
+    );
+    expect(gate?.translation).toBe('譯：Open the gate with TC-104.');
   });
 
   it('records what went out, what came back and what it cost', async () => {

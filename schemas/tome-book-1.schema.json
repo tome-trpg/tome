@@ -46,6 +46,29 @@
       "description": "Strings the personal data gate must let through, such as an NPC with the same name.",
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
+    },
+    "patterns": {
+      "description": "Extra masking patterns for this book alone, written as in a rule pack's syntax_patterns.yaml. A pattern with the id of a pack pattern replaces it; every book pattern goes before the pack's, so it wins a tie.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "use", "regex"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+([_-][a-z0-9]+)*$" },
+          "use": {
+            "description": "A book takes masking patterns only.",
+            "const": "mask"
+          },
+          "kind": { "type": "string", "pattern": "^[a-z0-9]+([_-][a-z0-9]+)*$" },
+          "regex": { "type": "string", "minLength": 1 },
+          "flags": {
+            "description": "Added to the g and u flags, which are always on.",
+            "type": "string",
+            "pattern": "^[ims]*$"
+          }
+        }
+      }
     }
   }
 }

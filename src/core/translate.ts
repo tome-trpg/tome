@@ -580,6 +580,7 @@ export function report(run: Run, stop: Finding | null, findings: readonly Findin
       left,
       outside,
       chapters,
+      book_patterns: run.plan.bookPatterns,
       spent_usd: spent,
     },
     findings: [
