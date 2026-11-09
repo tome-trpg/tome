@@ -36,6 +36,7 @@ import {
   type SecretStore,
 } from '../core/secrets.ts';
 import { reportBook } from '../core/report.ts';
+import { syncBook } from '../core/sync.ts';
 import { bookStatus } from '../core/status.ts';
 import { collectScans, countOutstanding, scanTerms } from '../core/scan.ts';
 import { importGlossary, reviewGlossary } from '../core/glossary.ts';
@@ -517,6 +518,17 @@ const COMMANDS: readonly Command[] = [
         texts: vaultTexts,
         force: parsed.values['force'] === true,
       });
+    },
+  },
+  {
+    path: ['sync'],
+    options: {},
+    positionals: 1,
+    // 只讀 vault，回收改過的段落存成人工譯文；不寫 vault，要再跑 tome assemble（ADR-0125）。
+    run: async ({ positionals }, io) => {
+      const slug = positionals[0];
+      if (slug === undefined) throw missing('book');
+      return syncBook(resolveHome(io.env, io.platform), slug);
     },
   },
   {

@@ -1,5 +1,5 @@
 {
-  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   將 API 金鑰存入作業系統憑證庫\n  provider list                列出 TOME 知道怎麼呼叫的模型與價格\n  provider test                確認金鑰可用，並對照模型資料，不消耗 token\n  add <pdf>                    加入書籍並執行探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <名稱>                 探測文件結構與頁面類型\n  extract <名稱>               以解析引擎解析書籍頁面\n  scan-terms <名稱>            挖出專有名詞並提議譯名，不加 --confirm 只估價\n    [--budget <美元>] [--realtime] [--confirm]\n  glossary review <名稱>       產生或讀回實體卡審定檔，鎖定或拒絕譯名\n  glossary import <名稱> <csv> 匯入自己整理的譯名並鎖定\n  estimate <名稱>              在本機估算翻譯費用，不連網\n    [--budget <美元>] [--chapters <範圍>] [--chapter-level <層>]\n    [--realtime] [--confirm]\n  translate <名稱>             以批次翻譯，加上 --realtime 則逐一送出\n    [--realtime] [--retry-failed]\n  translate <名稱> --dry-run   組出所有請求但不送出\n  batch status <名稱>          查詢這本書尚未收回的批次\n  batch collect <名稱>         收回已完成的批次，不送出新的批次\n  batch cancel <名稱>          取消這本書尚未收回的批次\n  verify <名稱>                以已儲存的回應重新驗證譯文，不消耗 token\n  preview <名稱>               在本機產生原文與譯文對照\n  assemble <名稱> [--force]    將譯文與交付報告輸出到 Obsidian vault\n  report <名稱>                顯示交付報告的各項數量，不連網\n  status <名稱>                顯示翻譯進度與花費，不連網\n  engine add <名稱或路徑>      安裝解析引擎，加上 --gpu 則安裝 CUDA 版\n  engine list                  列出已安裝的解析引擎\n  engine remove <名稱>         移除解析引擎\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加上 --public 則一併檢查公開規則包的要求\n  system test <ID 或路徑>      執行規則包的測試案例，不消耗 token\n\n選項：\n  --json     以 JSON 格式輸出\n  --help     顯示本說明\n  --version  顯示版本\n",
+  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   將 API 金鑰存入作業系統憑證庫\n  provider list                列出 TOME 知道怎麼呼叫的模型與價格\n  provider test                確認金鑰可用，並對照模型資料，不消耗 token\n  add <pdf>                    加入書籍並執行探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  probe <名稱>                 探測文件結構與頁面類型\n  extract <名稱>               以解析引擎解析書籍頁面\n  scan-terms <名稱>            挖出專有名詞並提議譯名，不加 --confirm 只估價\n    [--budget <美元>] [--realtime] [--confirm]\n  glossary review <名稱>       產生或讀回實體卡審定檔，鎖定或拒絕譯名\n  glossary import <名稱> <csv> 匯入自己整理的譯名並鎖定\n  estimate <名稱>              在本機估算翻譯費用，不連網\n    [--budget <美元>] [--chapters <範圍>] [--chapter-level <層>]\n    [--realtime] [--confirm]\n  translate <名稱>             以批次翻譯，加上 --realtime 則逐一送出\n    [--realtime] [--retry-failed]\n  translate <名稱> --dry-run   組出所有請求但不送出\n  batch status <名稱>          查詢這本書尚未收回的批次\n  batch collect <名稱>         收回已完成的批次，不送出新的批次\n  batch cancel <名稱>          取消這本書尚未收回的批次\n  verify <名稱>                以已儲存的回應重新驗證譯文，不消耗 token\n  preview <名稱>               在本機產生原文與譯文對照\n  assemble <名稱> [--force]    將譯文與交付報告輸出到 Obsidian vault\n  sync <名稱>                  讀回 vault 的修改，存成人工譯文\n  report <名稱>                顯示交付報告的各項數量，不連網\n  status <名稱>                顯示翻譯進度與花費，不連網\n  engine add <名稱或路徑>      安裝解析引擎，加上 --gpu 則安裝 CUDA 版\n  engine list                  列出已安裝的解析引擎\n  engine remove <名稱>         移除解析引擎\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加上 --public 則一併檢查公開規則包的要求\n  system test <ID 或路徑>      執行規則包的測試案例，不消耗 token\n\n選項：\n  --json     以 JSON 格式輸出\n  --help     顯示本說明\n  --version  顯示版本\n",
   "prompt": {
     "secret": "請輸入 {provider} 的 API 金鑰（輸入內容不會顯示）："
   },
@@ -69,9 +69,10 @@
           "figures": "未翻譯的圖片",
           "flags": "不可譯標記",
           "checks": "只報告的檢查",
-          "consistency": "全書一致性"
+          "consistency": "全書一致性",
+          "sync": "這次覆蓋的、tome sync 無法回收的修改"
         },
-        "coverage": "翻譯單位共 {total} 個：完成 {done} 個（其中原樣保留 {kept} 個、本機欄位化 {fielded} 個），未通過驗證 {failed} 個，遭拒答 {refused} 個，個資閘門擋下 {blocked} 個，送出未收回 {in_flight} 個，尚未完成 {left} 個。",
+        "coverage": "翻譯單位共 {total} 個：完成 {done} 個（其中原樣保留 {kept} 個、本機欄位化 {fielded} 個、人工譯文 {human} 個），未通過驗證 {failed} 個，遭拒答 {refused} 個，個資閘門擋下 {blocked} 個，送出未收回 {in_flight} 個，尚未完成 {left} 個。",
         "spent": "花費：翻譯 ${translate} 美元、實體卡 ${scan} 美元，共 ${spent} 美元。",
         "budget": "預算 ${budget} 美元。",
         "pending": "待審的實體卡 {count} 張。",
@@ -118,7 +119,27 @@
         "unused_title": "鎖定的譯名沒有用上",
         "unused": "「{source}」鎖定為「{target}」，有 {count} 處沒有用上：{places}",
         "advice": "以 tome glossary review 鎖定或確認譯名後，執行 tome verify，未使用鎖定譯名的單位會重新送出翻譯，需要費用，請先執行 tome estimate 確認。",
-        "joiner": "、"
+        "joiner": "、",
+        "sync_between": "{file}：{kind}，位於 {before} 與 {after} 之間",
+        "sync_after": "{file}：{kind}，位於 {before} 之後",
+        "sync_before": "{file}：{kind}，位於 {after} 之前",
+        "sync_file": "{file}：{kind}",
+        "sync_kinds": {
+          "merged": "合併段落",
+          "split": "拆分段落",
+          "moved": "搬移段落",
+          "added": "新增段落",
+          "deleted": "刪除段落",
+          "type": "改變段落類型",
+          "untranslated": "修改了未翻譯段落的原文",
+          "table": "改變表格結構",
+          "ambiguous": "無法判斷屬於哪個段落",
+          "in_flight": "段落已送出、尚未收回",
+          "other": "修改了 frontmatter、頁碼註解或空行",
+          "file": "修改了章節以外的檔案",
+          "unsynced": "未經 tome sync 讀回的修改"
+        },
+        "sync_advice": "上列修改已被這次輸出覆蓋。合併、拆分或略過段落請改用 overrides.yaml，修改段落的文字後再執行 tome sync。"
       }
     },
     "glossary_review": {
@@ -141,7 +162,7 @@
   },
   "finding": {
     "assemble.done": "vault 已更新：{root}。共 {files} 個檔案、{units} 個翻譯單位，其中 {untranslated} 個尚未翻譯，保留原文並以 [!untranslated] 標示。",
-    "assemble.edited": "vault 中有 {count} 個檔案在上次輸出後被修改過，為避免覆蓋修改，未輸出任何檔案。回收修改的 tome sync 尚未提供；確定要覆蓋時，請加上 --force。",
+    "assemble.edited": "vault 中有 {count} 個檔案的修改尚未回收，為避免覆蓋修改，未輸出任何檔案。請先執行 tome sync 回收修改；tome sync 無法回收的修改，確定要捨棄時，請加上 --force。",
     "assemble.structure_mismatch": "輸出的結構與文件不符：標題應有 {headings} 個、實際 {found_headings} 個，表格應有 {tables} 個、實際 {found_tables} 個。未寫入任何檔案。這是程式錯誤，請回報。",
     "batch.archived":"批次 {id} 的結果已超過供應商的保留期限，無法收回。單位已放回佇列，重新送出會再付一次費用。",
     "batch.budget_exceeded": "下一批的估價上限 ${next} 美元加上已花費的 ${spent} 美元，超過預算 ${budget} 美元，已停止並保留進度。請以 tome estimate {book} --budget <美元> --confirm 提高預算後續跑。",
@@ -262,9 +283,9 @@
     "provider.test_failed": "供應商沒有完成查詢，已停止。狀態碼：{status}，- 表示沒有收到回應。",
     "provider.tested": "{model}：金鑰可用，供應商回報的資料與 TOME 的模型資料一致。",
     "provider.thinking_mismatch": "{model}：供應商回報的思考參數與 TOME 的模型資料不符，送出時可能被拒。請更新 TOME。",
-    "report.coverage": "{book} 共 {total} 個翻譯單位：完成 {done} 個（其中原樣保留 {kept} 個、本機欄位化 {fielded} 個），未通過驗證 {failed} 個，遭拒答 {refused} 個，個資閘門擋下 {blocked} 個，送出未收回 {in_flight} 個，尚未完成 {left} 個。已花費 ${spent} 美元（翻譯 ${translate}、實體卡 ${scan}）。",
+    "report.coverage": "{book} 共 {total} 個翻譯單位：完成 {done} 個（其中原樣保留 {kept} 個、本機欄位化 {fielded} 個、人工譯文 {human} 個），未通過驗證 {failed} 個，遭拒答 {refused} 個，個資閘門擋下 {blocked} 個，送出未收回 {in_flight} 個，尚未完成 {left} 個。已花費 ${spent} 美元（翻譯 ${translate}、實體卡 ${scan}）。",
     "report.estimate": "最近一次確認的估價為 ${low}～${high} 美元，之後實際花費 ${spent} 美元，落在估價區間的 {position}%。",
-    "report.issues": "未翻譯的單位 {untranslated} 個、頁面 {pages} 頁、圖片 {figures} 張，不可譯標記 {flags} 個；只報告的檢查：疑似中國大陸用語 {term_suspect} 個、疑似機翻腔 {translationese} 個、譯文過長 {too_long} 個、多出數字 {number_extra} 個、代名詞與實體卡不符 {pronoun_mismatch} 個；一致性：同一原文多種譯名 {variants} 個、鎖定譯名未用上 {unused} 個；待審的實體卡 {pending_cards} 張。內容寫在 tome assemble 輸出的交付報告。",
+    "report.issues": "未翻譯的單位 {untranslated} 個、頁面 {pages} 頁、圖片 {figures} 張，不可譯標記 {flags} 個；只報告的檢查：疑似中國大陸用語 {term_suspect} 個、疑似機翻腔 {translationese} 個、譯文過長 {too_long} 個、多出數字 {number_extra} 個、代名詞與實體卡不符 {pronoun_mismatch} 個；一致性：同一原文多種譯名 {variants} 個、鎖定譯名未用上 {unused} 個；待審的實體卡 {pending_cards} 張；tome sync 無法回收、尚待處理的修改 {sync_unrecovered} 處。內容寫在 tome assemble 輸出的交付報告。",
     "prices.ok": "{provider} 的價目表查證日為 {verified}。",
     "prices.stale": "{provider} 的價目表已有 {days} 天未查證（查證日 {verified}），估價可能不準確。請更新 TOME。",
     "probe.assigned": "已將 {count} 頁分配給解析引擎。",
@@ -296,10 +317,16 @@
     "status.no_units":"這本書還沒有翻譯單位。請先執行 tome estimate {book}。",
     "status.not_deleted": "{count} 個批次的資料還沒從供應商端刪除，下次執行 tome translate 或 tome batch collect 時會再試。",
     "status.spent": "已花費 ${spent} 美元，預算 ${budget} 美元。",
+    "sync.done": "已讀回 {book} 的 vault：{files} 個檔案在上次輸出後被修改過，回收 {recovered} 個翻譯單位的人工譯文，{unrecovered} 處修改無法回收。請執行 tome assemble {book} 更新 vault。",
+    "sync.in_flight": "{count} 個翻譯單位的修改沒有回收，因為這些單位已送出、尚未收回。請以 tome batch collect {book} 收回後，再執行一次 tome sync {book}。",
+    "sync.nothing": "{book} 的 vault 沒有需要回收的修改。",
+    "sync.orphaned": "{count} 筆人工譯文對不到翻譯單位，因為原文已經變更，這些人工譯文不會套用。",
+    "sync.unrecovered": "{count} 處修改無法回收，例如合併、拆分、搬移、新增或刪除段落，或修改了章節檔以外的檔案。tome assemble {book} 會因此停止；結構上的修改請改用 overrides.yaml，確定要捨棄這些修改時，請加上 --force。",
     "status.units": "共 {total} 個翻譯單位，其中 {kept} 個不需翻譯、原樣保留：完成 {done} 個（含原樣保留的），送出未收回 {in_flight} 個，個資閘門擋下 {blocked} 個，未通過驗證 {failed} 個，遭拒答 {refused} 個，尚未完成 {left} 個。",
     "translate.blocked": "請求含有個資清單的項目，命中 {count} 次，沒有送出。確實是個資時，請在 overrides 用 redact 遮掉；是誤判時，請加進 book.yaml 的 pii_exceptions。處理後再執行一次，翻譯時被擋下的單位要加上 --retry-failed。",
     "translate.budget_exceeded": "下一個請求的估價上限 ${next} 美元加上已花費的 ${spent} 美元，超過預算 ${budget} 美元，已停止並保留進度。請以 tome estimate {book} --realtime --budget <美元> --confirm 提高預算後續跑。",
     "units.fielded": "另有 {count} 個數值塊在本機以詞條的譯名翻譯，不需送出。",
+    "units.human": "其中 {count} 個翻譯單位使用人工譯文。",
     "translate.done":"共 {total} 個翻譯單位，其中 {kept} 個不需翻譯、原樣保留：完成 {done} 個（含原樣保留的），個資閘門擋下 {blocked} 個，未通過驗證 {failed} 個，遭拒答 {refused} 個，尚未完成 {left} 個。已花費 ${spent} 美元。未通過驗證與遭拒答的單位可加上 --retry-failed 重試。請執行 tome preview {book}，在本機產生原文與譯文的對照檔。",
     "translate.not_confirmed": "尚未確認估價，或內容、模型、價格、範圍、預算、模式已變更。請先執行 tome estimate {book} {flags}。",
     "translate.provider_failed": "供應商沒有完成請求，已停止並保留進度。狀態碼：{status}，- 表示沒有收到回應。稍後再執行一次即可續跑。",

@@ -24,6 +24,16 @@ export interface PreviewRow {
   readonly translation: string | null;
   readonly formats: string | null;
   readonly translation_pc: string | null;
+  /** 人工譯文照使用者寫的 Markdown 放回（ADR-0125）。沒有這欄是 0。 */
+  readonly human?: number;
+}
+
+/** 單位翻好的樣子：粗體、斜體用 Markdown；人工譯文本來就是 Markdown，原樣放回（ADR-0125）。 */
+export function translatedMarkdown(row: Pick<PreviewRow, 'translation' | 'formats' | 'translation_pc' | 'human'>): string {
+  const translation = row.translation ?? '';
+  if (row.human === 1) return translation;
+  const styles = parsed<UnitFormats | null>(row.formats, null);
+  return markdownText(translation, unitRuns(translation, styles, parsed<PairedOffset[]>(row.translation_pc, [])));
 }
 
 function quoted(text: string): string {
@@ -66,16 +76,14 @@ function parsed<T>(json: string | null, fallback: T): T {
 }
 
 /** 一個單位的原文與譯文。vault 的 `review/` 也用這個格式（ADR-0122）。 */
-export function reviewParagraph({ block_id, source, state, translation, formats, translation_pc }: PreviewRow): string {
+export function reviewParagraph(row: PreviewRow): string {
+  const { block_id, source, state, translation, formats } = row;
   const mark = `<!-- ${block_id} -->`;
   // 沒處理的 `BLOCKED` 單位不放原文，否則個資會進入輸出（白皮書 §6.2）。
   if (state === 'BLOCKED') return `${mark}\n${quoted(`${UNTRANSLATED} ${state}`)}\n`;
   const styles = parsed<UnitFormats | null>(formats, null);
   const before = markdownText(source, unitRuns(source, styles, styles?.paired ?? []));
-  const after =
-    state === 'DONE' && translation !== null
-      ? markdownText(translation, unitRuns(translation, styles, parsed<PairedOffset[]>(translation_pc, [])))
-      : `${UNTRANSLATED} ${state}`;
+  const after = state === 'DONE' && translation !== null ? translatedMarkdown(row) : `${UNTRANSLATED} ${state}`;
   return `${mark}\n${before}\n\n${quoted(after)}\n`;
 }
 
@@ -98,7 +106,7 @@ function previewLocked(home: string, slug: string): PlanOutcome {
   let rows: PreviewRow[];
   try {
     rows = store.all<PreviewRow>(
-      'SELECT block_id, source, state, translation, formats, translation_pc FROM unit ORDER BY seq',
+      'SELECT block_id, source, state, translation, formats, translation_pc, human FROM unit ORDER BY seq',
     );
   } finally {
     store.close();

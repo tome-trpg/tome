@@ -164,6 +164,21 @@ describe('locked entity cards in the translation (ADR-0120)', () => {
   });
 });
 
+describe('S-16 leaves a human translation alone (ADR-0081 item 6, ADR-0125)', () => {
+  it.each([
+    ['translation', 'Grey Warden,灰袍守望者,person,female,她', { replaced: '1', reset: '0' }],
+    ['pronoun', 'Grey Warden,灰色守望者,person,female,他', { replaced: '0', reset: '1' }],
+  ])('neither replaces nor resets it when the %s changes', async (_what, row, counts) => {
+    const { lib } = await translatedBook();
+    const [one] = units(lib.home);
+    const human = '人工譯文：灰色守望者在鹽沼數潮石。';
+    withStore(lib.home, (store) => store.run('UPDATE unit SET translation = ?, human = 1 WHERE unit_id = ?', human, one?.unit_id ?? ''));
+    const { output } = await tome(lib, null, 'glossary', 'import', 'book', csv(`source,target,class,gender,pronoun\n${row}\n`));
+    expect(output.findings.find(({ code }) => code === 'glossary.renamed')?.params).toMatchObject(counts);
+    expect(units(lib.home)[0]).toEqual({ unit_id: one?.unit_id, state: 'DONE', translation: human });
+  });
+});
+
 describe('S-16: changing a locked card (ADR-0120)', () => {
   it('puts the new translation into the translated units and the memory, without sending anything', async () => {
     const { lib, provider } = await translatedBook();

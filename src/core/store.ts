@@ -247,6 +247,26 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
         ALTER TABLE batch_unit ADD COLUMN memory_key TEXT;
       `,
     },
+    {
+      // 讀回與人工譯文（ADR-0125）：人工譯文的標記（內容以 series.db 為主）；tome sync 回收不了的改動，
+      // 只記位置與類型，不存書本文字；回收不了的檔讀回時的雜湊，tome assemble 用來判斷之後有沒有再改過。
+      version: 14,
+      sql: `
+        ALTER TABLE unit ADD COLUMN human INTEGER NOT NULL DEFAULT 0;
+        CREATE TABLE sync_change (
+          id INTEGER PRIMARY KEY,
+          path TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          before_block TEXT,
+          after_block TEXT,
+          created_at TEXT NOT NULL
+        ) STRICT;
+        CREATE TABLE sync_file (
+          path TEXT PRIMARY KEY,
+          sha256 TEXT NOT NULL
+        ) STRICT;
+      `,
+    },
   ],
   series: [
     { version: 1, sql: metaTable('series') },
@@ -263,6 +283,20 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
           sdk_version TEXT NOT NULL,
           book TEXT NOT NULL,
           created_at TEXT NOT NULL
+        ) STRICT;
+      `,
+    },
+    {
+      // 人工譯文（ADR-0125）：tome sync 從 vault 讀回的譯文，優先序最高（ADR-0012）。原文的雜湊對不上就不套。
+      version: 3,
+      sql: `
+        CREATE TABLE human (
+          book TEXT NOT NULL,
+          unit_id TEXT NOT NULL,
+          source_sha256 TEXT NOT NULL,
+          text TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (book, unit_id)
         ) STRICT;
       `,
     },

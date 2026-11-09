@@ -214,6 +214,14 @@ describe('renderVault: what is not translated', () => {
     expect(render({ document, units: [unit('p1', 'Bold.', '粗體。', { formats })] }).files.get('01.md')).toContain('\n**粗體**。\n');
   });
 
+  it('writes a human translation as it was written, without the styles of the source (ADR-0125)', () => {
+    const document = documentOf([block('p1', 'paragraph', 'Bold.')]);
+    const formats = JSON.stringify({ whole: { marks: ['bold'] }, paired: [] });
+    const vault = render({ document, units: [unit('p1', 'Bold.', '只有*這裡*斜體。', { formats, human: 1 })] });
+    expect(vault.files.get('01.md')).toContain('\n只有*這裡*斜體。\n');
+    expect(vault.files.get('review/01.md')).toContain('> 只有*這裡*斜體。');
+  });
+
   it('leaves out the table of contents, the index, page furniture and the credits even when they have units', () => {
     const document = documentOf([
       block('p1', 'paragraph', 'One.'),
@@ -566,6 +574,7 @@ describe('renderVault: the delivery report (ADR-0123)', () => {
     checks: blocks.map((id) => ({ block_id: id, code: 'too_long', detail: {} })),
     variants: [],
     unused: [],
+    sync: [],
   });
 
   it('writes the report, links each item to its block by file and printed page, and marks the block', () => {

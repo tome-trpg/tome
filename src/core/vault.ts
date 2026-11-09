@@ -7,9 +7,9 @@ import { entityCards, type EntityCard } from './entities.ts';
 import { readDocument } from './extract.ts';
 import { finding } from './findings.ts';
 import type { DocumentBlock, IrDocument, Section } from './ir.ts';
-import { unitRuns, type PairedOffset, type Placeholder, type UnitFormats } from './mask.ts';
+import type { Placeholder } from './mask.ts';
 import { openPdf } from './pdf.ts';
-import { markdownText, reviewParagraph, type PreviewRow } from './preview.ts';
+import { reviewParagraph, translatedMarkdown, type PreviewRow } from './preview.ts';
 import { collectReport, fill, pageLabel, renderReport, reportedBlocks, type BookReport, type ReportTexts } from './report.ts';
 import type { PlanOutcome } from './request.ts';
 import { openBookStore, type Store } from './store.ts';
@@ -142,11 +142,9 @@ interface BlockPlan {
 
 const done = (unit: UnitRow): boolean => unit.state === 'DONE' && unit.translation !== null;
 
-/** 單位的譯文，粗體、斜體用 Markdown（ADR-0116）。 */
+/** 單位的譯文，粗體、斜體用 Markdown（ADR-0116）；人工譯文照存的樣子（ADR-0125）。 */
 function translationOf(unit: UnitRow): string {
-  const translation = unit.translation ?? '';
-  const styles = parsed<UnitFormats | null>(unit.formats, null);
-  return markdownText(translation, unitRuns(translation, styles, parsed<PairedOffset[]>(unit.translation_pc, [])));
+  return translatedMarkdown(unit);
 }
 
 /** 沒翻成的單位：原文，`BLOCKED` 不放原文（個資，白皮書 §6.2）。 */
@@ -175,8 +173,8 @@ function tableOf(block: DocumentBlock, units: readonly UnitRow[]): string {
   return rows.join('\n');
 }
 
-/** callout 的類型：規則包角色去掉命名空間、底線換連字號，例如 `stat-block`。 */
-function calloutType(role: string): string | null {
+/** callout 的類型：規則包角色去掉命名空間、底線換連字號，例如 `stat-block`。`tome sync` 反推時也用。 */
+export function calloutType(role: string): string | null {
   if (role === 'sidebar') return 'sidebar';
   const at = role.indexOf(':');
   return at < 0 ? null : role.slice(at + 1).replaceAll('_', '-');
@@ -422,7 +420,7 @@ export interface AssembleOptions {
   readonly home: string;
   readonly slug: string;
   readonly texts: VaultTexts;
-  /** 031 之前，vault 被人改過時照樣覆蓋（ADR-0122）。 */
+  /** 丟掉 `tome sync` 回收不了的修改，照樣覆蓋（ADR-0122、ADR-0125）。 */
   readonly force: boolean;
 }
 
@@ -438,6 +436,9 @@ function recordRender(store: Store, rendered: RenderedVault): void {
   store.transaction(() => {
     store.run('DELETE FROM render');
     store.run('DELETE FROM render_file');
+    // 回收不了的修改已經寫進這次的交付報告，檔案也重寫了，不再記著（ADR-0125）。
+    store.run('DELETE FROM sync_change');
+    store.run('DELETE FROM sync_file');
     for (const { block_id: id, path, markdown } of rendered.blocks) {
       store.run('INSERT INTO render (block_id, path, markdown, rendered_at) VALUES (?, ?, ?, ?)', id, path, markdown, now);
     }
@@ -472,10 +473,37 @@ async function assembleLocked({ home, slug, texts, force }: AssembleOptions): Pr
   if (placement.some(({ level }) => level === 'fail')) return { data: { book: slug, root }, findings: [...placement, ...defaulted] };
   const store = openBookStore(home, slug);
   try {
+    const folder = join(root, slug);
+    const previous = store.all<{ path: string; sha256: string }>('SELECT path, sha256 FROM render_file');
+    // 人改過、還沒回收的檔：還在、內容跟上次輸出的不同。刪掉的照樣重寫。`tome sync` 整個檔都回收了，
+    // 就更新了雜湊，這裡不再擋（ADR-0125）。
+    const edited = previous.flatMap(({ path, sha256: hash }) => {
+      const full = join(folder, path);
+      if (!existsSync(full)) return [];
+      const now = sha256(readFileSync(full, 'utf8'));
+      return now === hash ? [] : [{ path, sha256: now }];
+    });
+    if (edited.length > 0 && !force) {
+      return { data: { book: slug, root, edited: edited.length }, findings: [finding('assemble.edited', 'fail', { count: String(edited.length) }), ...placement, ...defaulted] };
+    }
     const units = store.all<UnitRow>(
-      'SELECT unit_id, block_id, source, state, translation, formats, translation_pc, placeholders FROM unit ORDER BY seq',
+      'SELECT unit_id, block_id, source, state, translation, formats, translation_pc, placeholders, human FROM unit ORDER BY seq',
     );
     const cards = entityCards(store);
+    // 回收不了的修改只留這次要覆蓋的檔：交付報告列出被覆蓋的有哪些。檔案已經改回去的筆過時了。
+    // 上次 `tome sync` 之後又改過、或沒跑過 `tome sync` 的檔，記錄不準或沒有，改記一筆「未經 tome sync 讀回的修改」（ADR-0125）。
+    const synced = new Map(store.all<{ path: string; sha256: string }>('SELECT path, sha256 FROM sync_file').map(({ path, sha256: hash }) => [path, hash]));
+    const overwritten = new Set(edited.map(({ path }) => path));
+    const unsynced = new Set(edited.flatMap(({ path, sha256: hash }) => (synced.get(path) === hash ? [] : [path])));
+    store.transaction(() => {
+      for (const { id, path } of store.all<{ id: number; path: string }>('SELECT id, path FROM sync_change')) {
+        if (!overwritten.has(path) || unsynced.has(path)) store.run('DELETE FROM sync_change WHERE id = ?', id);
+      }
+      const now = new Date().toISOString();
+      for (const path of unsynced) {
+        store.run("INSERT INTO sync_change (path, kind, before_block, after_block, created_at) VALUES (?, 'unsynced', NULL, NULL, ?)", path, now);
+      }
+    });
     const rendered = renderVault({
       slug,
       document,
@@ -490,16 +518,6 @@ async function assembleLocked({ home, slug, texts, force }: AssembleOptions): Pr
     if (expected.headings !== actual.headings || expected.tables !== actual.tables) {
       const params = { headings: String(expected.headings), found_headings: String(actual.headings), tables: String(expected.tables), found_tables: String(actual.tables) };
       return { data: { book: slug, root }, findings: [finding('assemble.structure_mismatch', 'fail', params), ...placement, ...defaulted] };
-    }
-    const folder = join(root, slug);
-    const previous = store.all<{ path: string; sha256: string }>('SELECT path, sha256 FROM render_file');
-    // 人改過的檔：還在、內容跟上次輸出的不同。刪掉的照樣重寫。
-    const edited = previous.filter(({ path, sha256: hash }) => {
-      const full = join(folder, path);
-      return existsSync(full) && sha256(readFileSync(full, 'utf8')) !== hash;
-    });
-    if (edited.length > 0 && !force) {
-      return { data: { book: slug, root, edited: edited.length }, findings: [finding('assemble.edited', 'fail', { count: String(edited.length) }), ...placement, ...defaulted] };
     }
     for (const [path, text] of rendered.files) writeAtomic(join(folder, path), text);
     // 這次沒有產生的舊檔（例如換了分章的層級）刪掉；使用者自己放的檔不在表裡，不會動到。

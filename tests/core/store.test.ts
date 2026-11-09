@@ -369,8 +369,55 @@ describe('migrations', () => {
     );
     const rows = [store.all('SELECT stage, requests, low_usd, high_usd FROM estimate'), store.all('SELECT memory_key FROM batch_unit')];
     store.close();
-    expect(pragma(path, 'user_version')).toBe(13);
+    expect(pragma(path, 'user_version')).toBe(LATEST_BOOK);
     expect(rows).toEqual([[{ stage: 'translate', requests: 2, low_usd: 0.1, high_usd: 0.3 }], [{ memory_key: null }]]);
+  });
+
+  it('marks no unit as a human translation at first, and adds the changes tome sync cannot recover with their files (ADR-0125)', () => {
+    const path = join(tempDir(), 'book.db');
+    const old = openStore(path, 'book', MIGRATIONS.book.slice(0, 13));
+    old.run(
+      `INSERT INTO unit (unit_id, block_id, role, seq, source, masked, placeholders, state)
+       VALUES ('p0000-aaaaaa', 'p0000-aaaaaa', 'paragraph', 0, 'x', 'x', '[]', 'DONE')`,
+    );
+    old.close();
+    const store = openStore(path, 'book');
+    store.run("INSERT INTO sync_change (path, kind, before_block, after_block, created_at) VALUES ('01.md', 'merged', 'a', NULL, 't')");
+    store.run("INSERT INTO sync_file (path, sha256) VALUES ('01.md', 'h')");
+    expect(() => store.run("INSERT INTO sync_file (path, sha256) VALUES ('01.md', 'h2')")).toThrow();
+    const rows = [
+      store.all('SELECT unit_id, human FROM unit'),
+      store.all('SELECT path, kind, before_block, after_block FROM sync_change'),
+      store.all('SELECT path, sha256 FROM sync_file'),
+    ];
+    store.close();
+    expect(pragma(path, 'user_version')).toBe(14);
+    expect(rows).toEqual([
+      [{ unit_id: 'p0000-aaaaaa', human: 0 }],
+      [{ path: '01.md', kind: 'merged', before_block: 'a', after_block: null }],
+      [{ path: '01.md', sha256: 'h' }],
+    ]);
+  });
+
+  it('adds the human translations to series.db, one per unit of a book (ADR-0125)', () => {
+    const path = join(tempDir(), 'series.db');
+    openStore(path, 'series', MIGRATIONS.series.slice(0, 2)).close();
+    const series = openStore(path, 'series');
+    const insert = "INSERT INTO human (book, unit_id, source_sha256, text, created_at) VALUES ('b', 'u', 'h', ?, 't')";
+    series.run(insert, '人工');
+    const repeated = (() => {
+      try {
+        series.run(insert, '又一次');
+        return false;
+      } catch {
+        return true;
+      }
+    })();
+    const rows = series.all('SELECT book, unit_id, text FROM human');
+    series.close();
+    expect(pragma(path, 'user_version')).toBe(3);
+    expect(repeated).toBe(true);
+    expect(rows).toEqual([{ book: 'b', unit_id: 'u', text: '人工' }]);
   });
 });
 
