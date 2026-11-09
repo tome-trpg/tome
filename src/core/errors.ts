@@ -1,5 +1,6 @@
 // 代碼用英文，訊息由 CLI 查資料檔（ADR-0027）。核心不放給人看的文字。
 export const ERROR_CODES = [
+  'backup.exists',
   'book.busy',
   'book.not_found',
   'book.pdf_changed',
