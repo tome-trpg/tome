@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-09
 type: feature
 wave: 42
@@ -27,7 +27,15 @@ protectedFiles:
   - schemas/**
   - stryker.config.mjs
   - systems/**
+integrity: sha256-21036a306297037bae63803e513b339bfb9ec42467390d4181db770505b9686d
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-09.**
+> Merged in pull request [#76](https://github.com/tome-trpg/tome/pull/76).
+> Recorded at commit `db5429b`: 16 files changed, +721 −29.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 032 — tome run
 
