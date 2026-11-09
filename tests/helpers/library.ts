@@ -23,13 +23,17 @@ export function setWorkspace(home: string, extra: string): void {
 
 /** 在 document 層最後加一行沒有字母的分隔線。它不需要翻譯，建立時就原樣完成（ADR-0100）。 */
 export function addSceneBreak(home: string): void {
+  addBlock(home, 'p0009-000000', '* * *');
+}
+
+/** 在 document 層最後加一段這裡編的文字，照最後一個區塊的樣子。 */
+export function addBlock(home: string, id: string, text: string): void {
   const path = join(home, 'books', 'book', 'ir', 'document.json');
   const document = JSON.parse(readFileSync(path, 'utf8')) as { blocks: Record<string, unknown>[] };
   const last = document.blocks.at(-1);
   if (last === undefined) throw new Error('the book has no blocks');
-  const text = '* * *';
   const content_hash = createHash('sha256').update(text).digest('hex');
-  document.blocks.push({ ...last, id: 'p0009-000000', content_hash, text, ...('raw' in last ? { raw: text } : {}) });
+  document.blocks.push({ ...last, id, content_hash, text, ...('raw' in last ? { raw: text } : {}) });
   writeFileSync(path, JSON.stringify(document));
 }
 

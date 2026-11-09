@@ -8,6 +8,7 @@ import {
   type Book,
   type BookConfig,
 } from './book.ts';
+import { checkBookPatterns, withBookPatterns } from './book-patterns.ts';
 import { checkBudget } from './budget.ts';
 import {
   chapterCount,
@@ -474,7 +475,10 @@ export interface BookPlan {
   /** 書籤有兩層以上時說明各層數量的發現，只有數字。 */
   readonly levelFindings: readonly Finding[];
   readonly prefix: string;
+  /** 併進書的額外模式之後的規則包（ADR-0124）。 */
   readonly pack: ResolvedPack;
+  /** `book.yaml` 的額外模式有幾個，沒寫是 0。 */
+  readonly bookPatterns: number;
   readonly terms: readonly LocalizedTerm[];
   readonly recent: ActiveEntities;
 }
@@ -503,9 +507,15 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
   const fallback = fallbackId === undefined ? null : findModel(provider.profile, fallbackId);
   const document = readDocument(home, book.slug);
   const cards = entityCards(store);
-  const { pack, terms, findings: loaded } = loadBookPack(home, book, cards);
-  if (pack === null) return { plan: null, findings: loaded };
-  const packFindings = [...loaded, ...pendingFindings(book.slug, cards)];
+  const { pack: packOnly, terms, findings: loaded } = loadBookPack(home, book, cards);
+  if (packOnly === null) return { plan: null, findings: loaded };
+  // 書的額外模式先查再併，編不過或重複就不組單位（ADR-0124）。
+  const bookPatterns = book.config.patterns ?? [];
+  const checked = [...loaded, ...checkBookPatterns(bookPatterns)];
+  if (checked.some(({ level }) => level === 'fail')) return { plan: null, findings: checked };
+  const pack = withBookPatterns(packOnly, bookPatterns);
+  const counted = bookPatterns.length === 0 ? [] : [finding('book.patterns', 'info', { count: String(bookPatterns.length) })];
+  const packFindings = [...checked, ...counted, ...pendingFindings(book.slug, cards)];
   const { source_lang: sourceLang } = book.config;
   const { units: built, findings } = await buildUnits(document, pack, sourceLang, terms);
   if (findings.some(({ level }) => level === 'fail')) return { plan: null, findings };
@@ -578,6 +588,7 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
       levelFindings: levelFindings(book.slug, document, level),
       prefix,
       pack,
+      bookPatterns: bookPatterns.length,
       terms,
       recent,
     },
@@ -620,6 +631,7 @@ function planData(plan: BookPlan): Readonly<Record<string, unknown>> {
     high_usd: plan.estimate.high_usd,
     retention_days: plan.provider.profile.retention_days,
     chapter_level: plan.level,
+    book_patterns: plan.bookPatterns,
   };
 }
 

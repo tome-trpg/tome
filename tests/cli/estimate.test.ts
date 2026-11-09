@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import type { Envelope } from '../../src/cli/output.ts';
 import { run } from '../../src/cli/run.ts';
-import { addSceneBreak, library, MODEL, setWorkspace, type Library } from '../helpers/library.ts';
+import { addBlock, addSceneBreak, library, MODEL, setWorkspace, type Library } from '../helpers/library.ts';
 
 // 文字都是合成 PDF 的假文字。這一輪不連網，所以每個流程都盯著 fetch。
 
@@ -521,5 +521,167 @@ describe('tome translate --dry-run (ADR-0103)', () => {
     expect(stdout()).toContain('找不到 anthropic 的金鑰');
     expect(await run(['translate', 'book', '--dry-run'], lib.session({ env }).io)).toBe(0);
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+// 模式與加進去的那段文字都是這裡編的（ADR-0124）。
+describe('patterns in book.yaml (ADR-0124)', () => {
+  const GATE = 'p0009-000001';
+  const CODE = "patterns:\n  - id: tide-code\n    use: mask\n    kind: code\n    regex: 'TC-\\d{3}'\n";
+
+  function bookPath(home: string): string {
+    return join(home, 'books', 'book', 'book.yaml');
+  }
+
+  function addPatterns(home: string, text: string): void {
+    writeFileSync(bookPath(home), `${readFileSync(bookPath(home), 'utf8')}${text}`);
+  }
+
+  function editBook(home: string, from: string, to: string): void {
+    writeFileSync(bookPath(home), readFileSync(bookPath(home), 'utf8').replace(from, to));
+  }
+
+  async function gateLibrary(patterns?: string): Promise<Library> {
+    const lib = await library();
+    addBlock(lib.home, GATE, 'Open the gate with TC-104 and roll 2d6.');
+    if (patterns !== undefined) addPatterns(lib.home, patterns);
+    return lib;
+  }
+
+  async function fromStore<T>(home: string, sql: string, ...params: string[]): Promise<T | undefined> {
+    const { openBookStore } = await import('../../src/core/store.ts');
+    const store = openBookStore(home, 'book');
+    try {
+      return store.get<T>(sql, ...params);
+    } finally {
+      store.close();
+    }
+  }
+
+  async function gateUnit(home: string): Promise<string | undefined> {
+    return (await fromStore<{ masked: string }>(home, 'SELECT masked FROM unit WHERE block_id = ?', GATE))?.masked;
+  }
+
+  it('masks with a book pattern, and says how many there are', async () => {
+    const lib = await gateLibrary(CODE);
+    const { exit, output, text } = await estimate(lib);
+    expect(exit).toBe(0);
+    expect(await gateUnit(lib.home)).toBe(
+      'Open the gate with <ph id="1" kind="code"/> and roll <ph id="2" kind="dice"/>.',
+    );
+    expect(output.data['book_patterns']).toBe(1);
+    expect(output.findings.find((item) => item.code === 'book.patterns')).toMatchObject({
+      level: 'info',
+      params: { count: '1' },
+    });
+    expect(text).not.toContain('TC-');
+    const { io, stdout } = lib.session();
+    await run(['estimate', 'book'], io);
+    expect(stdout()).toContain('使用 book.yaml 的 1 個額外模式。');
+  });
+
+  it('says nothing of book patterns when there are none, and counts 0', async () => {
+    const lib = await gateLibrary();
+    const { output } = await estimate(lib);
+    expect(await gateUnit(lib.home)).toBe('Open the gate with TC-104 and roll <ph id="1" kind="dice"/>.');
+    expect(output.data['book_patterns']).toBe(0);
+    expect(codes(output)).not.toContain('book.patterns');
+  });
+
+  it('says nothing for an empty list', async () => {
+    const lib = await gateLibrary('patterns: []\n');
+    const { exit, output } = await estimate(lib);
+    expect(exit).toBe(0);
+    expect(output.data['book_patterns']).toBe(0);
+    expect(codes(output)).not.toContain('book.patterns');
+  });
+
+  it('switches a pack pattern off with a book pattern of the same id', async () => {
+    const lib = await gateLibrary("patterns:\n  - id: dice\n    use: mask\n    regex: 'NO-MATCH-\\d{9}'\n");
+    await estimate(lib);
+    expect(await gateUnit(lib.home)).toBe('Open the gate with TC-104 and roll 2d6.');
+  });
+
+  it('lets a book pattern win a tie with a pack pattern', async () => {
+    const lib = await gateLibrary("patterns:\n  - id: roll\n    use: mask\n    regex: '\\dd\\d'\n");
+    await estimate(lib);
+    expect(await gateUnit(lib.home)).toBe('Open the gate with TC-104 and roll <ph id="1" kind="roll"/>.');
+  });
+
+  it('stops at a pattern that does not compile, builds no unit, and keeps the regex out', async () => {
+    const lib = await gateLibrary("patterns:\n  - id: broken\n    use: mask\n    regex: 'TC-(\\d'\n");
+    const { exit, output, text } = await estimate(lib);
+    expect(exit).toBe(1);
+    expect(output.findings.find((item) => item.code === 'book.bad_pattern')).toMatchObject({
+      level: 'fail',
+      params: { pattern: 'broken', reason: 'invalid_regex' },
+    });
+    expect(codes(output)).not.toContain('estimate.done');
+    expect(codes(output)).not.toContain('book.patterns');
+    expect(text).not.toContain('TC-');
+    expect((await fromStore<{ count: number }>(lib.home, 'SELECT COUNT(*) AS count FROM unit'))?.count).toBe(0);
+    const { io, stdout } = lib.session();
+    expect(await run(['estimate', 'book'], io)).toBe(1);
+    expect(stdout()).toContain('book.yaml 的模式 broken 無法使用（invalid_regex）');
+  });
+
+  it('stops at an id written twice', async () => {
+    const lib = await gateLibrary(`${CODE}  - id: tide-code\n    use: mask\n    regex: 'TD-\\d{3}'\n`);
+    const { exit, output } = await estimate(lib);
+    expect(exit).toBe(1);
+    expect(output.findings.find((item) => item.code === 'book.bad_pattern')?.params).toEqual({
+      pattern: 'tide-code',
+      reason: 'duplicate_id',
+    });
+  });
+
+  it('warns about a risky pattern, and still estimates', async () => {
+    const lib = await gateLibrary("patterns:\n  - id: nested\n    use: mask\n    regex: '(?:TC-\\d+)+'\n");
+    const { exit, output } = await estimate(lib);
+    expect(exit).toBe(0);
+    expect(output.findings.find((item) => item.code === 'pack.risky_regex')).toMatchObject({
+      level: 'warn',
+      params: { pattern: 'nested', risk: 'nested_quantifier' },
+    });
+    expect(codes(output)).toContain('estimate.done');
+  });
+
+  it('refuses a detect pattern, as book.yaml then does not fit tome-book/1', async () => {
+    const lib = await gateLibrary("patterns:\n  - id: marker\n    use: detect\n    regex: '^GM'\n");
+    const { exit, output } = await estimate(lib);
+    expect(exit).toBe(2);
+    expect(codes(output)).toEqual(['config.bad_schema']);
+  });
+
+  it('keeps the patterns when it writes the budget back to book.yaml', async () => {
+    const lib = await gateLibrary(CODE);
+    await estimate(lib, '--budget', '100');
+    expect(bookYaml(lib.home)['patterns']).toEqual([{ id: 'tide-code', use: 'mask', kind: 'code', regex: 'TC-\\d{3}' }]);
+  });
+
+  it('asks again when a pattern changes what it masks, and not when it masks nothing more', async () => {
+    const lib = await gateLibrary();
+    await estimate(lib, '--budget', '100', '--confirm');
+    addPatterns(lib.home, "patterns:\n  - id: unused\n    use: mask\n    regex: 'ZZ-\\d{9}'\n");
+    expect((await estimate(lib)).output.data['confirmed']).toBe(true);
+    editBook(lib.home, "'ZZ-\\d{9}'", "'TC-\\d{3}'");
+    expect((await estimate(lib)).output.data['confirmed']).toBe(false);
+  });
+
+  it('asks again when only the kind of a pattern changes', async () => {
+    const lib = await gateLibrary(CODE);
+    await estimate(lib, '--budget', '100', '--confirm');
+    editBook(lib.home, 'kind: code', 'kind: gate_code');
+    expect((await estimate(lib)).output.data['confirmed']).toBe(false);
+    expect(await gateUnit(lib.home)).toContain('kind="gate_code"');
+  });
+
+  it('counts the book patterns in a dry run too', async () => {
+    const lib = await gateLibrary(CODE);
+    const { io, stdout } = lib.session();
+    expect(await run(['translate', 'book', '--dry-run', '--json'], io)).toBe(0);
+    const output = envelope(stdout());
+    expect(output.data['book_patterns']).toBe(1);
+    expect(codes(output)).toContain('book.patterns');
   });
 });

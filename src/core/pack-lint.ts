@@ -138,7 +138,8 @@ async function slowPatterns(patterns: readonly PatternInput[]): Promise<string[]
   return slow;
 }
 
-function compiles({ regex, flags }: PatternInput): boolean {
+/** 跟執行時一樣加 `g`、`u`。`book.yaml` 的模式也用（ADR-0124）。 */
+export function compiles({ regex, flags }: Pick<PatternInput, 'regex' | 'flags'>): boolean {
   try {
     new RegExp(regex, `gu${flags ?? ''}`);
     return true;
@@ -154,7 +155,7 @@ async function lintPatterns(content: PackContent): Promise<Finding[]> {
   for (const { id, regex, flags } of content.patterns) {
     if (seen.has(id)) findings.push(finding('pack.duplicate_pattern', 'fail', { pattern: id }));
     seen.add(id);
-    if (!compiles({ id, regex, flags })) {
+    if (!compiles({ regex, flags })) {
       findings.push(finding('pack.bad_regex', 'fail', { pattern: id }));
       continue;
     }
