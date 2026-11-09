@@ -140,6 +140,8 @@ export const FINDING_CODES = [
   'report.coverage',
   'report.estimate',
   'report.issues',
+  'run.done',
+  'run.stopped',
   'scan.blocked',
   'scan.budget_exceeded',
   'scan.changed',

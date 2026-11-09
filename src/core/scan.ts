@@ -1062,7 +1062,7 @@ function startRun(options: ScanOptions, book: Book, store: Store, plan: ScanPlan
  * 不加 `--confirm` 只估價、記下這次的內容指紋；加了要跟上次顯示的估價相同才送，不同就重新估價、
  * 要再確認一次（ADR-0118 第 8 項）。預算跟翻譯共用。
  */
-async function scanLocked(options: ScanOptions): Promise<PlanOutcome> {
+export async function scanLocked(options: ScanOptions): Promise<PlanOutcome> {
   const { home, slug, mode, confirm, budget, today = new Date() } = options;
   const before = readBook(home, slug);
   const book = budget === undefined ? before : updateBook(home, before, { budget_usd: parseBudget(budget) });

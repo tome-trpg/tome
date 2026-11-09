@@ -462,7 +462,8 @@ async function pdfInfo(path: string): Promise<{ readonly title?: string; readonl
   }
 }
 
-async function assembleLocked({ home, slug, texts, force }: AssembleOptions): Promise<PlanOutcome> {
+/** 鎖住之後的本體，`tome run` 拿著鎖接著呼叫（ADR-0127）。 */
+export async function assembleLocked({ home, slug, texts, force }: AssembleOptions): Promise<PlanOutcome> {
   const book = readBook(home, slug);
   const document = readDocument(home, slug);
   const configured = readWorkspaceConfig(home)?.vault_path;
