@@ -438,6 +438,7 @@ function recordRender(store: Store, rendered: RenderedVault): void {
     store.run('DELETE FROM render_file');
     // 回收不了的修改已經寫進這次的交付報告，檔案也重寫了，不再記著（ADR-0125）。
     store.run('DELETE FROM sync_change');
+    store.run('DELETE FROM sync_file');
     for (const { block_id: id, path, markdown } of rendered.blocks) {
       store.run('INSERT INTO render (block_id, path, markdown, rendered_at) VALUES (?, ?, ?, ?)', id, path, markdown, now);
     }
@@ -476,9 +477,11 @@ async function assembleLocked({ home, slug, texts, force }: AssembleOptions): Pr
     const previous = store.all<{ path: string; sha256: string }>('SELECT path, sha256 FROM render_file');
     // 人改過、還沒回收的檔：還在、內容跟上次輸出的不同。刪掉的照樣重寫。`tome sync` 整個檔都回收了，
     // 就更新了雜湊，這裡不再擋（ADR-0125）。
-    const edited = previous.filter(({ path, sha256: hash }) => {
+    const edited = previous.flatMap(({ path, sha256: hash }) => {
       const full = join(folder, path);
-      return existsSync(full) && sha256(readFileSync(full, 'utf8')) !== hash;
+      if (!existsSync(full)) return [];
+      const now = sha256(readFileSync(full, 'utf8'));
+      return now === hash ? [] : [{ path, sha256: now }];
     });
     if (edited.length > 0 && !force) {
       return { data: { book: slug, root, edited: edited.length }, findings: [finding('assemble.edited', 'fail', { count: String(edited.length) }), ...placement, ...defaulted] };
@@ -487,11 +490,18 @@ async function assembleLocked({ home, slug, texts, force }: AssembleOptions): Pr
       'SELECT unit_id, block_id, source, state, translation, formats, translation_pc, placeholders, human FROM unit ORDER BY seq',
     );
     const cards = entityCards(store);
-    // 回收不了的修改只留這次要覆蓋的檔：交付報告列出被覆蓋的有哪些。檔案已經改回去的筆過時了（ADR-0125）。
+    // 回收不了的修改只留這次要覆蓋的檔：交付報告列出被覆蓋的有哪些。檔案已經改回去的筆過時了。
+    // 上次 `tome sync` 之後又改過、或沒跑過 `tome sync` 的檔，記錄不準或沒有，改記一筆「未經 tome sync 讀回的修改」（ADR-0125）。
+    const synced = new Map(store.all<{ path: string; sha256: string }>('SELECT path, sha256 FROM sync_file').map(({ path, sha256: hash }) => [path, hash]));
     const overwritten = new Set(edited.map(({ path }) => path));
+    const unsynced = new Set(edited.flatMap(({ path, sha256: hash }) => (synced.get(path) === hash ? [] : [path])));
     store.transaction(() => {
       for (const { id, path } of store.all<{ id: number; path: string }>('SELECT id, path FROM sync_change')) {
-        if (!overwritten.has(path)) store.run('DELETE FROM sync_change WHERE id = ?', id);
+        if (!overwritten.has(path) || unsynced.has(path)) store.run('DELETE FROM sync_change WHERE id = ?', id);
+      }
+      const now = new Date().toISOString();
+      for (const path of unsynced) {
+        store.run("INSERT INTO sync_change (path, kind, before_block, after_block, created_at) VALUES (?, 'unsynced', NULL, NULL, ?)", path, now);
       }
     });
     const rendered = renderVault({

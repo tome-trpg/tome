@@ -136,7 +136,8 @@
           "ambiguous": "無法判斷屬於哪個段落",
           "in_flight": "段落已送出、尚未收回",
           "other": "修改了 frontmatter、頁碼註解或空行",
-          "file": "修改了章節以外的檔案"
+          "file": "修改了章節以外的檔案",
+          "unsynced": "未經 tome sync 讀回的修改"
         },
         "sync_advice": "上列修改已被這次輸出覆蓋。合併、拆分或略過段落請改用 overrides.yaml，修改段落的文字後再執行 tome sync。"
       }

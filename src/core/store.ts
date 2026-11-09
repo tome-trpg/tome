@@ -249,7 +249,7 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
     },
     {
       // 讀回與人工譯文（ADR-0125）：人工譯文的標記（內容以 series.db 為主）；tome sync 回收不了的改動，
-      // 只記位置與類型，不存書本文字。
+      // 只記位置與類型，不存書本文字；回收不了的檔讀回時的雜湊，tome assemble 用來判斷之後有沒有再改過。
       version: 14,
       sql: `
         ALTER TABLE unit ADD COLUMN human INTEGER NOT NULL DEFAULT 0;
@@ -260,6 +260,10 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
           before_block TEXT,
           after_block TEXT,
           created_at TEXT NOT NULL
+        ) STRICT;
+        CREATE TABLE sync_file (
+          path TEXT PRIMARY KEY,
+          sha256 TEXT NOT NULL
         ) STRICT;
       `,
     },

@@ -27,6 +27,8 @@ export const CHANGE_KINDS = [
   'in_flight',
   'other',
   'file',
+  // `tome assemble --force` 才記：上次 `tome sync` 之後才改的檔，或沒跑過 `tome sync` 的檔。
+  'unsynced',
 ] as const;
 export type ChangeKind = (typeof CHANGE_KINDS)[number];
 
@@ -340,12 +342,28 @@ export function alignFile(blocks: readonly OldBlock[], text: string): FileAlignm
       const score = dice(grams, fresh);
       return score > 0 && score >= own;
     });
-  // 目前的檔案裡每一段屬於哪個區塊（沒變的與回收的）。
+  // 目前的檔案裡每一段屬於哪個區塊（沒變的與回收的）；舊的段哪些原封不動對上了。
   const assigned = new Map<number, number>();
-  const edits: (BlockEdit & { readonly owner: number; readonly indices: readonly number[]; readonly before: string | null; readonly after: string | null })[] = [];
+  const unchanged = new Set<number>();
+  // `replaces`：這筆換掉的舊段。
+  const edits: (BlockEdit & {
+    readonly owner: number;
+    readonly indices: readonly number[];
+    readonly replaces: readonly number[];
+    readonly before: string | null;
+    readonly after: string | null;
+  })[] = [];
   const changes: FileChange[] = [];
   const removed: { readonly keys: string; readonly change: FileChange }[] = [];
   const added: { readonly keys: string; readonly change: FileChange }[] = [];
+  // 只屬於一個區塊的差異先記著：同一個區塊可能有好幾塊（中間隔著沒變的段），全部看完才合成一筆（ADR-0125）。
+  interface Pending {
+    readonly replaced: Map<number, number>;
+    readonly inserted: number[];
+    readonly before: string | null;
+    after: string | null;
+  }
+  const pending = new Map<number, Pending>();
 
   const settle = (hunk: Hunk): void => {
     const { deleted, inserted, before, after } = hunk;
@@ -369,21 +387,11 @@ export function alignFile(blocks: readonly OldBlock[], text: string): FileAlignm
     const owners = [...new Set(deleted.map((index) => oldChunks[index]?.owner ?? -1))];
     if (owners.length === 1) {
       const owner = owners[0] as number;
-      const replaced = new Map(deleted.map((index, order) => [index, inserted[order] as number]));
-      const markdown = (partsOf[owner] ?? [])
-        .map((index) => {
-          const fresh = replaced.get(index);
-          return fresh === undefined ? (oldChunks[index]?.text ?? '') : (content[fresh]?.text ?? '');
-        })
-        .join('\n\n');
-      const fresh = gramsOf(markdown);
-      const ownGrams = oldGrams[owner];
-      if (ownGrams === undefined || (!untranslated(owner) && rivalled(owner, fresh, dice(ownGrams, fresh)))) {
-        record(inserted.every((index) => oldKeys.has(keyOf(content[index]?.text ?? ''))) ? 'moved' : 'ambiguous');
-        return;
-      }
-      for (const index of inserted) assigned.set(index, owner);
-      edits.push({ block_id: blockId(owner), markdown, owner, indices: inserted, before, after });
+      const entry: Pending = pending.get(owner) ?? { replaced: new Map(), inserted: [], before, after };
+      for (const [order, index] of deleted.entries()) entry.replaced.set(index, inserted[order] as number);
+      entry.inserted.push(...inserted);
+      entry.after = after;
+      pending.set(owner, entry);
       return;
     }
     // 跨區塊：舊的都是完整的區塊，才照各區塊的段數一對一配。
@@ -425,7 +433,7 @@ export function alignFile(blocks: readonly OldBlock[], text: string): FileAlignm
     }
     for (const { owner, indices, markdown } of groups) {
       for (const index of indices) assigned.set(index, owner);
-      edits.push({ block_id: blockId(owner), markdown, owner, indices, before, after });
+      edits.push({ block_id: blockId(owner), markdown, owner, indices, replaces: partsOf[owner] ?? [], before, after });
     }
   };
 
@@ -439,6 +447,7 @@ export function alignFile(blocks: readonly OldBlock[], text: string): FileAlignm
       const owner = oldChunks[op.a]?.owner ?? -1;
       flush(blockId(owner));
       assigned.set(op.b, owner);
+      unchanged.add(op.a);
       last = blockId(owner);
       hunk = { deleted: [], inserted: [], before: last, after: null };
     } else if (op.type === 'delete') {
@@ -449,26 +458,65 @@ export function alignFile(blocks: readonly OldBlock[], text: string): FileAlignm
   }
   flush(null);
 
-  // 沒有對上任何區塊的段像某個要回收的區塊（那個區塊可能被拆開、搬走了一部分），或沒有對上的舊區塊像要回收的
-  // 新文字（新文字可能併進了那個區塊），都不回收（ADR-0125）。不回收的區塊與它的段也算沒對上，所以做到沒有變化為止。
+  const chunkGrams = oldChunks.map(({ text: part }) => gramsOf(part));
+  // 一段一段也比：別的區塊有一段跟換掉的舊段一樣像、或更像這段新文字。區塊有好幾段時，整個區塊比會被其他段稀釋。
+  const rivalledPart = (owner: number, index: number, fresh: number): boolean => {
+    const text = gramsOf(content[fresh]?.text ?? '');
+    const own = dice(chunkGrams[index] as Grams, text);
+    return oldChunks.some((chunk, other) => {
+      if (blocks[chunk.owner]?.markdown === blocks[owner]?.markdown) return false;
+      const score = dice(chunkGrams[other] as Grams, text);
+      return score > 0 && score >= own;
+    });
+  };
+
+  // 一個區塊只回收一筆，它改過的段都在裡面；分開記的話，存人工譯文時後一筆會蓋掉前一筆（ADR-0125）。
+  // 檔案裡有別的區塊跟它一樣像或更像合起來的新文字、或其中一段新文字，就不收。
+  for (const [owner, { replaced, inserted, before, after }] of pending) {
+    const markdown = (partsOf[owner] ?? [])
+      .map((index) => {
+        const fresh = replaced.get(index);
+        return fresh === undefined ? (oldChunks[index]?.text ?? '') : (content[fresh]?.text ?? '');
+      })
+      .join('\n\n');
+    const fresh = gramsOf(markdown);
+    const ownGrams = oldGrams[owner];
+    const contested = (): boolean => rivalled(owner, fresh, dice(ownGrams as Grams, fresh)) || [...replaced].some(([index, part]) => rivalledPart(owner, index, part));
+    if (ownGrams === undefined || (!untranslated(owner) && contested())) {
+      const moved = inserted.every((index) => oldKeys.has(keyOf(content[index]?.text ?? '')));
+      changes.push({ kind: moved ? 'moved' : 'ambiguous', before, after });
+      continue;
+    }
+    for (const index of inserted) assigned.set(index, owner);
+    edits.push({ block_id: blockId(owner), markdown, owner, indices: inserted, replaces: [...replaced.keys()], before, after });
+  }
+  edits.sort((left, right) => (left.indices[0] ?? 0) - (right.indices[0] ?? 0));
+
+  // 沒有對上任何區塊的段像某個要回收的區塊（那個區塊可能被拆開、搬走了一部分），或沒有對上的舊段像要回收的
+  // 新文字（新文字可能併進了那一段），都不回收（ADR-0125）。一個區塊可以有好幾段，所以舊的文字一段一段比。
+  // 不回收的區塊與它的段也算沒對上，所以做到沒有變化為止。
+  /** 舊的第 `index` 段有八成在 `text` 裡。 */
+  const holds = (text: Grams, index: number): boolean => {
+    const part = chunkGrams[index];
+    return part !== undefined && containment(part, text) >= CONTAINED;
+  };
   for (let changed = true; changed; ) {
     changed = false;
     const loose = content.flatMap((chunk, index) => (assigned.has(index) ? [] : [gramsOf(chunk.text)]));
-    const matched = new Set(assigned.values());
-    const orphans = blocks.flatMap((_block, owner) => (matched.has(owner) ? [] : [owner]));
+    const matched = new Set([...unchanged, ...edits.flatMap(({ replaces }) => replaces)]);
+    const unmatched = oldChunks.flatMap((_chunk, index) => (matched.has(index) ? [] : [index]));
     for (const edit of [...edits]) {
       const grams = oldGrams[edit.owner];
       const fresh = gramsOf(edit.markdown);
-      // 太短的段（例如使用者加的分隔線）到處都找得到，不算拆出來的。舊的文字整段出現在沒對上的段裡，
+      // 太短的段（例如使用者加的分隔線）到處都找得到，不算拆出來的。舊的任何一段出現在沒對上的段裡，
       // 是搬到別處（可能也改了），原位置的新文字不是它的。
       const split =
         grams !== undefined &&
-        loose.some((piece) => (piece.size >= MIN_PIECE && containment(piece, grams) >= CONTAINED) || containment(grams, piece) >= CONTAINED);
+        loose.some((piece) => (piece.size >= MIN_PIECE && containment(piece, grams) >= CONTAINED) || (partsOf[edit.owner] ?? []).some((index) => holds(piece, index)));
+      // 文字一樣的區塊（包括它自己）的段不算。
       const merged =
-        orphans.some((other) => {
-          const theirs = oldGrams[other];
-          return theirs !== undefined && blocks[other]?.markdown !== blocks[edit.owner]?.markdown && containment(theirs, fresh) >= CONTAINED;
-        }) || borrowed(blocks, edit.owner, edit.markdown);
+        unmatched.some((index) => blocks[oldChunks[index]?.owner ?? -1]?.markdown !== blocks[edit.owner]?.markdown && holds(fresh, index)) ||
+        borrowed(blocks, edit.owner, edit.markdown);
       if (grams !== undefined && !split && !merged) continue;
       edits.splice(edits.indexOf(edit), 1);
       for (const index of edit.indices) assigned.delete(index);
@@ -720,6 +768,7 @@ export function syncFolder(store: Store, series: Store, slug: string, folder: st
   const changes: SyncChangeRow[] = [];
   const markdowns: BlockEdit[] = [];
   const recoveredFiles: { readonly path: string; readonly sha256: string }[] = [];
+  const unrecoveredFiles: { readonly path: string; readonly sha256: string }[] = [];
   let changed = 0;
   let busy = 0;
   for (const file of files) {
@@ -733,6 +782,7 @@ export function syncFolder(store: Store, series: Store, slug: string, folder: st
     const blocks = byPath.get(file.path);
     if (blocks === undefined) {
       changes.push({ path: file.path, kind: 'file', before: null, after: null });
+      unrecoveredFiles.push({ path: file.path, sha256: hash });
       continue;
     }
     const alignment = alignFile(blocks, raw);
@@ -755,7 +805,7 @@ export function syncFolder(store: Store, series: Store, slug: string, folder: st
       }
     }
     if (local.length === 0 && sha256(alignment.candidate) !== file.sha256) local.push({ kind: 'other', before: null, after: null });
-    if (local.length === 0) recoveredFiles.push({ path: file.path, sha256: hash });
+    (local.length === 0 ? recoveredFiles : unrecoveredFiles).push({ path: file.path, sha256: hash });
     changes.push(...local.map((change) => ({ ...change, path: file.path })));
   }
 
@@ -776,6 +826,9 @@ export function syncFolder(store: Store, series: Store, slug: string, folder: st
     // 回收的區塊下次從目前的寫法比；整個檔都回收了，`tome assemble` 就不再擋（ADR-0125）。
     for (const { block_id, markdown } of markdowns) store.run('UPDATE render SET markdown = ? WHERE block_id = ?', markdown, block_id);
     for (const { path, sha256: hash } of recoveredFiles) store.run('UPDATE render_file SET sha256 = ? WHERE path = ?', hash, path);
+    // 回收不了的檔記下讀回時的雜湊：`tome assemble --force` 時檔案不一樣了，就是之後又改過，上面的記錄不準。
+    store.run('DELETE FROM sync_file');
+    for (const { path, sha256: hash } of unrecoveredFiles) store.run('INSERT INTO sync_file (path, sha256) VALUES (?, ?)', path, hash);
   });
   const { orphaned } = applyHuman(store, series, slug);
   return {

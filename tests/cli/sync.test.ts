@@ -99,15 +99,15 @@ function humanRows(lib: Library): { unit_id: string; text: string }[] {
   }
 }
 
-/** 一本換成這裡的區塊的書，四個單位翻好、一個沒翻，輸出過一次。 */
-async function assembled(): Promise<Library> {
+/** 一本換成這裡的區塊的書，四個單位翻好、一個沒翻，輸出過一次。`translations` 換掉其中幾個譯文。 */
+async function assembled(translations: Record<string, string> = {}): Promise<Library> {
   const lib = await library();
   const path = join(lib.home, 'books', 'book', 'ir', 'document.json');
   const document = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
   writeFileSync(path, JSON.stringify({ ...document, sections: SECTIONS, blocks: BLOCKS }));
   await tome(lib, 'estimate', 'book', '--realtime');
   withStore(lib.home, (store) => {
-    for (const [id, translation] of Object.entries(TRANSLATIONS)) {
+    for (const [id, translation] of Object.entries({ ...TRANSLATIONS, ...translations })) {
       store.run("UPDATE unit SET state = 'DONE', translation = ? WHERE unit_id = ?", translation, id);
     }
     store.run("UPDATE unit SET state = 'FAILED_QA' WHERE unit_id = 'p0000-aaaaa4'");
@@ -156,6 +156,20 @@ describe('tome sync (ADR-0125)', () => {
       { kind: 'type', before_block: 'p0000-aaaaa2', after_block: 'p0000-aaaaa2' },
     ]);
     expect(unitOf(lib, 'p0000-aaaaa2')?.human).toBe(0);
+  });
+
+  it('calls a file recovered only once every edited paragraph of a translation with blank lines is in the human translation', async () => {
+    const lib = await assembled({ 'p0000-aaaaa5': '甲段落原本的譯文內容。\n\n乙段落中間沒有改動的文字。\n\n丙段落原本的譯文內容。' });
+    edit(lib, FORD, '甲段落原本', '甲段落改過');
+    edit(lib, FORD, '丙段落原本', '丙段落改過');
+    const { output } = await tome(lib, 'sync', 'book');
+    expect(output.data).toMatchObject({ files: 1, recovered: 1, unrecovered: 0 });
+    expect(humanRows(lib)).toEqual([{ unit_id: 'p0000-aaaaa5', text: '甲段落改過的譯文內容。\n\n乙段落中間沒有改動的文字。\n\n丙段落改過的譯文內容。' }]);
+    // 整個檔都回收了，下次輸出不擋，兩處修改都寫回去。
+    expect((await tome(lib, 'assemble', 'book')).exit).toBe(0);
+    const text = readFileSync(vaultPath(lib, FORD), 'utf8');
+    expect(text).toContain('甲段落改過');
+    expect(text).toContain('丙段落改過');
   });
 
   it('drops a change recorded for a file that was put back, and lists nothing in the report', async () => {
@@ -222,6 +236,36 @@ describe('tome sync (ADR-0125)', () => {
     expect(readFileSync(vaultPath(lib, FORD), 'utf8')).toContain('# 渡口 ^p0000-aaaaa1');
     expect(withStore(lib.home, (store) => store.all('SELECT * FROM sync_change'))).toEqual([]);
     expect(readFileSync(vaultPath(lib, FORD), 'utf8')).toContain('渡船。\n\n船隻');
+  });
+
+  it('lists a file edited again after tome sync, and one never read back, as changes tome sync did not read, by file name only', async () => {
+    const lib = await assembled();
+    edit(lib, FORD, '渡船。\n\n船隻', '渡船。船隻');
+    expect((await tome(lib, 'sync', 'book')).output.data).toMatchObject({ unrecovered: 1 });
+    expect(withStore(lib.home, (store) => store.all('SELECT path FROM sync_file'))).toEqual([{ path: FORD }]);
+    edit(lib, FORD, '渡口等待', '渡口等候');
+    edit(lib, MARSH, '# 沼澤', '# 大沼澤');
+    const forced = await tome(lib, 'assemble', 'book', '--force');
+    expect(forced.output.data).toMatchObject({ overwritten: 2 });
+    const report = readFileSync(vaultPath(lib, '00-交付報告.md'), 'utf8');
+    expect(report).toContain('## 這次覆蓋的、tome sync 無法回收的修改（2）');
+    expect(report).toContain(`- ${FORD}：未經 tome sync 讀回的修改`);
+    expect(report).toContain(`- ${MARSH}：未經 tome sync 讀回的修改`);
+    // 讀回之後又改過，上次記的合併不準了；報告不放書本文字。
+    expect(report).not.toContain('合併段落');
+    expect(report).not.toContain('大沼澤');
+    expect(withStore(lib.home, (store) => [store.all('SELECT * FROM sync_change'), store.all('SELECT * FROM sync_file')])).toEqual([[], []]);
+  });
+
+  it('lists a file taken back whole and then edited again as a change tome sync did not read', async () => {
+    const lib = await assembled();
+    edit(lib, FORD, '等待', '等候');
+    expect((await tome(lib, 'sync', 'book')).output.data).toMatchObject({ recovered: 1, unrecovered: 0 });
+    expect(withStore(lib.home, (store) => store.all('SELECT * FROM sync_file'))).toEqual([]);
+    edit(lib, FORD, '等候', '等著');
+    expect(codes((await tome(lib, 'assemble', 'book')).output)).toContain('assemble.edited');
+    await tome(lib, 'assemble', 'book', '--force');
+    expect(readFileSync(vaultPath(lib, '00-交付報告.md'), 'utf8')).toContain(`- ${FORD}：未經 tome sync 讀回的修改`);
   });
 
   it('records an edit of a file that is not a chapter', async () => {

@@ -288,6 +288,53 @@ describe('alignFile (ADR-0125)', () => {
     expect(result.candidate).toBe(fileOf(['# 渡口', '第一段。\n\n第二段。', '尾段。']));
   });
 
+  it('takes two edits of one block, around a paragraph left as it was, back as one edit', () => {
+    const three = olds('第一段的譯文，這裡有一些文字。', '甲段落原本的譯文內容。\n\n乙段落中間沒有改動的文字。\n\n丙段落原本的譯文內容。', '最後一段的譯文，也有一些文字。');
+    const written = fileOf(three.map(({ markdown }) => markdown));
+    const result = alignFile(three, written.replace('甲段落原本', '甲段落改過').replace('丙段落原本', '丙段落改過'));
+    expect(result.edits).toEqual([{ block_id: 'b1', markdown: '甲段落改過的譯文內容。\n\n乙段落中間沒有改動的文字。\n\n丙段落改過的譯文內容。' }]);
+    expect(result.changes).toEqual([]);
+    expect(result.candidate).toBe(written);
+  });
+
+  it('gives up every edit of a block once one part of it is borrowed from another block', () => {
+    const three = olds('鹽沼的盡頭有一座燈塔。', '甲段落原本的譯文內容。\n\n乙段落中間沒有改動的文字。\n\n丙段落原本的譯文內容。', '最後一段的譯文，也有一些文字。');
+    const written = fileOf(three.map(({ markdown }) => markdown));
+    const result = alignFile(three, written.replace('甲段落原本', '甲段落改過').replace('丙段落原本的譯文內容。', '丙段落原本的譯文內容，鹽沼的盡頭有一座。'));
+    expect(result).toMatchObject({ edits: [], changes: [{ kind: 'ambiguous', before: 'b0', after: 'b2' }] });
+  });
+
+  it('calls a block ambiguous once one of its new paragraphs is as like a paragraph of another block as its own', () => {
+    const near = olds('守望者在渡口等待傍晚的渡船。\n\n甲乙丙丁', '甲乙戊己', '鹽沼的盡頭有一座燈塔。');
+    const written = fileOf(near.map(({ markdown }) => markdown));
+    const result = alignFile(near, written.replace('等待', '等候').replace('甲乙丙丁', '甲乙庚辛'));
+    expect(result).toMatchObject({ edits: [], changes: [{ kind: 'ambiguous' }] });
+  });
+
+  it('gives the edits in the order of the file, a paired neighbor after an edit before it', () => {
+    const six = olds('# 渡口', '守望者在渡口等待傍晚的渡船。', '鹽沼的盡頭有一座燈塔。', '雨在漫長的冬夜落在沼澤上。', '蘆葦長滿了船隻停靠的岸邊。', '燈塔的光照著沼澤。');
+    const written = fileOf(six.map(({ markdown }) => markdown));
+    const result = alignFile(six, written.replace('等待', '等候').replace('漫長', '悠長').replace('停靠', '停泊'));
+    expect(result.edits.map(({ block_id }) => block_id)).toEqual(['b1', 'b3', 'b4']);
+  });
+
+  it('counts the paragraphs of paired neighbors as matched, so an edit elsewhere that shares most of their old words is taken', () => {
+    const five = olds('# 渡口', '雨在漫長的冬夜落在沼澤上。', '蘆葦長滿了船隻停靠的岸邊。', '鹽沼的盡頭有一座燈塔。', '水鳥在淺灘上覓食，風吹過低矮的灘地，遠處傳來渡船的汽笛聲。');
+    const written = fileOf(five.map(({ markdown }) => markdown));
+    const after = written
+      .replace('漫長', '悠長')
+      .replace('停靠', '停泊')
+      .replace('水鳥在淺灘上覓食，風吹過低矮的灘地，遠處', '水鳥在淺灘上覓食，雨在漫長的冬風吹過低矮的灘地，夜落在沼澤上遠處');
+    expect(alignFile(five, after).edits.map(({ block_id }) => block_id)).toEqual(['b1', 'b2', 'b4']);
+  });
+
+  it('takes an edit of one of two identical blocks while the other is deleted', () => {
+    const twins = olds('鹽沼的盡頭有一座燈塔。', '雨在漫長的冬夜落在沼澤上。', '鹽沼的盡頭有一座燈塔。', '蘆葦長滿了船隻停靠的岸邊。');
+    const result = alignFile(twins, fileOf(['鹽沼的盡頭有一座燈塔，燈塔很高。', '雨在漫長的冬夜落在沼澤上。', '蘆葦長滿了船隻停靠的岸邊。']));
+    expect(result.edits).toEqual([{ block_id: 'b0', markdown: '鹽沼的盡頭有一座燈塔，燈塔很高。' }]);
+    expect(result.changes).toEqual([{ kind: 'deleted', before: 'b1', after: 'b3' }]);
+  });
+
   it('calls a part of a block mixed with its neighbor ambiguous', () => {
     const two = olds('第一段。\n\n第二段。', '尾段。');
     expect(alignFile(two, fileOf(['第一段。', '第二段改過。', '尾段改過。'])).changes).toEqual([{ kind: 'ambiguous', before: 'b0', after: null }]);
@@ -734,6 +781,45 @@ function applyOps(texts: readonly string[], ops: readonly Op[]): Item[] {
   return items;
 }
 
+/** 把段落分成區塊：`together[i]` 是真的，第 i 段跟前一段在同一個區塊。也回傳每一段屬於哪個區塊。 */
+function grouped(texts: readonly string[], together: readonly boolean[]): { readonly blocks: OldBlock[]; readonly owner: readonly number[] } {
+  const groups: string[][] = [];
+  const owner: number[] = [];
+  for (const [index, text] of texts.entries()) {
+    const last = groups[groups.length - 1];
+    if (last === undefined || together[index] !== true) groups.push([text]);
+    else last.push(text);
+    owner.push(groups.length - 1);
+  }
+  return { blocks: olds(...groups.map((group) => group.join('\n\n'))), owner };
+}
+
+/**
+ * 區塊有好幾段時的 H-12：每個區塊最多一筆，回收的每一段都是這個區塊自己的（沒改的、改過的、或拆開後留下的一段），
+ * 或新加的字（已知的限制：同一個位置刪掉一段、又加一段別的）。新加的字只有在這個區塊的段沒有留在這筆以外的地方
+ * 時才算：留在別處是搬走了，原位置的新字不是它的（ADR-0125）。
+ */
+function ownTextOnly(texts: readonly string[], together: readonly boolean[], ops: readonly Op[]): void {
+  const unique = texts.map((text, index) => `${text} ${index}`);
+  const { blocks, owner } = grouped(unique, together);
+  const items = applyOps(unique, ops);
+  const { edits } = alignFile(blocks, fileOf(items.map(({ text }) => text)));
+  expect(new Set(edits.map(({ block_id }) => block_id)).size, 'one edit per block').toBe(edits.length);
+  const kept = new Set(items.flatMap(({ from }) => from));
+  for (const { block_id, markdown } of edits) {
+    const block = Number(block_id.slice(1));
+    const mine = unique.flatMap((text, index) => (owner[index] === block ? [{ text, index }] : []));
+    const parts = markdown.split('\n\n');
+    const inside = new Set(parts.flatMap((part) => items.find((item) => item.text === part)?.from ?? []));
+    for (const part of parts) {
+      const source = items.find((item) => item.text === part);
+      const own = mine.some(({ text }) => text === part) || (source !== undefined && source.from.length > 0 && source.from.every((index) => owner[index] === block));
+      const replaced = source !== undefined && source.from.length === 0 && mine.every(({ index }) => !kept.has(index) || inside.has(index));
+      expect(own || replaced, `${block_id} got text that is not its own`).toBe(true);
+    }
+  }
+}
+
 const paragraphs = fc.array(fc.array(fc.constantFrom(...WORDS), { minLength: 4, maxLength: 9 }).map((words) => words.join(' ')), {
   minLength: 2,
   maxLength: 12,
@@ -829,6 +915,54 @@ describe('H-12: tome sync never writes to another block (ADR-0125)', () => {
         const { edits, changes } = alignFile(olds(...unique), fileOf(after));
         expect(changes).toEqual([]);
         expect(edits).toEqual(after.flatMap((markdown, index) => (chosen[index] ? [{ block_id: `b${index}`, markdown }] : [])));
+      }),
+      { numRuns: 300 },
+    );
+  });
+
+  // 模型的譯文裡可以有空行，一個區塊就有好幾段；同一個區塊可能有好幾塊差異。
+  const joins = fc.array(fc.boolean(), { minLength: 12, maxLength: 12 });
+
+  const SEVERAL: readonly (readonly [string, readonly string[], readonly boolean[], readonly Op[]])[] = [
+    ['a note added before a block whose two paragraphs were merged', salt(2), [false, true], [{ type: 'merge', at: 0 }, { type: 'add', at: 0 }]],
+    [
+      'a paragraph moved away and edited, with a note in its place',
+      [...salt(4), 'salt salt salt night'],
+      [false, false, false, false, true],
+      [{ type: 'add', at: 0 }, { type: 'add', at: 16 }, { type: 'move', at: 19, to: 1 }, { type: 'edit', at: 1 }],
+    ],
+    [
+      'a paragraph of a block moved into the place of a paragraph deleted from another',
+      ['marsh night salt salt', ...salt(9)],
+      [false, true, false, false, false, true],
+      [{ type: 'delete', at: 14 }, { type: 'move', at: 1, to: 3 }, { type: 'add', at: 10 }],
+    ],
+  ];
+
+  it.each(SEVERAL)('never takes text that came from another block, when blocks hold several paragraphs: %s', (_name, texts, together, ops) => {
+    ownTextOnly(texts, together, ops);
+  });
+
+  it('never takes text that came from another block, when blocks hold several paragraphs', () => {
+    fc.assert(
+      fc.property(paragraphs, joins, fc.array(op, { maxLength: 6 }), (texts, together, ops) => {
+        ownTextOnly(texts, together, ops);
+      }),
+      { numRuns: 1000 },
+    );
+  });
+
+  it('takes back every edit of a block of several paragraphs, as one edit, while the edits have unchanged neighbors', () => {
+    fc.assert(
+      fc.property(paragraphs, joins, fc.array(fc.boolean(), { minLength: 12, maxLength: 12 }), (texts, together, picks) => {
+        const unique = texts.map((text, index) => `${text} ${index}`);
+        const { blocks, owner } = grouped(unique, together);
+        const chosen = unique.map((_text, index) => picks[index] === true && index % 2 === 1);
+        const after = unique.map((text, index) => (chosen[index] ? `${text} edited` : text));
+        const { edits, changes } = alignFile(blocks, fileOf(after));
+        expect(changes).toEqual([]);
+        const touched = [...new Set(owner.filter((_block, index) => chosen[index]))];
+        expect(edits).toEqual(touched.map((block) => ({ block_id: `b${block}`, markdown: after.filter((_text, index) => owner[index] === block).join('\n\n') })));
       }),
       { numRuns: 300 },
     );

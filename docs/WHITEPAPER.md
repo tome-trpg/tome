@@ -507,7 +507,7 @@ vault 可以直接修改（ADR-0012）。`tome sync` 比對上次輸出與目前
 
 **已實作**（ADR-0122）：`tome assemble <書>` 寫 `00-書目與來源.md`、一章一檔、`entities/` 與 `review/`，沒設 `vault_path` 時寫到工作區的 `vault/`，vault 在 git repo 裡就拒絕。frontmatter、邊欄與規則包區塊的 callout、`[!untranslated]`（`BLOCKED` 不放原文）、頁面邊界、頁碼參照的連結（顯示譯文裡原本的字）、區塊回溯照上表。**圖還沒抽**：只寫一行原書頁碼的 callout，不建 `assets/`。上次輸出記在 `book.db` 的 `render` 表，vault 被人改過、還沒回收就拒絕輸出；寫檔前查標題與表格的結構跟 IR 對得上。Obsidian 裡的顯示只能人看，測試只查產生的文字。
 
-**已實作**（ADR-0125）：`tome sync <書>` 只讀章節檔，跟上次輸出的區塊做序列比對（手寫的 Myers，不加標記），一個區塊對一段新文字才回收成人工譯文；併段、拆段、搬動、新增、刪除、改類型與看不準的修改都不猜，記成回收不了（`sync_change`，只有位置與類型）。沒翻成的段落拿掉 `[!untranslated]` 補上譯文也收。整個檔都回收了，`tome assemble` 就不再擋；回收不了的照樣擋，`--force` 只用來丟掉它們，那一次的交付報告列出被覆蓋的位置。判斷的門檻是提案，只在合成的修改上量過（§11 的 H-12）。
+**已實作**（ADR-0125）：`tome sync <書>` 只讀章節檔，跟上次輸出的區塊做序列比對（手寫的 Myers，不加標記），一個區塊對一段新文字才回收成人工譯文（區塊有好幾段時，同一個區塊的修改合成一筆）；併段、拆段、搬動、新增、刪除、改類型與看不準的修改都不猜，記成回收不了（`sync_change`，只有位置與類型）。沒翻成的段落拿掉 `[!untranslated]` 補上譯文也收。整個檔都回收了，`tome assemble` 就不再擋；回收不了的照樣擋，`--force` 只用來丟掉它們，那一次的交付報告列出被覆蓋的位置，沒跑過 `tome sync` 或跑過之後又改的檔只列檔名（`sync_file` 記著讀回時的雜湊）。判斷的門檻是提案，只在合成的修改上量過（§11 的 H-12）。
 
 **已實作**（ADR-0123）：`tome assemble` 每次也寫 `00-交付報告.md`，各節照 §5.6，每筆連到章節檔裡的區塊並在那裡加 `^區塊 ID`；報告指到的區塊就是連結目標。
 
@@ -622,7 +622,7 @@ flowchart LR
 * `tome sync` 回收不了的結構改動，以及內含舊譯名的人工譯文
 * 全書一致性問題：重複出現卻有多種譯法的片語。定案後用「改譯名不重翻」一次修掉
 
-**已實作**（ADR-0123）：`tome assemble` 每次寫 `00-交付報告.md`，含書本文字，只在 vault 裡；`BLOCKED` 的單位只寫狀態與位置。花費分翻譯與 Pass 0，確認估價時記下金額（`book.db` 的 `estimate` 表，遷移第 13 版），每一筆對到之後的實際花費，寫出落在估價區間的哪裡；之前確認的估價沒有紀錄。一致性算兩種：還沒鎖定卡的原文，各單位的 `<new-term>` 回報了不同的譯名；鎖定的譯名在翻好的單位裡沒用上。只報告，修法是鎖定譯名後跑 `tome verify` 重送；新鎖定的卡不走 S-16，用回報過的其他譯名替換之後另議。`tome report <書>` 只印各項的數字。`tome assemble --force` 覆蓋了 `tome sync` 回收不了的修改時，那一次的報告列出被覆蓋的位置（ADR-0125）；內含舊譯名的人工譯文在回合 040。
+**已實作**（ADR-0123）：`tome assemble` 每次寫 `00-交付報告.md`，含書本文字，只在 vault 裡；`BLOCKED` 的單位只寫狀態與位置。花費分翻譯與 Pass 0，確認估價時記下金額（`book.db` 的 `estimate` 表，遷移第 13 版），每一筆對到之後的實際花費，寫出落在估價區間的哪裡；之前確認的估價沒有紀錄。一致性算兩種：還沒鎖定卡的原文，各單位的 `<new-term>` 回報了不同的譯名；鎖定的譯名在翻好的單位裡沒用上。只報告，修法是鎖定譯名後跑 `tome verify` 重送；新鎖定的卡不走 S-16，用回報過的其他譯名替換之後另議。`tome report <書>` 只印各項的數字。`tome assemble --force` 覆蓋了 `tome sync` 回收不了的修改時，那一次的報告列出被覆蓋的位置，沒經 `tome sync` 讀回的檔列檔名（ADR-0125）；內含舊譯名的人工譯文在回合 040。
 
 **不翻的內容**
 
@@ -1446,7 +1446,7 @@ M3 已實作的項目：
 | 審定與匯入：`tome glossary review`、`import`，遷移第 10 版 | `src/core/glossary.ts`、`src/core/entities.ts`、`src/core/csv.ts`、`src/core/store.ts`、`src/core/status.ts` | `tests/cli/glossary.test.ts`、`tests/core/csv.test.ts`、`tests/core/store.test.ts`、ADR-0119 的斷言 |
 | vault 輸出：`tome assemble`、`render` 表（遷移第 12 版） | `src/core/vault.ts`、`src/core/preview.ts`、`src/core/pdf.ts`、`src/core/store.ts` | `tests/core/vault.test.ts`、`tests/cli/assemble.test.ts`、`tests/core/store.test.ts`、ADR-0122 的斷言 |
 | 交付報告與 `tome report`、代名詞與機翻腔、`estimate` 表與批次的鍵（遷移第 13 版） | `src/core/report.ts`、`src/core/verify.ts`、`src/core/vault.ts`、`src/core/ledger.ts`、`src/core/batch.ts`、`src/core/translate.ts`、`languages/target/zh-TW.yaml`、`schemas/tome-lang-1.schema.json` | `tests/core/report.test.ts`、`tests/core/verify.test.ts`、`tests/cli/report.test.ts`、`tests/cli/entities.test.ts`、`tests/core/store.test.ts`、ADR-0123 的斷言 |
-| `tome sync` 與人工譯文、`human` 表（`series.db` 遷移第 3 版）、`unit.human` 與 `sync_change`（`book.db` 遷移第 14 版） | `src/core/sync.ts`、`src/core/human.ts`、`src/core/store.ts`、`src/core/request.ts`、`src/core/verify.ts`、`src/core/rename.ts`、`src/core/vault.ts`、`src/core/preview.ts`、`src/core/report.ts`、`src/core/status.ts` | `tests/core/sync.test.ts`、`tests/cli/sync.test.ts`、`tests/cli/entities.test.ts`、`tests/core/store.test.ts`、ADR-0125 的斷言 |
+| `tome sync` 與人工譯文、`human` 表（`series.db` 遷移第 3 版）、`unit.human`、`sync_change` 與 `sync_file`（`book.db` 遷移第 14 版） | `src/core/sync.ts`、`src/core/human.ts`、`src/core/store.ts`、`src/core/request.ts`、`src/core/verify.ts`、`src/core/rename.ts`、`src/core/vault.ts`、`src/core/preview.ts`、`src/core/report.ts`、`src/core/status.ts` | `tests/core/sync.test.ts`、`tests/cli/sync.test.ts`、`tests/cli/entities.test.ts`、`tests/core/store.test.ts`、ADR-0125 的斷言 |
 | 單書的額外遮蔽模式（`book.yaml` 的 `patterns`） | `src/core/book-patterns.ts`、`src/core/request.ts`、`src/core/book.ts`、`schemas/tome-book-1.schema.json` | `tests/core/book-patterns.test.ts`、`tests/core/schema.test.ts`、`tests/cli/estimate.test.ts`、`tests/cli/translate.test.ts`、ADR-0124 的斷言 |
 | 數值塊欄位化、遷移第 11 版、合成測試規則包 `stat-fixture` | `src/core/fields.ts`、`src/core/units.ts`、`src/core/request.ts`、`src/core/pack-test.ts`、`src/core/pack-lint.ts`、`schemas/tome-pack-1.schema.json`、`tests/fixtures/packs/stat-fixture/` | `tests/core/fields.test.ts`、`tests/core/units.test.ts`、`tests/cli/fields.test.ts`、`tests/core/schema.test.ts`、ADR-0121 的斷言 |
 | 實體卡進翻譯、活躍實體、全書提要、S-16 | `src/core/verify.ts`、`src/core/memory.ts`、`src/core/request.ts`、`src/core/prompt.ts`、`src/core/units.ts`、`src/core/rename.ts`、`prompts/translate.md` | `tests/core/verify.test.ts`、`tests/core/memory.test.ts`、`tests/core/request.test.ts`、`tests/core/prompt.test.ts`、`tests/core/units.test.ts`、`tests/cli/entities.test.ts`、ADR-0120 的斷言 |
