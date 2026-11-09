@@ -28,6 +28,32 @@ describe('the message catalog', () => {
     }
   });
 
+  // 終端機裡全形字佔兩格，`--help` 的指令與選項兩段，各自把說明對齊在同一欄。
+  it('lines up the descriptions of --help, counting a wide character as two columns', () => {
+    // 東亞的寬字元（漢字、全形、韓文）的碼位範圍，寫成數字，受版控的檔才不用放這些字。
+    const WIDE: readonly (readonly [number, number])[] = [
+      [0x2e80, 0xa4cf],
+      [0xac00, 0xd7a3],
+      [0xf900, 0xfaff],
+      [0xfe30, 0xfe4f],
+      [0xff00, 0xff60],
+      [0xffe0, 0xffe6],
+    ];
+    const wide = (char: string): boolean => {
+      const code = char.codePointAt(0) ?? 0;
+      return WIDE.some(([low, high]) => code >= low && code <= high);
+    };
+    const width = (text: string): number => [...text].reduce((sum, char) => sum + (wide(char) ? 2 : 1), 0);
+    const columns = (section: string): number[] =>
+      section.split('\n').flatMap((line) => {
+        const found = /^( {2}\S.*?\S {2,})\S/u.exec(line);
+        return found === null ? [] : [width(found[1] ?? '')];
+      });
+    const [, commands = '', options = ''] = catalog.usage.split('\n\n');
+    expect(new Set(columns(commands))).toEqual(new Set([31]));
+    expect(new Set(columns(options))).toEqual(new Set([13]));
+  });
+
   // 這兩份清單寫在訊息裡，使用者才知道能填什麼。資料一改，訊息要跟著改。
   it('names every license a public pack may use', () => {
     for (const license of Object.keys(notices)) {
