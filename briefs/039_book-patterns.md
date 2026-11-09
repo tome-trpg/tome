@@ -67,8 +67,8 @@ protectedFiles:
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
 - [x] 新的測試先在舊行為上失敗過，護欄測試故意改壞程式確認會失敗
 - [x] 本機單一變異的小工具對改過的函式跑過一輪，存活的補上測試或說明是等價變異
-- [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
 - [x] 訊息、`--json` 與紀錄都不含正規表示式、書本文字與個別檔案的路徑
 
 ## Acceptance Criteria
