@@ -69,8 +69,9 @@ interface UnitRow {
 }
 
 /**
- * 把人工譯文套到單位上：`DONE`、`human = 1`，問題清掉，`attempts` 不動。狀態用 SQL 直接設，
- * 跟 `resetUnit` 一樣不經過狀態機（ADR-0125）。已經是同一份人工譯文的不動，之後的檢查結果才不會被清掉。
+ * 把人工譯文套到單位上：`DONE`、`human = 1`，`attempts` 不動。狀態用 SQL 直接設，跟 `resetUnit` 一樣
+ * 不經過狀態機（ADR-0125）。已經是同一份人工譯文的不動。問題不碰：`syncUnits` 重寫單位後套回時分不出
+ * 文字有沒有變，換掉問題交給知道這次存了哪些的 `tome sync` 與查全部的 `tome verify`（ADR-0126）。
  */
 export function applyHuman(store: Store, series: Store, book: string): HumanApplied {
   const rows = series.all<HumanRow>('SELECT unit_id, source_sha256, text FROM human WHERE book = ?', book);
@@ -95,7 +96,6 @@ export function applyHuman(store: Store, series: Store, book: string): HumanAppl
         text,
         unit_id,
       );
-      store.run('DELETE FROM issue WHERE unit_id = ?', unit_id);
       applied += 1;
     }
   });

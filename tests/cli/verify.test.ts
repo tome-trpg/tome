@@ -68,8 +68,8 @@ describe('tome verify (ADR-0102)', () => {
     const { env } = await library();
     const { exit, output } = await verify(env);
     expect(exit).toBe(0);
-    expect(output.findings.map(({ code }) => code)).toEqual(['verify.nothing']);
-    expect(output.data).toMatchObject({ book: 'book', checked: 0 });
+    expect(output.findings).toEqual([expect.objectContaining({ code: 'verify.nothing', level: 'info' })]);
+    expect(output.data).toMatchObject({ book: 'book', checked: 0, human_checked: 0, human_flagged: 0 });
   });
 
   it('passes a good response, and stores the finished translation', async () => {
@@ -79,7 +79,9 @@ describe('tome verify (ADR-0102)', () => {
     store.close();
     const { exit, output } = await verify(env);
     expect(exit).toBe(0);
-    expect(output.findings[0]).toMatchObject({ code: 'verify.done', params: { checked: '1' } });
+    // 沒有人工譯文時只有模型譯文的結果（ADR-0126）。
+    expect(output.findings).toEqual([expect.objectContaining({ code: 'verify.done', level: 'info', params: expect.objectContaining({ checked: '1' }) })]);
+    expect(output.data).toMatchObject({ human_checked: 0, human_flagged: 0 });
     const after = open();
     expect(stateOf(after, 'a')).toMatchObject({ state: 'DONE', attempts: 1 });
     expect(stateOf(after, 'a').translation).toContain('守望者');
