@@ -466,18 +466,21 @@ async function drainBatches(batchRun: BatchRun, carried: readonly Work[]): Promi
 
 /** `tome translate`（批次模式）。一本書同時只跑一個流程（ADR-0054）。 */
 export function translateInBatches(options: BatchOptions): Promise<PlanOutcome> {
+  return withBookLock(options.home, options.slug, () => translateInBatchesLocked(options));
+}
+
+/** 批次翻譯鎖住之後的本體，`tome run` 拿著鎖接著呼叫（ADR-0127）。 */
+export function translateInBatchesLocked(options: BatchOptions): Promise<PlanOutcome> {
   const setup = { mode: 'batch', confirm: true, refusePending: false } as const;
-  return withBookLock(options.home, options.slug, () =>
-    withRun(options, setup, async (run, findings) => {
-      const batchRun = { run, options };
-      recover(run);
-      const settled = await settleOutstanding(batchRun);
-      if (settled.stop !== null) return report(run, settled.stop, findings);
-      if (options.retryFailed) requeueStuck(run);
-      announce(run, options);
-      return report(run, await drainBatches(batchRun, settled.next), findings);
-    }),
-  );
+  return withRun(options, setup, async (run, findings) => {
+    const batchRun = { run, options };
+    recover(run);
+    const settled = await settleOutstanding(batchRun);
+    if (settled.stop !== null) return report(run, settled.stop, findings);
+    if (options.retryFailed) requeueStuck(run);
+    announce(run, options);
+    return report(run, await drainBatches(batchRun, settled.next), findings);
+  });
 }
 
 /**

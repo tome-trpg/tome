@@ -547,7 +547,8 @@ export function extractBook(options: ExtractOptions): Promise<ExtractResult> {
   return withBookLock(options.home, options.slug, () => extractLocked(options));
 }
 
-async function extractLocked(options: ExtractOptions): Promise<ExtractResult> {
+/** 鎖住之後的本體，`tome run` 拿著鎖接著呼叫（ADR-0127）。 */
+export async function extractLocked(options: ExtractOptions): Promise<ExtractResult> {
   const { home, slug } = options;
   const book = readBook(home, slug);
   const { probe, summary } = await probeBook(home, slug, options.onProbe);

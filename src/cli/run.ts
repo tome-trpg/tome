@@ -18,6 +18,7 @@ import type { LLMHost, OnRetry } from '../core/llm.ts';
 import { lintPack } from '../core/pack-lint.ts';
 import { testPack } from '../core/pack-test.ts';
 import { createPack, listPacks, locatePack } from '../core/pack.ts';
+import { runBook } from '../core/pipeline.ts';
 import { previewBook } from '../core/preview.ts';
 import { assembleBook } from '../core/vault.ts';
 import { detectGpu } from '../core/probe.ts';
@@ -432,6 +433,47 @@ const COMMANDS: readonly Command[] = [
         const options = { home, slug, host, retryFailed, ...progressOf(io) };
         return mode === 'realtime' ? translateBook(options) : translateInBatches(options);
       });
+    },
+  },
+  {
+    path: ['run'],
+    options: {
+      budget: { type: 'string' },
+      chapters: { type: 'string' },
+      'chapter-level': { type: 'string' },
+      realtime: { type: 'boolean' },
+    },
+    positionals: 1,
+    // 一路跑到下一個要人點頭的地方；金鑰到翻譯那一步才取（ADR-0127）。
+    run: async (parsed, io) => {
+      const slug = parsed.positionals[0];
+      if (slug === undefined) throw missing('book');
+      const write = (text: string): unknown => io.stderr.write(text);
+      const engine = new EngineProgress(io.clock ?? systemClock, write);
+      try {
+        return await runBook({
+          home: resolveHome(io.env, io.platform),
+          slug,
+          mode: requestMode(parsed.values),
+          budget: stringValue(parsed, 'budget'),
+          chapters: stringValue(parsed, 'chapters'),
+          chapterLevel: stringValue(parsed, 'chapter-level'),
+          texts: vaultTexts,
+          extract: {
+            ...hostOptions(io),
+            onProbe: probeProgress(io),
+            onEngineStart: ({ name, device, pages }) => engine.start(name, device, pages),
+            onPage: (done, total) => engine.page(done, total),
+            onEngineEnd: () => engine.end(),
+            onAssemble: () => write(progressText('assemble')),
+          },
+          translate: progressOf(io),
+          host: () => llmHost(io),
+          onStep: (step) => write(progressText(`run_${step}`)),
+        });
+      } finally {
+        engine.end();
+      }
     },
   },
   {

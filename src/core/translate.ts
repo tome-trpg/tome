@@ -680,13 +680,16 @@ export function announce(run: Run, options: TranslateOptions): void {
 
 /** `tome translate --realtime`。一本書同時只跑一個流程（ADR-0054）。 */
 export function translateBook(options: TranslateOptions): Promise<PlanOutcome> {
+  return withBookLock(options.home, options.slug, () => translateLocked(options));
+}
+
+/** 即時翻譯鎖住之後的本體，`tome run` 拿著鎖接著呼叫（ADR-0127）。 */
+export function translateLocked(options: TranslateOptions): Promise<PlanOutcome> {
   const setup = { mode: 'realtime', confirm: true, refusePending: true } as const;
-  return withBookLock(options.home, options.slug, () =>
-    withRun(options, setup, async (run, findings) => {
-      recover(run);
-      if (options.retryFailed) requeueStuck(run);
-      announce(run, options);
-      return report(run, await drain(run), findings);
-    }),
-  );
+  return withRun(options, setup, async (run, findings) => {
+    recover(run);
+    if (options.retryFailed) requeueStuck(run);
+    announce(run, options);
+    return report(run, await drain(run), findings);
+  });
 }

@@ -616,7 +616,7 @@ function cardsDigest(cards: readonly EntityCard[]): string | null {
 }
 
 /** 還有要人審的卡時提醒，只印筆數，不擋翻譯；擋下是 `tome run` 的關卡（ADR-0119 第 2 項、ADR-0120）。 */
-function pendingFindings(slug: string, cards: readonly EntityCard[]): Finding[] {
+export function pendingFindings(slug: string, cards: readonly EntityCard[]): Finding[] {
   const count = cards.filter(({ status }) => status === 'proposed' || status === 'failed').length;
   return count === 0 ? [] : [finding('glossary.pending', 'warn', { book: slug, count: String(count) })];
 }
@@ -688,7 +688,7 @@ function parseLevel(document: IrDocument, value: string): number {
  * 這次指定的預算、層級與範圍，先驗證，都對了才寫進 `book.yaml`。換了層級，已存的範圍會指到別的章，
  * 所以要一起給 `--chapters`（ADR-0115）。
  */
-function chosenSettings(home: string, book: Book, options: EstimateOptions): Partial<BookConfig> {
+function chosenSettings(home: string, book: Book, options: BookSettings): Partial<BookConfig> {
   const { budget, chapters, chapterLevel } = options;
   const patch: { budget_usd?: number; chapters?: string; chapter_level?: number } = {};
   if (budget !== undefined) patch.budget_usd = parseBudget(budget);
@@ -745,7 +745,8 @@ function confirmation(
   return { confirmed, findings: [shown, ...reminder] };
 }
 
-async function estimateLocked(options: EstimateOptions): Promise<PlanOutcome> {
+/** 鎖住之後的本體，`tome run` 拿著鎖接著呼叫（ADR-0127）。 */
+export async function estimateLocked(options: EstimateOptions): Promise<PlanOutcome> {
   const { home, slug, confirm, mode, today = new Date() } = options;
   const before = readBook(home, slug);
   const book = updateIfChosen(home, before, chosenSettings(home, before, options));
@@ -774,6 +775,18 @@ async function estimateLocked(options: EstimateOptions): Promise<PlanOutcome> {
 
 function updateIfChosen(home: string, book: Book, patch: Partial<BookConfig>): Book {
   return Object.keys(patch).length === 0 ? book : updateBook(home, book, patch);
+}
+
+/** `--budget`、`--chapters`、`--chapter-level`，使用者打的字。 */
+export type BookSettings = Pick<EstimateOptions, 'budget' | 'chapters' | 'chapterLevel'>;
+
+/**
+ * 驗證後寫進 `book.yaml`，跟 `tome estimate` 一樣。`tome run` 在解析之後就寫，停在 Pass 0 或審定時
+ * 也記得，之後的 `tome run` 沿用（白皮書 §6.1、ADR-0127）。
+ */
+export function saveSettings(home: string, slug: string, settings: BookSettings): void {
+  const book = readBook(home, slug);
+  updateIfChosen(home, book, chosenSettings(home, book, settings));
 }
 
 /** `tome estimate`。在本機算，不連網（ADR-0035）。 */
