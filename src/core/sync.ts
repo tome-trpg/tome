@@ -8,6 +8,7 @@ import type { Placeholder } from './mask.ts';
 import type { PlanOutcome } from './request.ts';
 import { openBookStore, type Store } from './store.ts';
 import { calloutType } from './vault.ts';
+import { bookVerifyContext, checkHumans } from './verify.ts';
 import { pathFindings, readWorkspaceConfig } from './workspace.ts';
 
 // tome sync（ADR-0012、ADR-0125）。讀回 vault 的章節檔，跟上次輸出的區塊做序列比對：一個區塊對一段新文字
@@ -753,7 +754,7 @@ function sha256(text: string): string {
  * 讀回一本書在 `folder` 裡的章節檔，存人工譯文、記回收不了的改動。不拿鎖、不查 vault 的位置，
  * 呼叫端負責（`tome sync` 與量測都用）。
  */
-export function syncFolder(store: Store, series: Store, slug: string, folder: string): SyncSummary {
+export function syncFolder(store: Store, series: Store, slug: string, folder: string): SyncSummary & { readonly saved: readonly string[] } {
   const files = store.all<{ path: string; sha256: string }>('SELECT path, sha256 FROM render_file');
   const rendered = store.all<RenderRow>('SELECT block_id, path, markdown FROM render ORDER BY rowid');
   const units = store.all<SyncUnit & { readonly block_id: string }>(
@@ -837,10 +838,11 @@ export function syncFolder(store: Store, series: Store, slug: string, folder: st
     unrecovered: changes.filter(({ kind }) => kind !== 'in_flight').length,
     in_flight: busy,
     orphaned,
+    saved: human.map(({ unit_id }) => unit_id),
   };
 }
 
-function syncLocked(home: string, slug: string): PlanOutcome {
+async function syncLocked(home: string, slug: string): Promise<PlanOutcome> {
   readBook(home, slug);
   const configured = readWorkspaceConfig(home)?.vault_path;
   const root = configured ?? join(home, 'vault');
@@ -848,8 +850,12 @@ function syncLocked(home: string, slug: string): PlanOutcome {
   if (placement.some(({ level }) => level === 'fail')) return { data: { book: slug, root }, findings: placement };
   const store = openBookStore(home, slug);
   try {
-    const summary = withSeries(home, slug, (series) => syncFolder(store, series, slug, join(root, slug)));
-    const data = { book: slug, root, ...summary };
+    const { saved, ...summary } = withSeries(home, slug, (series) => syncFolder(store, series, slug, join(root, slug)));
+    // 這次存的人工譯文跑零 token 檢查，只報告（ADR-0126）。片語表約 6 MB，有存才載入；規則包讀不全時
+    // 照樣存，不查，原本的問題清掉，規則包的發現照 `tome verify` 的做法報出來。
+    const { context, findings: pack } = saved.length === 0 ? { context: null, findings: [] } : await bookVerifyContext({ home, slug, store });
+    const human = checkHumans(store, context, new Set(saved));
+    const data = { book: slug, root, ...summary, human_checked: human.checked, human_flagged: human.flagged };
     const count = (value: number): string => String(value);
     const findings: Finding[] =
       summary.files === 0 && summary.orphaned === 0
@@ -864,8 +870,9 @@ function syncLocked(home: string, slug: string): PlanOutcome {
             ...(summary.unrecovered === 0 ? [] : [finding('sync.unrecovered', 'warn', { book: slug, count: count(summary.unrecovered) })]),
             ...(summary.in_flight === 0 ? [] : [finding('sync.in_flight', 'warn', { book: slug, count: count(summary.in_flight) })]),
             ...(summary.orphaned === 0 ? [] : [finding('sync.orphaned', 'warn', { count: count(summary.orphaned) })]),
+            ...(human.flagged === 0 ? [] : [finding('human.flagged', 'warn', { checked: count(human.checked), flagged: count(human.flagged) })]),
           ];
-    return { data, findings: [...findings, ...placement] };
+    return { data, findings: [...findings, ...(context === null ? pack : []), ...placement] };
   } finally {
     store.close();
   }

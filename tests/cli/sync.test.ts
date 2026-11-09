@@ -306,6 +306,66 @@ describe('tome sync (ADR-0125)', () => {
   });
 });
 
+describe('checks of human translations (ADR-0126)', () => {
+  // 簡體字用碼位寫，受版控的文字檔才不用開例外（ADR-0086）。
+  const SOFT = String.fromCodePoint(0x8f6f);
+  const issuesOf = (lib: Library, id: string): { code: string; level: string }[] =>
+    withStore(lib.home, (store) => store.all('SELECT code, level FROM issue WHERE unit_id = ? ORDER BY id', id));
+
+  it('checks what tome sync takes back, keeps it as written, and only reports, in the delivery report too', async () => {
+    const lib = await assembled();
+    edit(lib, FORD, '守望者在渡口等待傍晚的渡船。', `守望者在渡口等待傍晚的渡船${SOFT}。`);
+    const { exit, output, text } = await tome(lib, 'sync', 'book');
+    expect(exit).toBe(0);
+    expect(output.data).toMatchObject({ recovered: 1, human_checked: 1, human_flagged: 1 });
+    expect(found(output, 'human.flagged')).toMatchObject({ level: 'warn', params: { checked: '1', flagged: '1' } });
+    expect(text).not.toContain(SOFT);
+    expect(unitOf(lib, 'p0000-aaaaa2')).toMatchObject({ state: 'DONE', human: 1, translation: `守望者在渡口等待傍晚的渡船${SOFT}。` });
+    expect(issuesOf(lib, 'p0000-aaaaa2')).toEqual([{ code: 'script_mixed', level: 'report' }]);
+    expect((await tome(lib, 'report', 'book')).output.data['counts']).toMatchObject({ human_checks: 1 });
+    expect((await tome(lib, 'assemble', 'book')).exit).toBe(0);
+    const report = readFileSync(vaultPath(lib, '00-交付報告.md'), 'utf8');
+    expect(report).toContain('## 人工譯文的檢查（1）');
+    expect(report).toContain(`混入簡體字 ${SOFT}`);
+  });
+
+  it('lets tome verify check every human translation, and keeps its exit code', async () => {
+    const lib = await assembled();
+    edit(lib, FORD, '守望者在渡口等待傍晚的渡船。', `守望者在渡口等待傍晚的渡船${SOFT}。`);
+    await tome(lib, 'sync', 'book');
+    withStore(lib.home, (store) => store.run('DELETE FROM issue'));
+    const flagged = await tome(lib, 'verify', 'book');
+    expect(flagged.exit).toBe(0);
+    expect(flagged.output.data).toMatchObject({ checked: 0, human_checked: 1, human_flagged: 1 });
+    expect(flagged.output.findings).toEqual([expect.objectContaining({ code: 'human.flagged', level: 'warn', params: { checked: '1', flagged: '1' } })]);
+    expect(issuesOf(lib, 'p0000-aaaaa2')).toEqual([{ code: 'script_mixed', level: 'report' }]);
+    edit(lib, FORD, `守望者在渡口等待傍晚的渡船${SOFT}。`, '守望者在渡口等候傍晚的渡船。');
+    expect((await tome(lib, 'sync', 'book')).output.data).toMatchObject({ human_checked: 1, human_flagged: 0 });
+    expect(issuesOf(lib, 'p0000-aaaaa2')).toEqual([]);
+    const clean = await tome(lib, 'verify', 'book');
+    expect(clean.output.findings).toEqual([expect.objectContaining({ code: 'human.checked', level: 'info', params: { checked: '1', flagged: '0' } })]);
+  });
+
+  it('still takes a translation back when the rule pack cannot be read, clears what was found before, and says why', async () => {
+    const lib = await assembled();
+    const dir = join(lib.home, 'systems', 'generic');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'pack.yaml'), 'schema: [');
+    // 沒有要存的人工譯文時不讀規則包。
+    expect(await tome(lib, 'sync', 'book')).toMatchObject({ exit: 0 });
+    withStore(lib.home, (store) =>
+      store.run("INSERT INTO issue (unit_id, code, level, created_at) VALUES ('p0000-aaaaa2', 'term_suspect', 'report', 't')"),
+    );
+    edit(lib, FORD, '等待', '等候');
+    const { exit, output } = await tome(lib, 'sync', 'book');
+    expect(exit).toBe(1);
+    expect(codes(output)).toContain('pack.invalid_yaml');
+    expect(output.data).toMatchObject({ recovered: 1, human_checked: 0, human_flagged: 0 });
+    expect(unitOf(lib, 'p0000-aaaaa2')).toMatchObject({ human: 1, translation: '守望者在渡口等候傍晚的渡船。' });
+    expect(issuesOf(lib, 'p0000-aaaaa2')).toEqual([]);
+  });
+});
+
 describe('a human translation stays (ADR-0125)', () => {
   async function synced(): Promise<Library> {
     const lib = await assembled();

@@ -189,8 +189,10 @@ describe('collectReport (ADR-0123)', () => {
       too_long: 0,
       number_extra: 0,
       pronoun_mismatch: 0,
+      human_checks: 0,
       variants: 1,
       unused: 1,
+      human_old_names: 0,
       pending_cards: 1,
       sync_unrecovered: 0,
     });
@@ -233,6 +235,99 @@ describe('collectReport: the edges (ADR-0123)', () => {
               ('p1', 'untranslatable', 'report', 'not json', 't')`,
     );
     expect(collectReport(db, DOCUMENT, [], null).flags.map(({ detail }) => detail)).toEqual([{ text: 'z' }, {}, {}]);
+  });
+
+  it('lists the checks of human translations apart from those of the model, with the codes that are resent otherwise (ADR-0126)', () => {
+    const db = store();
+    addUnit(db, 'p1', 0, 'The Warden waits.', 'DONE', '看守人在等。');
+    addUnit(db, 'p2', 1, 'The Warden left.', 'DONE', '守衛走了。');
+    addUnit(db, 'p3', 2, 'Rain falls.', 'FAILED_QA', null);
+    db.run("UPDATE unit SET human = 1 WHERE unit_id = 'p2'");
+    addIssue(db, 'p1', 'term_suspect', 'report', { term: '軟件', prefer: '軟體' });
+    addIssue(db, 'p2', 'term_missing', 'report', { term: 'Warden', target: '看守人' });
+    addIssue(db, 'p2', 'term_suspect', 'report', { term: '視頻', prefer: '影片' });
+    for (const code of ['placeholder_mismatch', 'number_missing', 'script_mixed', 'too_short']) addIssue(db, 'p2', code, 'report');
+    addIssue(db, 'p2', 'new_term', 'report', { source: 'Salt Marsh', target: '鹽沼' });
+    addIssue(db, 'p2', 'untranslatable', 'report', { reason: 'pun', text: 'x' });
+    addIssue(db, 'p3', 'too_short', 'resend');
+    const report = collectReport(db, DOCUMENT, [], null);
+    expect(report.checks).toEqual([{ block_id: 'p1', code: 'term_suspect', detail: { term: '軟件', prefer: '軟體' } }]);
+    expect(report.human).toEqual([
+      { block_id: 'p2', code: 'term_missing', detail: { term: 'Warden', target: '看守人' } },
+      { block_id: 'p2', code: 'term_suspect', detail: { term: '視頻', prefer: '影片' } },
+      { block_id: 'p2', code: 'placeholder_mismatch', detail: {} },
+      { block_id: 'p2', code: 'number_missing', detail: {} },
+      { block_id: 'p2', code: 'script_mixed', detail: {} },
+      { block_id: 'p2', code: 'too_short', detail: {} },
+    ]);
+    expect(report.flags).toEqual([]);
+    expect(reportCounts(report)).toMatchObject({ term_suspect: 1, human_checks: 6 });
+    expect(reportedBlocks(report)).toEqual(new Set(['p3', 'f1', 'p1', 'p2']));
+  });
+
+  it('lists human translations that still use the name a locked card had before, once, and not as an unused name (ADR-0126)', () => {
+    const db = store();
+    const entity = (id: number, source: string, target: string, previous: string | null, status = 'locked'): void => {
+      db.run(
+        `INSERT INTO entity (id, source, target, status, origin, sources, occurrences, previous_target, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'human', '[]', 1, ?, 't', 't')`,
+        id,
+        source,
+        target,
+        status,
+        previous,
+      );
+    };
+    entity(1, 'Salt Marsh', '鹽沼地', '鹽沼');
+    entity(2, 'Warden', '看守人', null);
+    entity(3, 'Ferry', '渡船', '渡船');
+    entity(4, 'Tide', '潮水', '');
+    entity(5, 'Tide Pool', '大潮', '潮');
+    entity(6, 'Marsh Hound', '鹽沼', null);
+    entity(7, 'Salt Marsh Town', '鹽沼鎮', null, 'proposed');
+    addUnit(db, 'p1', 0, 'The Salt Marsh floods.', 'DONE', '鹽沼淹水了。');
+    addUnit(db, 'p2', 1, 'The Salt Marsh dries.', 'DONE', '鹽沼地乾了。');
+    addUnit(db, 'p3', 2, 'The Salt Marsh again.', 'DONE', '又是鹽沼。');
+    addUnit(db, 'p4', 3, 'Salt Marsh and the Salt Marsh.', 'DONE', '鹽沼地與鹽沼。');
+    addUnit(db, 'p5', 4, 'The Warden and the Ferry and the Tide.', 'DONE', '守衛、渡口與潮。');
+    addUnit(db, 'p6', 5, 'The Salt Marsh waits.', 'FAILED_QA', '鹽沼在等。');
+    addUnit(db, 'p7', 6, 'The Tide Pool rises.', 'DONE', '大潮來了。');
+    addUnit(db, 'p8', 7, 'Rain falls.', 'DONE', '雨落在鹽沼。');
+    addUnit(db, 'p9', 8, 'The Ferry waits.', 'DONE', '渡船在等。');
+    addUnit(db, 'p10', 9, 'Salt Marsh Town is far.', 'DONE', '鹽沼鎮很遠。');
+    db.run("UPDATE unit SET human = 1 WHERE unit_id <> 'p3'");
+    const cards = [
+      card(1, 'Salt Marsh', '鹽沼地'),
+      card(2, 'Warden', '看守人'),
+      card(3, 'Ferry', '渡船'),
+      card(4, 'Tide', '潮水'),
+      card(5, 'Tide Pool', '大潮'),
+      card(6, 'Marsh Hound', '鹽沼'),
+      card(7, 'Salt Marsh Town', '鹽沼鎮', 'proposed'),
+    ];
+    const report = collectReport(db, DOCUMENT, cards, null);
+    // p2 的「鹽沼」在目前的譯名「鹽沼地」裡，p7 的「潮」在「大潮」的結尾；p3 是模型譯文；p6 沒有翻好；p8 沒有命中這張卡；
+    // 別的卡目前叫「鹽沼」不算較長譯名；還沒鎖定的「鹽沼鎮」也不算；「渡船」的上一個譯名就是它自己。
+    expect(report.old_names).toEqual([{ source: 'Salt Marsh', before: '鹽沼', target: '鹽沼地', blocks: ['p1', 'p4', 'p10'] }]);
+    expect(report.unused).toEqual([
+      { source: 'Salt Marsh', target: '鹽沼地', blocks: ['p3'] },
+      { source: 'Warden', target: '看守人', blocks: ['p5'] },
+      { source: 'Ferry', target: '渡船', blocks: ['p5'] },
+      { source: 'Tide', target: '潮水', blocks: ['p5', 'p7'] },
+    ]);
+    expect(reportCounts(report)).toMatchObject({ unused: 4, human_old_names: 3 });
+    expect(reportedBlocks(report)).toEqual(new Set(['p6', 'f1', 'p3', 'p5', 'p7', 'p1', 'p4', 'p10']));
+  });
+
+  it('knows no old name of a card that is no longer locked', () => {
+    const db = store();
+    db.run(
+      `INSERT INTO entity (id, source, target, status, origin, sources, occurrences, previous_target, created_at, updated_at)
+       VALUES (1, 'Salt Marsh', '鹽沼地', 'proposed', 'human', '[]', 1, '鹽沼', 't', 't')`,
+    );
+    addUnit(db, 'p1', 0, 'The Salt Marsh floods.', 'DONE', '鹽沼淹水了。');
+    db.run("UPDATE unit SET human = 1 WHERE unit_id = 'p1'");
+    expect(collectReport(db, DOCUMENT, [card(1, 'Salt Marsh', '鹽沼地', 'proposed')], null).old_names).toEqual([]);
   });
 
   it('counts the failed cards as pending, and leaves out a locked card every translation uses', () => {
@@ -287,7 +382,9 @@ describe('renderReport (ADR-0123)', () => {
       { block_id: 'p1', code: 'pronoun_mismatch', detail: { term: 'Mara', expected: '她', found: '他 牠' } },
     ],
     variants: [{ source: ' Salt Marsh ', targets: [{ target: '鹽沼', units: 2 }, { target: '鹽澤', units: 1 }] }],
+    human: [],
     unused: [{ source: 'Warden', target: '看守人', blocks: ['p1', 'p4'] }],
+    old_names: [],
     sync: [],
   };
 
@@ -319,6 +416,48 @@ describe('renderReport (ADR-0123)', () => {
     expect(renderReport(FULL, vaultTexts.report, place)).not.toContain('tome sync 無法回收');
     expect(reportedBlocks(report)).toEqual(new Set(['p2', 'p3', 'f1', 'p1', 'p4']));
     expect(reportCounts(report)).toMatchObject({ sync_unrecovered: 5 });
+  });
+
+  it('writes the checks of human translations and their old names only when there are some, after the sections they go with (ADR-0126)', () => {
+    const none = renderReport(FULL, vaultTexts.report, place);
+    expect(none).not.toContain('人工譯文的檢查');
+    expect(none).not.toContain('內含舊譯名的人工譯文');
+    const human: BookReport['human'] = [
+      { block_id: 'p2', code: 'term_missing', detail: { term: 'Warden', target: '看守人' } },
+      { block_id: 'p2', code: 'placeholder_mismatch', detail: { missing: '1D100' } },
+      { block_id: 'p3', code: 'number_missing', detail: { numbers: '3' } },
+      { block_id: 'p3', code: 'script_mixed', detail: { found: 'X' } },
+      { block_id: 'p3', code: 'too_short', detail: {} },
+    ];
+    const old_names: BookReport['old_names'] = [{ source: ' Salt\nMarsh ', before: '鹽沼', target: '鹽沼地', blocks: ['p1', 'p4'] }];
+    const text = renderReport({ ...FULL, human, old_names }, vaultTexts.report, place);
+    expect(text).toContain(
+      [
+        '## 人工譯文的檢查（5）',
+        '',
+        '- [[01#^p2|01]]：「Warden」沒有用鎖定的譯名「看守人」',
+        '- [[01#^p2|01]]：原文的「1D100」在譯文裡找不到',
+        '- [[01#^p3|01]]：譯文少了數字 3',
+        '- [[01#^p3|01]]：混入簡體字 X',
+        '- [[01#^p3|01]]：譯文比原文短很多',
+        '',
+        '> 人工譯文的檢查只報告，不會重新送出翻譯。要修改請在 vault 裡改，再執行 tome sync。',
+        '',
+        '## 全書一致性',
+      ].join('\n'),
+    );
+    expect(text).toContain(
+      [
+        '## 內含舊譯名的人工譯文（1）',
+        '',
+        '- 「Salt Marsh」的譯名從「鹽沼」改為「鹽沼地」，有 2 處人工譯文仍用舊譯名：[[01#^p1|01]]、[[01#^p4|01]]',
+        '',
+        '> 人工譯文不會自動替換譯名。要改用新的譯名，請在 vault 裡修改，再執行 tome sync。',
+      ].join('\n'),
+    );
+    expect(text.indexOf('## 只報告的檢查')).toBeLessThan(text.indexOf('## 人工譯文的檢查'));
+    expect(text.indexOf('## 全書一致性')).toBeLessThan(text.indexOf('## 內含舊譯名的人工譯文'));
+    expect(text.endsWith('再執行 tome sync。\n')).toBe(true);
   });
 
   it('writes the whole report, word for word', () => {

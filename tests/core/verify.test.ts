@@ -1,3 +1,4 @@
+import fc from 'fast-check';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadTargetLanguage, scriptViolations } from '../../src/core/language.ts';
 import { maskText, type MaskRange } from '../../src/core/mask.ts';
@@ -5,7 +6,7 @@ import { loadPhraseCheck, type PhraseCheck } from '../../src/core/opencc.ts';
 import type { LocalizedTerm } from '../../src/core/pack.ts';
 import { parseUnits } from '../../src/core/tags.ts';
 import type { EntityCard } from '../../src/core/entities.ts';
-import { bookTerms, hitTerms, matchUnits, verifyFragment, type VerifyContext } from '../../src/core/verify.ts';
+import { bookTerms, hitTerms, humanProblems, matchUnits, verifyFragment, type VerifyContext } from '../../src/core/verify.ts';
 
 // 文字都是這裡編的，跟任何書都沒有關係。
 
@@ -512,6 +513,61 @@ describe('translationese, which only reports (ADR-0123)', () => {
     expect(codes(check('作為一個獵人', { ...profile, translationese: { ...rules, exceptions: ['作為一個'] } }))).toEqual([]);
     const { translationese: _unused, ...plain } = profile;
     expect(codes(check('作為一個獵人', plain))).toEqual([]);
+  });
+});
+
+describe('human translations (ADR-0126)', () => {
+  const WARDEN = 'The Warden counts 3 tide stones before each crossing and marks a lantern.';
+  const DICE = 'Roll 1D100, then rest for the whole night by the old ferry.';
+  const dice = unit(DICE, [{ start: 5, end: 10, kind: 'dice' }]);
+  const warden = context({ terms: [term('Warden', '看守人')] });
+  // 簡體字用碼位寫，受版控的文字檔才不用開例外（ADR-0086）。
+  const SOFT = String.fromCodePoint(0x8f6f);
+
+  it('checks them with the rules of the model, and only reports what it finds', () => {
+    expect(humanProblems(unit(WARDEN), `守望者${SOFT}。`, warden)).toEqual([
+      { code: 'number_missing', level: 'report', detail: { numbers: '3' } },
+      { code: 'term_missing', level: 'report', detail: { term: 'Warden', target: '看守人' } },
+      { code: 'script_mixed', level: 'report', detail: { found: SOFT } },
+      { code: 'too_short', level: 'report' },
+    ]);
+    expect(humanProblems(unit(WARDEN), '看守人在每次渡河前清點 3 顆潮石，並在提燈上做記號。', warden)).toEqual([]);
+  });
+
+  it('takes each masked text out once before counting numbers, and reports the masked text it cannot find', () => {
+    expect(humanProblems(dice, '擲1D100，然後在老渡口過夜休息，等待天亮再出發。', context())).toEqual([]);
+    expect(humanProblems(dice, '1D100 擲完，就在老渡口過夜休息，等待天亮再出發。', context())).toEqual([]);
+    expect(humanProblems(dice, '擲骰子，然後在老渡口過夜休息，等待天亮再出發。', context())).toEqual([
+      { code: 'placeholder_mismatch', level: 'report', detail: { missing: '1D100' } },
+    ]);
+    const twice = unit('Roll 1D100 and 1D100 again before the long night by the old ferry.', [
+      { start: 5, end: 10, kind: 'dice' },
+      { start: 15, end: 20, kind: 'dice' },
+    ]);
+    expect(humanProblems(twice, '擲1D100兩次，然後在老渡口過夜，等待天亮。', context())).toEqual([
+      { code: 'placeholder_mismatch', level: 'report', detail: { missing: '1D100' } },
+    ]);
+    expect(humanProblems(twice, '擲兩次骰子，然後在老渡口過夜，等待天亮。', context())).toEqual([
+      { code: 'placeholder_mismatch', level: 'report', detail: { missing: '1D100 1D100' } },
+    ]);
+    // 拿掉的地方留一個字元，兩邊的字不會接成鎖定譯名。
+    const joined = unit('The Warden rolls 1D100 by the old ferry before the long night.', [{ start: 17, end: 22, kind: 'dice' }]);
+    expect(humanProblems(joined, '看守1D100人在老渡口邊擲骰，等待漫長的夜晚過去。', warden).map(({ code }) => code)).toEqual(['term_missing']);
+  });
+
+  it('ignores the asterisks a reader writes for bold and italic', () => {
+    const text = '**看**守人在每次渡河前清點 *3* 顆潮石，並在提燈上做記號。';
+    expect(humanProblems(unit(WARDEN), text, warden)).toEqual([]);
+  });
+
+  it('reports every problem, whatever the reader wrote', () => {
+    const piece = fc.constantFrom('看守人', '守望者', SOFT, '3', '1D100', '*', '，', '渡口', 'Warden', '作為一個');
+    fc.assert(
+      fc.property(fc.array(piece, { maxLength: 30 }), (pieces) => {
+        const problems = humanProblems(dice, pieces.join(''), warden);
+        expect(problems.every(({ level }) => level === 'report')).toBe(true);
+      }),
+    );
   });
 });
 

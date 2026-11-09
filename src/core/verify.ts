@@ -251,20 +251,11 @@ function notes(segments: readonly Segment[]): Problem[] {
   });
 }
 
-function checkSegments(
-  unit: VerifiableUnit,
-  segments: readonly Segment[],
-  context: VerifyContext,
-): Problem[] {
-  const original = maskedSegments(unit.masked);
-  const source = visible(original);
-  const translation = visible(segments);
+/** 比文字的檢查，模型的片段與人工譯文共用（ADR-0126）。`source` 是遮蔽後看得到的原文。 */
+function textProblems(unit: Pick<VerifiableUnit, 'source' | 'role'>, source: string, translation: string, context: VerifyContext): Problem[] {
   const hits = hitTerms(unit, context.terms);
   const lost = hits.filter(({ term }) => !translation.includes(term.target));
   return [
-    ...(sameMarks(inlineMarks(original), inlineMarks(segments))
-      ? []
-      : [{ code: 'placeholder_mismatch', level: 'resend' } as const]),
     ...numberProblems(source, translation),
     ...lost.map(({ text, term }): Problem => ({
       code: 'term_missing',
@@ -276,8 +267,75 @@ function checkSegments(
     ...wordingProblems(translation, context),
     ...pronounProblems(translation, hits, context.language),
     ...translationeseProblems(translation, context.language),
+  ];
+}
+
+function checkSegments(
+  unit: VerifiableUnit,
+  segments: readonly Segment[],
+  context: VerifyContext,
+): Problem[] {
+  const original = maskedSegments(unit.masked);
+  return [
+    ...(sameMarks(inlineMarks(original), inlineMarks(segments))
+      ? []
+      : [{ code: 'placeholder_mismatch', level: 'resend' } as const]),
+    ...textProblems(unit, visible(original), visible(segments), context),
     ...notes(segments),
   ];
+}
+
+/**
+ * 人工譯文的零 token 檢查（ADR-0126）：跟模型譯文同一套比文字的規則，全部只報告，不改狀態、不重送。
+ * 遮蔽的內容已經放回去了，每個先拿掉一次再比，找不到的算不見；使用者寫的粗體、斜體記號 `*` 也拿掉。
+ */
+export function humanProblems(unit: VerifiableUnit, text: string, context: VerifyContext): Problem[] {
+  let rest = text;
+  const missing: string[] = [];
+  for (const { text: original } of unit.placeholders) {
+    const at = rest.indexOf(original);
+    if (at < 0) missing.push(original);
+    else rest = `${rest.slice(0, at)}${REMOVED}${rest.slice(at + original.length)}`;
+  }
+  const problems: Problem[] = [
+    ...(missing.length === 0 ? [] : [{ code: 'placeholder_mismatch', level: 'report', detail: { missing: missing.join(' ') } } as const]),
+    ...textProblems(unit, visibleText(unit.masked), rest.replaceAll('*', ''), context),
+  ];
+  return problems.map((problem) => ({ ...problem, level: 'report' }));
+}
+
+interface HumanRow {
+  readonly unit_id: string;
+  readonly role: string;
+  readonly source: string;
+  readonly masked: string;
+  readonly placeholders: string;
+  readonly translation: string;
+}
+
+const HUMAN_UNITS = "SELECT unit_id, role, source, masked, placeholders, translation FROM unit WHERE human = 1 AND state = 'DONE' ORDER BY seq";
+
+export interface HumanChecks {
+  readonly checked: number;
+  /** 有問題的人工譯文幾個。 */
+  readonly flagged: number;
+}
+
+/**
+ * 查人工譯文，用結果換掉原本的問題。`only` 有給時只查這些單位（`tome sync` 這次存的，ADR-0126）。
+ * 規則包讀不全（`context` 是 null）時不查，原本的問題清掉：它們說的是之前的文字。
+ */
+export function checkHumans(store: Store, context: VerifyContext | null, only?: ReadonlySet<string>): HumanChecks {
+  const rows = store.all<HumanRow>(HUMAN_UNITS).filter(({ unit_id }) => only === undefined || only.has(unit_id));
+  const flagged = store.transaction(() =>
+    rows.filter((row) => {
+      const unit = { ...row, placeholders: JSON.parse(row.placeholders) as Placeholder[] };
+      const problems = context === null ? [] : humanProblems(unit, row.translation, context);
+      recordProblems(store, row.unit_id, problems);
+      return problems.length > 0;
+    }),
+  );
+  return { checked: context === null ? 0 : rows.length, flagged: flagged.length };
 }
 
 function rejected(problem: Problem): Verdict {
@@ -361,7 +419,7 @@ export function settle(
   return state;
 }
 
-/** 人工譯文不用模型的舊回應重驗，否則會被蓋掉（ADR-0125）。 */
+/** 人工譯文不用模型的舊回應重驗，否則會被蓋掉（ADR-0125）；它們另外跑 `checkHumans`（ADR-0126）。 */
 const LATEST_RESPONSES = `
   SELECT u.unit_id, u.role, u.source, u.masked, u.placeholders, u.state, u.attempts, r.text
   FROM unit u
@@ -447,13 +505,14 @@ export interface VerifyBookResult {
   readonly findings: readonly Finding[];
 }
 
-const EMPTY_RUN = { checked: 0, passed: 0, failed: 0, gave_up: 0 };
+const EMPTY_RUN = { checked: 0, passed: 0, failed: 0, gave_up: 0, human_checked: 0, human_flagged: 0 };
 
 async function verifyLocked(home: string, slug: string): Promise<VerifyBookResult> {
   const store = openBookStore(home, slug);
   try {
     const rows = store.all<VerifyRow>(LATEST_RESPONSES);
-    if (rows.length === 0) return { data: EMPTY_RUN, findings: [finding('verify.nothing', 'info')] };
+    const humans = store.all(HUMAN_UNITS).length;
+    if (rows.length === 0 && humans === 0) return { data: EMPTY_RUN, findings: [finding('verify.nothing', 'info')] };
     // 片語表約 6 MB，有東西要驗證才載入。
     const { context, findings } = await bookVerifyContext({ home, slug, store });
     if (context === null) return { data: EMPTY_RUN, findings };
@@ -463,6 +522,8 @@ async function verifyLocked(home: string, slug: string): Promise<VerifyBookResul
         return settle(store, row, verifyFragment({ ...row, placeholders }, row.text, context));
       }),
     );
+    // 人工譯文只報告，不影響結束碼（ADR-0126）。
+    const human = checkHumans(store, context);
     const passed = states.filter((state) => state === 'DONE').length;
     const gaveUp = states.filter((state) => state === 'FAILED_QA').length;
     const failed = rows.length - passed;
@@ -472,9 +533,13 @@ async function verifyLocked(home: string, slug: string): Promise<VerifyBookResul
       failed: String(failed),
       gave_up: String(gaveUp),
     };
+    const counts = { checked: String(human.checked), flagged: String(human.flagged) };
     return {
-      data: { checked: rows.length, passed, failed, gave_up: gaveUp },
-      findings: [failed === 0 ? finding('verify.done', 'info', params) : finding('verify.failed', 'fail', params)],
+      data: { checked: rows.length, passed, failed, gave_up: gaveUp, human_checked: human.checked, human_flagged: human.flagged },
+      findings: [
+        ...(rows.length === 0 ? [] : [failed === 0 ? finding('verify.done', 'info', params) : finding('verify.failed', 'fail', params)]),
+        ...(human.checked === 0 ? [] : [human.flagged === 0 ? finding('human.checked', 'info', counts) : finding('human.flagged', 'warn', counts)]),
+      ],
     };
   } finally {
     store.close();

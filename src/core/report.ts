@@ -17,6 +17,9 @@ import { bookTerms, hitTerms } from './verify.ts';
 /** 只報告的檢查，交付報告列出來，不重送（白皮書 §5.6）。 */
 export const REPORTED_CHECKS = ['term_suspect', 'translationese', 'too_long', 'number_extra', 'pronoun_mismatch'] as const;
 export type ReportedCheck = (typeof REPORTED_CHECKS)[number];
+/** 人工譯文的檢查：平常會重送的也只報告（ADR-0126）。 */
+export const HUMAN_CHECKS = ['placeholder_mismatch', 'number_missing', 'term_missing', 'script_mixed', 'too_short', ...REPORTED_CHECKS] as const;
+export type HumanCheck = (typeof HUMAN_CHECKS)[number];
 
 const UNTRANSLATED: readonly UnitState[] = ['FAILED_QA', 'REFUSED', 'BLOCKED'];
 /** 整頁是圖的頁，也列在沒翻的圖片裡。 */
@@ -72,6 +75,14 @@ export interface EstimateItem {
   readonly position: number | null;
 }
 
+/** 鎖定的卡改了譯名，命中它的人工譯文還用上一個譯名（ADR-0126）。 */
+export interface OldName {
+  readonly source: string;
+  readonly before: string;
+  readonly target: string;
+  readonly blocks: readonly string[];
+}
+
 /** `tome sync` 回收不了、這次輸出覆蓋掉的修改（ADR-0125）。只有位置與類型。 */
 export interface SyncItem {
   readonly path: string;
@@ -89,9 +100,13 @@ export interface BookReport {
   readonly pages: readonly PageProblem[];
   readonly figures: readonly FigureItem[];
   readonly flags: readonly ReportedItem[];
+  /** 模型譯文的只報告檢查。 */
   readonly checks: readonly ReportedItem[];
+  /** 人工譯文的檢查（ADR-0126）。 */
+  readonly human: readonly ReportedItem[];
   readonly variants: readonly Variant[];
   readonly unused: readonly UnusedTarget[];
+  readonly old_names: readonly OldName[];
   /**
    * `tome sync` 記下、還沒處理的回收不了的修改。`tome assemble` 先只留這次要覆蓋的檔，
    * 交付報告列出的就是被覆蓋的（ADR-0125）。
@@ -115,6 +130,7 @@ interface IssueRow {
   readonly unit_id: string;
   readonly block_id: string;
   readonly state: UnitState;
+  readonly human: number;
   readonly code: string;
   readonly level: string;
   readonly detail: string | null;
@@ -189,17 +205,51 @@ function variantsOf(issues: readonly IssueRow[], cards: readonly EntityCard[]): 
     .map(([source, targets]) => ({ source, targets: [...targets].map(([target, units]) => ({ target, units })) }));
 }
 
-/** 鎖定的卡，命中它、翻好的單位譯文裡沒有它的譯名，多半是鎖定前翻的（ADR-0123）。 */
-function unusedOf(units: readonly UnitRow[], cards: readonly EntityCard[]): UnusedTarget[] {
+/** 鎖定的卡，命中它、翻好的單位譯文裡沒有它的譯名，多半是鎖定前翻的（ADR-0123）。舊譯名一節列了的人工譯文不重複列。 */
+function unusedOf(units: readonly UnitRow[], cards: readonly EntityCard[], stale: Stale): UnusedTarget[] {
   const done = units.filter(({ state, translation }) => state === 'DONE' && translation !== null);
   return cards.flatMap((card): UnusedTarget[] => {
     const [term] = bookTerms([], [card]);
     if (term === undefined || card.target === null) return [];
     const target = card.target;
     const blocks = done
-      .filter((unit) => hitTerms(unit, [term]).length > 0 && !(unit.translation ?? '').includes(target))
+      .filter((unit) => hitTerms(unit, [term]).length > 0 && !(unit.translation ?? '').includes(target) && !stale(unit, card))
       .map(({ block_id }) => block_id);
     return blocks.length === 0 ? [] : [{ source: card.source, target, blocks: [...new Set(blocks)] }];
+  });
+}
+
+/** 這個單位是人工譯文，還用著這張卡的上一個譯名。 */
+type Stale = (unit: UnitRow, card: EntityCard) => boolean;
+
+/** `text` 裡 `needle` 出現的範圍。 */
+function rangesIn(text: string, needle: string): [number, number][] {
+  const ranges: [number, number][] = [];
+  for (let at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + 1)) ranges.push([at, at + needle.length]);
+  return ranges;
+}
+
+/**
+ * `text` 裡有一處 `before` 不在 `longer` 的較長譯名裡。規則跟 S-16 的 `replaceTarget` 一樣，只是比純文字：
+ * 「鹽沼」改成「鹽沼地」時，「鹽沼地」不算含舊譯名（ADR-0126）。
+ */
+function holdsOld(text: string, before: string, longer: readonly string[]): boolean {
+  const shielded = longer.filter((target) => target !== before && target.includes(before)).flatMap((target) => rangesIn(text, target));
+  return rangesIn(text, before).some(([at, end]) => !shielded.some(([start, stop]) => start <= at && end <= stop));
+}
+
+/**
+ * 鎖定的卡改過譯名，命中它、翻好的人工譯文還有上一個譯名（ADR-0081 第 6 項、ADR-0126）。舊譯名是實體卡的
+ * `previous_target`，只記最近一次；較長譯名只看鎖定的實體卡。
+ */
+function oldNamesOf(units: readonly UnitRow[], cards: readonly EntityCard[], previous: ReadonlyMap<number, string>, stale: Stale): OldName[] {
+  const humans = units.filter(({ state, human }) => state === 'DONE' && human === 1);
+  return cards.flatMap((card): OldName[] => {
+    const [term] = bookTerms([], [card]);
+    const before = previous.get(card.id);
+    if (term === undefined || card.target === null || before === undefined) return [];
+    const blocks = humans.filter((unit) => hitTerms(unit, [term]).length > 0 && stale(unit, card)).map(({ block_id }) => block_id);
+    return blocks.length === 0 ? [] : [{ source: card.source, before, target: card.target, blocks: [...new Set(blocks)] }];
   });
 }
 
@@ -210,9 +260,20 @@ export function collectReport(store: Store, document: IrDocument, cards: readonl
   );
   const changes = store.all<SyncItem>('SELECT path, kind, before_block AS before, after_block AS after FROM sync_change ORDER BY id');
   const issues = store.all<IssueRow>(
-    `SELECT u.unit_id, u.block_id, u.state, i.code, i.level, i.detail FROM issue i JOIN unit u ON u.unit_id = i.unit_id
+    `SELECT u.unit_id, u.block_id, u.state, u.human, i.code, i.level, i.detail FROM issue i JOIN unit u ON u.unit_id = i.unit_id
      ORDER BY u.seq, i.id`,
   );
+  // 改過譯名的卡的上一個譯名（ADR-0119 第 10 項）；跟目前的譯名一樣、或是空的不算。
+  const previous = new Map(
+    store
+      .all<{ id: number; previous_target: string }>("SELECT id, previous_target FROM entity WHERE previous_target IS NOT NULL AND previous_target <> ''")
+      .flatMap(({ id, previous_target: before }) => (cards.some((card) => card.id === id && card.target !== before) ? [[id, before] as const] : [])),
+  );
+  const longer = cards.flatMap(({ status, target }) => (status === 'locked' && target !== null ? [target] : []));
+  const stale: Stale = (unit, card) => {
+    const before = previous.get(card.id);
+    return unit.human === 1 && before !== undefined && holdsOld(unit.translation ?? '', before, longer);
+  };
   const spentOf = (scope: string): number =>
     store.get<{ spent: number | null }>(`SELECT SUM(cost_usd) AS spent FROM ledger WHERE ${scope}`)?.spent ?? 0;
   // 依單位記：表格的格子同一個區塊，`BLOCKED` 的格子不能拿到旁邊 `FAILED_QA` 格子的原因。
@@ -220,9 +281,10 @@ export function collectReport(store: Store, document: IrDocument, cards: readonl
   for (const { unit_id, state, code, level } of issues) {
     if (state === 'FAILED_QA' && level === 'resend') resend.set(unit_id, [...new Set([...(resend.get(unit_id) ?? []), code])]);
   }
-  const reported = (codes: readonly string[]): ReportedItem[] =>
+  // 模型譯文與人工譯文分開列：人工譯文的修法是在 vault 裡改（ADR-0126）。
+  const reported = (codes: readonly string[], human: number): ReportedItem[] =>
     issues
-      .filter(({ state, code, level }) => state === 'DONE' && level === 'report' && codes.includes(code))
+      .filter((issue) => issue.state === 'DONE' && issue.human === human && issue.level === 'report' && codes.includes(issue.code))
       .map(({ block_id, code, detail }) => ({ block_id, code, detail: detailOf(detail) }));
   const skipped = document.pages.filter(({ status }) => status !== 'ok');
   return {
@@ -242,10 +304,12 @@ export function collectReport(store: Store, document: IrDocument, cards: readonl
         .filter(({ reason }) => reason !== undefined && IMAGE_PAGES.has(reason))
         .map(({ page }) => ({ block_id: null, label: pageLabel(document, page) })),
     ],
-    flags: reported(['untranslatable']),
-    checks: reported(REPORTED_CHECKS),
+    flags: reported(['untranslatable'], 0),
+    checks: reported(REPORTED_CHECKS, 0),
+    human: reported(HUMAN_CHECKS, 1),
     variants: variantsOf(issues, cards),
-    unused: unusedOf(units, cards),
+    unused: unusedOf(units, cards, stale),
+    old_names: oldNamesOf(units, cards, previous, stale),
     sync: changes,
   };
 }
@@ -258,7 +322,9 @@ export interface ReportTexts {
   readonly none: string;
   /** 連到章節的位置的文字，`{file}` 是章節檔，`{page}` 是原書頁碼。 */
   readonly place: string;
-  readonly sections: Readonly<Record<'coverage' | 'untranslated' | 'pages' | 'figures' | 'flags' | 'checks' | 'consistency' | 'sync', string>>;
+  readonly sections: Readonly<
+    Record<'coverage' | 'untranslated' | 'pages' | 'figures' | 'flags' | 'checks' | 'human' | 'consistency' | 'old_names' | 'sync', string>
+  >;
   readonly coverage: string;
   readonly spent: string;
   readonly budget: string;
@@ -278,7 +344,12 @@ export interface ReportTexts {
   readonly figure: string;
   readonly figure_page: string;
   readonly flag: string;
-  readonly checks: Readonly<Record<ReportedCheck, string>>;
+  /** 各項檢查的寫法；人工譯文也用，平常會重送的五項只有人工譯文用得到（ADR-0126）。 */
+  readonly checks: Readonly<Record<HumanCheck, string>>;
+  readonly human_advice: string;
+  /** 內含舊譯名的人工譯文，`{before}` 是上一個譯名（ADR-0126）。 */
+  readonly old_name: string;
+  readonly old_name_advice: string;
   readonly variants: string;
   readonly variant: string;
   readonly variant_target: string;
@@ -364,14 +435,16 @@ export function renderReport(report: BookReport, texts: ReportTexts, place: (blo
     'flags',
     report.flags.map(({ block_id, detail }) => `- ${fill(texts.flag, { place: place(block_id), reason: inline(detail['reason'] ?? ''), text: inline(detail['text'] ?? '') })}`),
   );
-  section(
-    'checks',
-    report.checks.map(({ block_id, code, detail }) => {
-      const template = texts.checks[code as ReportedCheck];
-      const slots = Object.fromEntries(Object.entries(detail).map(([name, value]) => [name, inline(value)]));
-      return `- ${fill(template, { ...slots, place: place(block_id) })}`;
-    }),
-  );
+  const checked = ({ block_id, code, detail }: ReportedItem): string => {
+    const slots = Object.fromEntries(Object.entries(detail).map(([name, value]) => [name, inline(value)]));
+    return `- ${fill(texts.checks[code as HumanCheck], { ...slots, place: place(block_id) })}`;
+  };
+  section('checks', report.checks.map(checked));
+  // 有人工譯文的問題才有這一節（ADR-0126）。
+  if (report.human.length > 0) {
+    section('human', report.human.map(checked));
+    lines.push('', `> ${texts.human_advice}`);
+  }
 
   const variants = report.variants.map(({ source, targets }) => {
     const listed = targets.map(({ target, units }) => fill(texts.variant_target, { target: inline(target), units: String(units) }));
@@ -387,6 +460,17 @@ export function renderReport(report: BookReport, texts: ReportTexts, place: (blo
     lines.push(`### ${texts.variants}`, '', ...(variants.length === 0 ? [texts.none] : variants));
     lines.push('', `### ${texts.unused_title}`, '', ...(unused.length === 0 ? [texts.none] : unused));
     lines.push('', `> ${texts.advice}`);
+  }
+
+  // 有人工譯文還用著改名前的譯名才有這一節（ADR-0126）。
+  if (report.old_names.length > 0) {
+    section(
+      'old_names',
+      report.old_names.map(({ source, before, target, blocks }) =>
+        `- ${fill(texts.old_name, { source: inline(source), before: inline(before), target: inline(target), count: String(blocks.length), places: blocks.map(place).join(texts.joiner) })}`,
+      ),
+    );
+    lines.push('', `> ${texts.old_name_advice}`);
   }
 
   // 只有 `tome assemble --force` 覆蓋了 `tome sync` 回收不了的修改時才有這一節（ADR-0125）。
@@ -412,7 +496,9 @@ export function reportedBlocks(report: BookReport): Set<string> {
     ...report.figures.flatMap(({ block_id }) => (block_id === null ? [] : [block_id])),
     ...report.flags.map(({ block_id }) => block_id),
     ...report.checks.map(({ block_id }) => block_id),
+    ...report.human.map(({ block_id }) => block_id),
     ...report.unused.flatMap(({ blocks }) => blocks),
+    ...report.old_names.flatMap(({ blocks }) => blocks),
     ...report.sync.flatMap(({ before, after }) => [before, after].filter((id): id is string => id !== null)),
   ]);
 }
@@ -428,8 +514,10 @@ export function reportCounts(report: BookReport): Record<string, number> {
     figures: report.figures.length,
     flags: report.flags.length,
     ...checks,
+    human_checks: report.human.length,
     variants: report.variants.length,
     unused: report.unused.length,
+    human_old_names: report.old_names.reduce((sum, { blocks }) => sum + blocks.length, 0),
     pending_cards: report.pending_cards,
     sync_unrecovered: report.sync.length,
   };

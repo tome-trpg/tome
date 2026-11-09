@@ -61,6 +61,8 @@ export const FINDING_CODES = [
   'glossary.pending',
   'glossary.renamed',
   'glossary.reviewed',
+  'human.checked',
+  'human.flagged',
   'extract.accepted',
   'extract.assembled',
   'extract.characters_missing',

@@ -573,7 +573,9 @@ describe('renderVault: the delivery report (ADR-0123)', () => {
     flags: [],
     checks: blocks.map((id) => ({ block_id: id, code: 'too_long', detail: {} })),
     variants: [],
+    human: [],
     unused: [],
+    old_names: [],
     sync: [],
   });
 
