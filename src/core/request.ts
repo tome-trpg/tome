@@ -10,6 +10,7 @@ import {
 } from './book.ts';
 import { checkBookPatterns, withBookPatterns } from './book-patterns.ts';
 import { checkBudget } from './budget.ts';
+import { applyHuman, withSeries } from './human.ts';
 import {
   chapterCount,
   chapterLevels,
@@ -527,6 +528,8 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
     return local === undefined ? unit : { ...unit, needs_llm: false, fielded: local };
   });
   syncUnits(store, units);
+  // 重寫過的單位與欄位化的譯文都在這裡套回人工譯文（ADR-0125）。
+  withSeries(home, book.slug, (series) => applyHuman(store, series, book.slug));
 
   const level = checkedLevel(document, levelOf(book));
   const chapters = chapterMap(document, level);

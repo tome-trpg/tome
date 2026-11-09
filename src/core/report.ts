@@ -72,6 +72,14 @@ export interface EstimateItem {
   readonly position: number | null;
 }
 
+/** `tome sync` 回收不了、這次輸出覆蓋掉的修改（ADR-0125）。只有位置與類型。 */
+export interface SyncItem {
+  readonly path: string;
+  readonly kind: string;
+  readonly before: string | null;
+  readonly after: string | null;
+}
+
 export interface BookReport {
   readonly coverage: Readonly<Record<string, number>>;
   readonly spent: { readonly translate: number; readonly scan: number; readonly budget: number | null };
@@ -84,6 +92,11 @@ export interface BookReport {
   readonly checks: readonly ReportedItem[];
   readonly variants: readonly Variant[];
   readonly unused: readonly UnusedTarget[];
+  /**
+   * `tome sync` 記下、還沒處理的回收不了的修改。`tome assemble` 先只留這次要覆蓋的檔，
+   * 交付報告列出的就是被覆蓋的（ADR-0125）。
+   */
+  readonly sync: readonly SyncItem[];
 }
 
 interface UnitRow {
@@ -95,6 +108,7 @@ interface UnitRow {
   readonly state: UnitState;
   readonly translation: string | null;
   readonly fielded: number;
+  readonly human: number;
 }
 
 interface IssueRow {
@@ -124,17 +138,18 @@ export function pageLabel(document: IrDocument, page: number): string {
 
 function coverageOf(units: readonly UnitRow[]): Record<string, number> {
   const counts = scopeCounts(
-    units.map(({ state, source, placeholders, fielded }) => ({
+    units.map(({ state, source, placeholders, fielded, human }) => ({
       state,
       kept: !needsLlm(source, JSON.parse(placeholders) as Placeholder[]),
       fielded: fielded === 1,
+      human: human === 1,
       inScope: true,
     })),
   );
   const buckets = Object.fromEntries(
     Object.entries(STATUS_BUCKETS).map(([name, states]) => [name, states.reduce((sum, state) => sum + counts.states[state], 0)]),
   );
-  return { total: counts.total, kept: counts.kept, fielded: counts.fielded, ...buckets };
+  return { total: counts.total, kept: counts.kept, fielded: counts.fielded, human: counts.human, ...buckets };
 }
 
 function estimatesOf(store: Store): EstimateItem[] {
@@ -191,8 +206,9 @@ function unusedOf(units: readonly UnitRow[], cards: readonly EntityCard[]): Unus
 /** 一本書的交付報告資料。`budget` 是 `book.yaml` 的預算。 */
 export function collectReport(store: Store, document: IrDocument, cards: readonly EntityCard[], budget: number | null): BookReport {
   const units = store.all<UnitRow>(
-    'SELECT unit_id, block_id, role, source, placeholders, state, translation, fielded FROM unit ORDER BY seq',
+    'SELECT unit_id, block_id, role, source, placeholders, state, translation, fielded, human FROM unit ORDER BY seq',
   );
+  const changes = store.all<SyncItem>('SELECT path, kind, before_block AS before, after_block AS after FROM sync_change ORDER BY id');
   const issues = store.all<IssueRow>(
     `SELECT u.unit_id, u.block_id, u.state, i.code, i.level, i.detail FROM issue i JOIN unit u ON u.unit_id = i.unit_id
      ORDER BY u.seq, i.id`,
@@ -230,6 +246,7 @@ export function collectReport(store: Store, document: IrDocument, cards: readonl
     checks: reported(REPORTED_CHECKS),
     variants: variantsOf(issues, cards),
     unused: unusedOf(units, cards),
+    sync: changes,
   };
 }
 
@@ -241,7 +258,7 @@ export interface ReportTexts {
   readonly none: string;
   /** 連到章節的位置的文字，`{file}` 是章節檔，`{page}` 是原書頁碼。 */
   readonly place: string;
-  readonly sections: Readonly<Record<'coverage' | 'untranslated' | 'pages' | 'figures' | 'flags' | 'checks' | 'consistency', string>>;
+  readonly sections: Readonly<Record<'coverage' | 'untranslated' | 'pages' | 'figures' | 'flags' | 'checks' | 'consistency' | 'sync', string>>;
   readonly coverage: string;
   readonly spent: string;
   readonly budget: string;
@@ -269,6 +286,13 @@ export interface ReportTexts {
   readonly unused: string;
   readonly advice: string;
   readonly joiner: string;
+  /** 回收不了的修改的位置，`{file}` 是 vault 裡的檔，`{before}`、`{after}` 是前後對上的區塊（ADR-0125）。 */
+  readonly sync_between: string;
+  readonly sync_after: string;
+  readonly sync_before: string;
+  readonly sync_file: string;
+  readonly sync_kinds: Readonly<Record<string, string>>;
+  readonly sync_advice: string;
 }
 
 export function fill(template: string, slots: Readonly<Record<string, string>>): string {
@@ -364,6 +388,20 @@ export function renderReport(report: BookReport, texts: ReportTexts, place: (blo
     lines.push('', `### ${texts.unused_title}`, '', ...(unused.length === 0 ? [texts.none] : unused));
     lines.push('', `> ${texts.advice}`);
   }
+
+  // 只有 `tome assemble --force` 覆蓋了 `tome sync` 回收不了的修改時才有這一節（ADR-0125）。
+  if (report.sync.length > 0) {
+    section(
+      'sync',
+      report.sync.map(({ path, kind, before, after }) => {
+        const slots = { file: path, kind: named(texts.sync_kinds, kind), before: before === null ? '' : place(before), after: after === null ? '' : place(after) };
+        const template =
+          before !== null && after !== null ? texts.sync_between : before !== null ? texts.sync_after : after !== null ? texts.sync_before : texts.sync_file;
+        return `- ${fill(template, slots)}`;
+      }),
+    );
+    lines.push('', `> ${texts.sync_advice}`);
+  }
   return `${lines.join('\n')}\n`;
 }
 
@@ -375,6 +413,7 @@ export function reportedBlocks(report: BookReport): Set<string> {
     ...report.flags.map(({ block_id }) => block_id),
     ...report.checks.map(({ block_id }) => block_id),
     ...report.unused.flatMap(({ blocks }) => blocks),
+    ...report.sync.flatMap(({ before, after }) => [before, after].filter((id): id is string => id !== null)),
   ]);
 }
 
@@ -392,6 +431,7 @@ export function reportCounts(report: BookReport): Record<string, number> {
     variants: report.variants.length,
     unused: report.unused.length,
     pending_cards: report.pending_cards,
+    sync_unrecovered: report.sync.length,
   };
 }
 

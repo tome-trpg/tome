@@ -36,6 +36,7 @@ interface UnitRow {
   readonly placeholders: string;
   readonly state: UnitState;
   readonly attempts: number;
+  readonly human: number;
 }
 
 interface Renamed {
@@ -92,13 +93,14 @@ export async function applyRenames({ home, book, store, pack, before }: RenameOp
   const after = entityCards(store);
   const { renamed, reworded } = changesOf(before, after);
   if (renamed.length === 0 && reworded.length === 0) return null;
-  const units = store.all<UnitRow>('SELECT unit_id, role, source, masked, placeholders, state, attempts FROM unit ORDER BY seq');
+  const units = store.all<UnitRow>('SELECT unit_id, role, source, masked, placeholders, state, attempts, human FROM unit ORDER BY seq');
   const inFlight = new Set<string>();
+  // 人工譯文不替換、不重設（ADR-0081 第 6 項、ADR-0125）。
   const touched = (terms: readonly LocalizedTerm[]): UnitRow[] =>
     units.filter((unit) => {
       if (terms.length === 0 || hitTerms(unit, terms).length === 0) return false;
       if (unit.state === 'IN_FLIGHT') inFlight.add(unit.unit_id);
-      return TRANSLATED.has(unit.state);
+      return TRANSLATED.has(unit.state) && unit.human === 0;
     });
 
   const redo = touched(reworded);

@@ -361,11 +361,12 @@ export function settle(
   return state;
 }
 
+/** 人工譯文不用模型的舊回應重驗，否則會被蓋掉（ADR-0125）。 */
 const LATEST_RESPONSES = `
   SELECT u.unit_id, u.role, u.source, u.masked, u.placeholders, u.state, u.attempts, r.text
   FROM unit u
   JOIN response r ON r.id = (SELECT MAX(id) FROM response WHERE unit_id = u.unit_id)
-  WHERE u.state IN ('RECEIVED', 'DONE', 'FAILED_QA')
+  WHERE u.state IN ('RECEIVED', 'DONE', 'FAILED_QA') AND u.human = 0
   ORDER BY u.seq
 `;
 

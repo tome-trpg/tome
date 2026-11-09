@@ -118,7 +118,7 @@ function filled(): { db: Store; report: BookReport } {
 describe('collectReport (ADR-0123)', () => {
   it('counts the units, and splits what was spent between translation and Pass 0', () => {
     const { report } = filled();
-    expect(report.coverage).toEqual({ total: 4, kept: 1, fielded: 0, done: 2, in_flight: 0, blocked: 1, failed: 1, refused: 0, left: 0 });
+    expect(report.coverage).toEqual({ total: 4, kept: 1, fielded: 0, human: 0, done: 2, in_flight: 0, blocked: 1, failed: 1, refused: 0, left: 0 });
     expect(report.spent.translate).toBeCloseTo(0.4);
     expect(report.spent.scan).toBeCloseTo(0.15);
     expect(report.spent.budget).toBe(5);
@@ -192,6 +192,7 @@ describe('collectReport (ADR-0123)', () => {
       variants: 1,
       unused: 1,
       pending_cards: 1,
+      sync_unrecovered: 0,
     });
     expect(reportedBlocks(report)).toEqual(new Set(['p2', 'p3', 'f1', 'p1']));
   });
@@ -264,7 +265,7 @@ describe('collectReport: the edges (ADR-0123)', () => {
 describe('renderReport (ADR-0123)', () => {
   const place = (id: string): string => `[[01#^${id}|01]]`;
   const FULL: BookReport = {
-    coverage: { total: 4, kept: 1, fielded: 0, done: 2, in_flight: 0, blocked: 1, failed: 1, refused: 0, left: 0 },
+    coverage: { total: 4, kept: 1, fielded: 0, human: 0, done: 2, in_flight: 0, blocked: 1, failed: 1, refused: 0, left: 0 },
     spent: { translate: 0.4, scan: 0.15, budget: 5 },
     estimates: [
       { stage: 'translate', mode: 'batch', created_at: '2026-11-09T00:50:00.000Z', low_usd: 0.2, high_usd: 0.6, spent_usd: 0.4, position: 50 },
@@ -287,7 +288,38 @@ describe('renderReport (ADR-0123)', () => {
     ],
     variants: [{ source: ' Salt Marsh ', targets: [{ target: '鹽沼', units: 2 }, { target: '鹽澤', units: 1 }] }],
     unused: [{ source: 'Warden', target: '看守人', blocks: ['p1', 'p4'] }],
+    sync: [],
   };
+
+  it('lists what tome sync could not take back, placed between, after or before its neighbors, or by file (ADR-0125)', () => {
+    const report: BookReport = {
+      ...FULL,
+      sync: [
+        { path: '01.md', kind: 'merged', before: 'p1', after: 'p2' },
+        { path: '01.md', kind: 'added', before: 'p3', after: null },
+        { path: '02.md', kind: 'deleted', before: null, after: 'p4' },
+        { path: '00-交付報告.md', kind: 'file', before: null, after: null },
+        { path: '02.md', kind: 'unknown_kind', before: null, after: null },
+      ],
+    };
+    const text = renderReport(report, vaultTexts.report, place);
+    expect(text).toContain(
+      [
+        '## 這次覆蓋的、tome sync 無法回收的修改（5）',
+        '',
+        '- 01.md：合併段落，位於 [[01#^p1|01]] 與 [[01#^p2|01]] 之間',
+        '- 01.md：新增段落，位於 [[01#^p3|01]] 之後',
+        '- 02.md：刪除段落，位於 [[01#^p4|01]] 之前',
+        '- 00-交付報告.md：修改了章節以外的檔案',
+        '- 02.md：unknown_kind',
+        '',
+        '> 上列修改已被這次輸出覆蓋。合併、拆分或略過段落請改用 overrides.yaml，修改段落的文字後再執行 tome sync。',
+      ].join('\n'),
+    );
+    expect(renderReport(FULL, vaultTexts.report, place)).not.toContain('tome sync 無法回收');
+    expect(reportedBlocks(report)).toEqual(new Set(['p2', 'p3', 'f1', 'p1', 'p4']));
+    expect(reportCounts(report)).toMatchObject({ sync_unrecovered: 5 });
+  });
 
   it('writes the whole report, word for word', () => {
     expect(renderReport(FULL, vaultTexts.report, place)).toBe(
@@ -298,7 +330,7 @@ describe('renderReport (ADR-0123)', () => {
         '',
         '## 覆蓋率與花費',
         '',
-        '- 翻譯單位共 4 個：完成 2 個（其中原樣保留 1 個、本機欄位化 0 個），未通過驗證 1 個，遭拒答 0 個，個資閘門擋下 1 個，送出未收回 0 個，尚未完成 0 個。',
+        '- 翻譯單位共 4 個：完成 2 個（其中原樣保留 1 個、本機欄位化 0 個、人工譯文 0 個），未通過驗證 1 個，遭拒答 0 個，個資閘門擋下 1 個，送出未收回 0 個，尚未完成 0 個。',
         '- 花費：翻譯 $0.40 美元、實體卡 $0.15 美元，共 $0.55 美元。預算 $5.00 美元。',
         '- 待審的實體卡 1 張。',
         '',
