@@ -6,6 +6,9 @@ import type { Segment } from './tags.ts';
 
 const ASCII_WORD = /^[A-Za-z0-9]$/;
 const HAN = /^\p{Script=Han}$/u;
+/** 正負號（加號、連字號、減號、正負號）緊接數字時是數字的一部分，跟數字一樣不跟漢字隔開（M3 收尾，維護者定的）。 */
+const SIGNS: ReadonlySet<string> = new Set(['+', '-', '−', '±']);
+const DIGIT = /^[0-9]$/;
 /** 緊接在數字後面的是英寸記號，單位不換算（ADR-0029），也不算引號的配對（ADR-0102）。 */
 const STRAIGHT_QUOTE = /(?<!\p{Nd})"/gu;
 const ADDRESS_MARK = '://';
@@ -109,6 +112,11 @@ function isBlank(character: string | undefined): boolean {
   return character === ' ' || character === '\t';
 }
 
+/** 正負號後面緊接數字。`韌性 −1` 排成 `韌性−1`，跟 `韌性12` 一樣；後面不是數字的不算。 */
+function isSignedNumber(sign: string | undefined, next: string | undefined): boolean {
+  return SIGNS.has(sign ?? '') && DIGIT.test(next ?? '');
+}
+
 /** 一格一格掃，耗時跟長度成正比：譯文來自 LLM，不用會回溯的正規表示式。 */
 function removeSpacing(text: string): string {
   const characters = [...text];
@@ -125,7 +133,8 @@ function removeSpacing(text: string): string {
     while (isBlank(characters[end])) end += 1;
     const before = characters[index - 1] ?? '';
     const after = characters[end] ?? '';
-    const between = (HAN.test(before) && isAsciiWord(after)) || (isAsciiWord(before) && HAN.test(after));
+    const number = isAsciiWord(after) || isSignedNumber(after, characters[end + 1]);
+    const between = (HAN.test(before) && number) || (isAsciiWord(before) && HAN.test(after));
     if (!between) result += characters.slice(index, end).join('');
     index = end;
   }
@@ -145,7 +154,10 @@ function neighbor(item: Segment | undefined, end: 'first' | 'last'): string {
   if (item?.type === 'pc') return neighbor(end === 'first' ? item.children[0] : item.children.at(-1), end);
   if (item?.type !== 'text') return '';
   const characters = [...item.text];
-  return (end === 'first' ? characters[0] : characters.at(-1)) ?? '';
+  if (end === 'last') return characters.at(-1) ?? '';
+  const [first = '', second] = characters;
+  // 開頭是緊接數字的正負號時，連數字一起給，前面的空白才看得出它是數字。這兩個字不會被排版改到，切回來的長度不變。
+  return isSignedNumber(first, second) ? characters.slice(0, 2).join('') : first;
 }
 
 /** `outerBefore`、`outerAfter` 是 `<pc>` 外面相鄰的字。 */
