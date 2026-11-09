@@ -1,5 +1,5 @@
 {
-  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   將 API 金鑰存入作業系統憑證庫\n  provider list                列出 TOME 知道怎麼呼叫的模型與價格\n  provider test                確認金鑰可用，並對照模型資料，不消耗 token\n  add <pdf>                    加入書籍並執行探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  run <名稱>                   一路跑到下一個要確認的地方\n    [--budget <美元>] [--chapters <範圍>] [--chapter-level <層>] [--realtime]\n  probe <名稱>                 探測文件結構與頁面類型\n  extract <名稱>               以解析引擎解析書籍頁面\n  scan-terms <名稱>            挖出專有名詞並提議譯名，不加 --confirm 只估價\n    [--budget <美元>] [--realtime] [--confirm]\n  glossary review <名稱>       產生或讀回實體卡審定檔，鎖定或拒絕譯名\n  glossary import <名稱> <csv> 匯入自己整理的譯名並鎖定\n  estimate <名稱>              在本機估算翻譯費用，不連網\n    [--budget <美元>] [--chapters <範圍>] [--chapter-level <層>]\n    [--realtime] [--confirm]\n  translate <名稱>             以批次翻譯，加上 --realtime 則逐一送出\n    [--realtime] [--retry-failed]\n  translate <名稱> --dry-run   組出所有請求但不送出\n  batch status <名稱>          查詢這本書尚未收回的批次\n  batch collect <名稱>         收回已完成的批次，不送出新的批次\n  batch cancel <名稱>          取消這本書尚未收回的批次\n  verify <名稱>                以已儲存的回應重新驗證譯文，不消耗 token\n  preview <名稱>               在本機產生原文與譯文對照\n  assemble <名稱> [--force]    將譯文與交付報告輸出到 Obsidian vault\n  sync <名稱>                  讀回 vault 的修改，存成人工譯文\n  report <名稱>                顯示交付報告的各項數量，不連網\n  status <名稱>                顯示翻譯進度與花費，不連網\n  engine add <名稱或路徑>      安裝解析引擎，加上 --gpu 則安裝 CUDA 版\n  engine list                  列出已安裝的解析引擎\n  engine remove <名稱>         移除解析引擎\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加上 --public 則一併檢查公開規則包的要求\n  system test <ID 或路徑>      執行規則包的測試案例，不消耗 token\n\n選項：\n  --json     以 JSON 格式輸出\n  --help     顯示本說明\n  --version  顯示版本\n",
+  "usage": "用法：tome <指令> [選項]\n\n指令：\n  init [--vault <路徑>]        建立工作區\n  doctor                       檢查環境與工作區\n  provider auth set <供應商>   將 API 金鑰存入作業系統憑證庫\n  provider list                列出 TOME 知道怎麼呼叫的模型與價格\n  provider test                確認金鑰可用，並對照模型資料，不消耗 token\n  add <pdf>                    加入書籍並執行探測\n    [--as <名稱>] [--system <規則包>] [--source-lang <語言>]\n  run <名稱>                   一路跑到下一個要確認的地方\n    [--budget <美元>] [--chapters <範圍>] [--chapter-level <層>] [--realtime]\n  probe <名稱>                 探測文件結構與頁面類型\n  extract <名稱>               以解析引擎解析書籍頁面\n  scan-terms <名稱>            挖出專有名詞並提議譯名，不加 --confirm 只估價\n    [--budget <美元>] [--realtime] [--confirm]\n  glossary review <名稱>       產生或讀回實體卡審定檔，鎖定或拒絕譯名\n  glossary import <名稱> <csv> 匯入自己整理的譯名並鎖定\n  estimate <名稱>              在本機估算翻譯費用，不連網\n    [--budget <美元>] [--chapters <範圍>] [--chapter-level <層>]\n    [--realtime] [--confirm]\n  translate <名稱>             以批次翻譯，加上 --realtime 則逐一送出\n    [--realtime] [--retry-failed]\n  translate <名稱> --dry-run   組出所有請求但不送出\n  batch status <名稱>          查詢這本書尚未收回的批次\n  batch collect <名稱>         收回已完成的批次，不送出新的批次\n  batch cancel <名稱>          取消這本書尚未收回的批次\n  verify <名稱>                以已儲存的回應重新驗證譯文，不消耗 token\n  preview <名稱>               在本機產生原文與譯文對照\n  assemble <名稱> [--force]    將譯文與交付報告輸出到 Obsidian vault\n  sync <名稱>                  讀回 vault 的修改，存成人工譯文\n  report <名稱>                顯示交付報告的各項數量，不連網\n  status <名稱>                顯示翻譯進度與花費，不連網\n  purge <名稱>                 刪除這本書的資料，不加 --confirm 只列出清單\n    [--vault] [--confirm]\n  backup <名稱>                備份這本書的資料庫、設定與 document 層\n    [--out <資料夾>]\n  engine add <名稱或路徑>      安裝解析引擎，加上 --gpu 則安裝 CUDA 版\n  engine list                  列出已安裝的解析引擎\n  engine remove <名稱>         移除解析引擎\n  system new <ID>              在工作區建立空白規則包\n  system list                  列出內建與工作區的規則包\n  system lint <ID 或路徑>      檢查規則包，加上 --public 則一併檢查公開規則包的要求\n  system test <ID 或路徑>      執行規則包的測試案例，不消耗 token\n\n選項：\n  --json     以 JSON 格式輸出\n  --help     顯示本說明\n  --version  顯示版本\n",
   "prompt": {
     "secret": "請輸入 {provider} 的 API 金鑰（輸入內容不會顯示）："
   },
@@ -180,6 +180,10 @@
     "assemble.done": "vault 已更新：{root}。共 {files} 個檔案、{units} 個翻譯單位，其中 {untranslated} 個尚未翻譯，保留原文並以 [!untranslated] 標示。",
     "assemble.edited": "vault 中有 {count} 個檔案的修改尚未回收，為避免覆蓋修改，未輸出任何檔案。請先執行 tome sync 回收修改；tome sync 無法回收的修改，確定要捨棄時，請加上 --force。",
     "assemble.structure_mismatch": "輸出的結構與文件不符：標題應有 {headings} 個、實際 {found_headings} 個，表格應有 {tables} 個、實際 {found_tables} 個。未寫入任何檔案。這是程式錯誤，請回報。",
+    "backup.done": "已將 {book} 備份到 {path}，共 {files} 個檔案，清單與雜湊見 manifest.json。要還原時，將其中的 books 與 series 資料夾放回工作區。",
+    "backup.in_git_repo": "備份的位置 {path} 位於 git 儲存庫 {repo} 內。備份含書本文字與譯文，不得進入儲存庫，請以 --out 指定其他位置。",
+    "backup.private": "備份含書本文字與譯文，請放在安全的地方，不要放進 git 儲存庫或同步資料夾。",
+    "backup.sync_folder": "備份的位置 {path} 位於 {provider} 同步資料夾內，書本文字與譯文會上傳至雲端。建議以 --out 改用本機資料夾。",
     "batch.archived":"批次 {id} 的結果已超過供應商的保留期限，無法收回。單位已放回佇列，重新送出會再付一次費用。",
     "batch.budget_exceeded": "下一批的估價上限 ${next} 美元加上已花費的 ${spent} 美元，超過預算 ${budget} 美元，已停止並保留進度。請以 tome estimate {book} --budget <美元> --confirm 提高預算後續跑。",
     "batch.canceling": "批次 {id} 正在取消。已處理完的請求仍會有結果，請稍後以 tome batch collect {book} 收回。",
@@ -301,6 +305,14 @@
     "provider.test_failed": "供應商沒有完成查詢，已停止。狀態碼：{status}，- 表示沒有收到回應。",
     "provider.tested": "{model}：金鑰可用，供應商回報的資料與 TOME 的模型資料一致。",
     "provider.thinking_mismatch": "{model}：供應商回報的思考參數與 TOME 的模型資料不符，送出時可能被拒。請更新 TOME。",
+    "purge.batches_pending": "{book} 還有 {count} 個批次沒有收回，沒有刪除任何東西。請先執行 tome batch collect {book} 收回；要放棄的批次，先執行 tome batch cancel {book}，再執行 tome batch collect {book}。",
+    "purge.changed": "清單跟上次列出的不同，或還沒列出過，沒有刪除任何東西。請確認上面的清單之後，再執行 tome purge {book}{flags} --confirm。",
+    "purge.done": "已刪除 {book} 的資料夾 {path}、系列記憶裡這本書的 {memory} 筆翻譯記憶與 {human} 筆人工譯文，以及供應商那邊的 {batches} 個批次。",
+    "purge.list": "tome purge 會刪除 {book} 的資料夾 {path}：{units} 個翻譯單位（已翻譯 {translated} 個）、{cards} 張實體卡、帳本與外送紀錄，以及系列記憶裡這本書的 {memory} 筆翻譯記憶與 {human} 筆人工譯文；供應商那邊還沒刪除的 {batches} 個批次會先刪除。PDF、解析引擎、tome.yaml、金鑰、其他書籍與備份不會刪除；vault 只在加上 --vault 時刪除 TOME 寫的檔案。",
+    "purge.not_confirmed": "確認上面的清單之後，請執行 tome purge {book}{flags} --confirm。",
+    "purge.remote_failed": "供應商那邊還有 {count} 個批次刪除失敗，本機的資料都沒有刪除。請稍後再執行 tome purge {book}{flags}，確認清單之後加上 --confirm。",
+    "purge.vault": "vault 裡 TOME 寫的 {files} 個檔案（{folder}）與因此變空的資料夾也會刪除，其中 {edited} 個改過、還沒用 tome sync 讀回，改過的內容會一起刪除；使用者自己放的 {kept} 個檔案保留。",
+    "purge.vault_done": "已刪除 vault 裡 TOME 寫的 {files} 個檔案（{folder}），保留使用者自己放的 {kept} 個檔案。",
     "report.coverage": "{book} 共 {total} 個翻譯單位：完成 {done} 個（其中原樣保留 {kept} 個、本機欄位化 {fielded} 個、人工譯文 {human} 個），未通過驗證 {failed} 個，遭拒答 {refused} 個，個資閘門擋下 {blocked} 個，送出未收回 {in_flight} 個，尚未完成 {left} 個。已花費 ${spent} 美元（翻譯 ${translate}、實體卡 ${scan}）。",
     "report.estimate": "最近一次確認的估價為 ${low}～${high} 美元，之後實際花費 ${spent} 美元，落在估價區間的 {position}%。",
     "report.issues": "未翻譯的單位 {untranslated} 個、頁面 {pages} 頁、圖片 {figures} 張，不可譯標記 {flags} 個；只報告的檢查：疑似中國大陸用語 {term_suspect} 個、疑似機翻腔 {translationese} 個、譯文過長 {too_long} 個、多出數字 {number_extra} 個、代名詞與實體卡不符 {pronoun_mismatch} 個；人工譯文的檢查 {human_checks} 個；一致性：同一原文多種譯名 {variants} 個、鎖定譯名未用上 {unused} 個、內含舊譯名的人工譯文 {human_old_names} 處；待審的實體卡 {pending_cards} 張；tome sync 無法回收、尚待處理的修改 {sync_unrecovered} 處。內容寫在 tome assemble 輸出的交付報告。",
@@ -368,6 +380,7 @@
     "workspace.vault_ignored": "工作區已存在，--vault 未生效。如需變更 vault，請直接編輯 {path}。"
   },
   "error": {
+    "backup.exists": "備份的目的地 {path} 已經存在，TOME 不會覆蓋。請以 --out 指定其他資料夾。",
     "book.busy": "這本書正由另一個 TOME 指令使用（{path}）。請等該指令結束後再試一次。",
     "book.not_found": "找不到書籍 {name}。請先以 tome add 加入。",
     "book.pdf_changed": "{path} 的內容與加入時不同。若要處理原本的檔案，請以 tome add <pdf> 重新指定原檔；若要處理新檔案，請以 tome add <pdf> --as <名稱> 加入為另一本書。",

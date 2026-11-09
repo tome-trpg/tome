@@ -8,6 +8,7 @@ import {
   type BatchCommandOptions,
   type BatchOptions,
 } from '../core/batch.ts';
+import { backupBook } from '../core/backup.ts';
 import { addBook, probeBook, type ProbeOutcome } from '../core/book.ts';
 import { runDoctor } from '../core/doctor.ts';
 import { addEngine, listEngines, removeEngine } from '../core/engine.ts';
@@ -20,6 +21,7 @@ import { testPack } from '../core/pack-test.ts';
 import { createPack, listPacks, locatePack } from '../core/pack.ts';
 import { runBook } from '../core/pipeline.ts';
 import { previewBook } from '../core/preview.ts';
+import { purgeBook } from '../core/purge.ts';
 import { assembleBook } from '../core/vault.ts';
 import { detectGpu } from '../core/probe.ts';
 import { runTool, type StreamRunner, type ToolRunner } from '../core/process.ts';
@@ -592,6 +594,41 @@ const COMMANDS: readonly Command[] = [
       if (slug === undefined) throw missing('book');
       const { data, findings } = await verifyBook(resolveHome(io.env, io.platform), slug);
       return { data: { book: slug, ...data }, findings };
+    },
+  },
+  {
+    path: ['purge'],
+    options: { vault: { type: 'boolean' }, confirm: { type: 'boolean' } },
+    positionals: 1,
+    // 列清單不連網；確認刪除、又有遠端殘留的批次時才取金鑰（ADR-0128）。
+    run: async ({ positionals, values }, io) => {
+      const slug = positionals[0];
+      if (slug === undefined) throw missing('book');
+      return purgeBook({
+        home: resolveHome(io.env, io.platform),
+        slug,
+        vault: values['vault'] === true,
+        confirm: values['confirm'] === true,
+        host: () => llmHost(io),
+        onRetry: retryProgress(io),
+      });
+    },
+  },
+  {
+    path: ['backup'],
+    options: { out: { type: 'string' } },
+    positionals: 1,
+    run: async (parsed, io) => {
+      const slug = parsed.positionals[0];
+      if (slug === undefined) throw missing('book');
+      return backupBook({
+        home: resolveHome(io.env, io.platform),
+        slug,
+        out: stringValue(parsed, 'out'),
+        version: packageVersion(),
+        env: io.env,
+        platform: io.platform,
+      });
     },
   },
   {
