@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-09
 type: feature
 wave: 39
@@ -34,7 +34,15 @@ protectedFiles:
   - schemas/tome-provider-1.schema.json
   - stryker.config.mjs
   - systems/**
+integrity: sha256-dd77360347f89981cde9c7065a854c4f177c618df1c97ba134c070bd9ad6d76b
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-09.**
+> Merged in pull request [#73](https://github.com/tome-trpg/tome/pull/73).
+> Recorded at commit `b9aee8b`: 17 files changed, +641 −11.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 039 — 單書額外模式
 
