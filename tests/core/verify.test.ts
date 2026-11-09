@@ -555,6 +555,21 @@ describe('human translations (ADR-0126)', () => {
     expect(humanProblems(joined, '看守1D100人在老渡口邊擲骰，等待漫長的夜晚過去。', warden).map(({ code }) => code)).toEqual(['term_missing']);
   });
 
+  it('takes the longest masked text out first, so a short one does not cut into a longer one, and keeps the order of the same length', () => {
+    const both = unit('Roll 1d6 and 11d6 before the long night by the old ferry.', [
+      { start: 5, end: 8, kind: 'dice' },
+      { start: 13, end: 17, kind: 'dice' },
+    ]);
+    expect(humanProblems(both, '先擲 11d6，再擲 1d6，然後在老渡口過夜，等待天亮。', context())).toEqual([]);
+    const same = unit('Roll 1d6 and 2d8 before the long night by the old ferry.', [
+      { start: 5, end: 8, kind: 'dice' },
+      { start: 13, end: 16, kind: 'dice' },
+    ]);
+    expect(humanProblems(same, '擲兩次骰子，然後在老渡口過夜，等待天亮。', context())).toEqual([
+      { code: 'placeholder_mismatch', level: 'report', detail: { missing: '1d6 2d8' } },
+    ]);
+  });
+
   it('ignores the asterisks a reader writes for bold and italic', () => {
     const text = '**看**守人在每次渡河前清點 *3* 顆潮石，並在提燈上做記號。';
     expect(humanProblems(unit(WARDEN), text, warden)).toEqual([]);

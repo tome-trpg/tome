@@ -296,6 +296,13 @@ describe('collectReport: the edges (ADR-0123)', () => {
     addUnit(db, 'p9', 8, 'The Ferry waits.', 'DONE', '渡船在等。');
     addUnit(db, 'p10', 9, 'Salt Marsh Town is far.', 'DONE', '鹽沼鎮很遠。');
     db.run("UPDATE unit SET human = 1 WHERE unit_id <> 'p3'");
+    // 列進舊譯名一節的單位，同一張卡目前的譯名的「沒有用鎖定的譯名」不再列一次；別的卡、別的問題照列。
+    addIssue(db, 'p1', 'term_missing', 'report', { term: 'Salt Marsh', target: '鹽沼地' });
+    addIssue(db, 'p1', 'term_missing', 'report', { term: 'Tide Pool', target: '大潮' });
+    addIssue(db, 'p1', 'number_missing', 'report', { numbers: '3' });
+    addIssue(db, 'p2', 'term_missing', 'report', { term: 'Salt Marsh', target: '鹽沼地' });
+    addIssue(db, 'p5', 'term_missing', 'report', { term: 'Warden', target: '看守人' });
+    addIssue(db, 'p10', 'term_missing', 'report', { term: 'Salt Marsh', target: '鹽沼地' });
     const cards = [
       card(1, 'Salt Marsh', '鹽沼地'),
       card(2, 'Warden', '看守人'),
@@ -315,8 +322,14 @@ describe('collectReport: the edges (ADR-0123)', () => {
       { source: 'Ferry', target: '渡船', blocks: ['p5'] },
       { source: 'Tide', target: '潮水', blocks: ['p5', 'p7'] },
     ]);
-    expect(reportCounts(report)).toMatchObject({ unused: 4, human_old_names: 3 });
-    expect(reportedBlocks(report)).toEqual(new Set(['p6', 'f1', 'p3', 'p5', 'p7', 'p1', 'p4', 'p10']));
+    expect(report.human).toEqual([
+      { block_id: 'p1', code: 'term_missing', detail: { term: 'Tide Pool', target: '大潮' } },
+      { block_id: 'p1', code: 'number_missing', detail: { numbers: '3' } },
+      { block_id: 'p2', code: 'term_missing', detail: { term: 'Salt Marsh', target: '鹽沼地' } },
+      { block_id: 'p5', code: 'term_missing', detail: { term: 'Warden', target: '看守人' } },
+    ]);
+    expect(reportCounts(report)).toMatchObject({ unused: 4, human_old_names: 3, human_checks: 4 });
+    expect(reportedBlocks(report)).toEqual(new Set(['p6', 'f1', 'p3', 'p5', 'p7', 'p1', 'p2', 'p4', 'p10']));
   });
 
   it('knows no old name of a card that is no longer locked', () => {

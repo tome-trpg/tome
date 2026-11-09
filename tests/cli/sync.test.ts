@@ -346,6 +346,27 @@ describe('checks of human translations (ADR-0126)', () => {
     expect(clean.output.findings).toEqual([expect.objectContaining({ code: 'human.checked', level: 'info', params: { checked: '1', flagged: '0' } })]);
   });
 
+  it('lists a human translation that still uses the old name of a renamed card once, under the old names', async () => {
+    const lib = await assembled();
+    withStore(lib.home, (store) =>
+      store.run(
+        `INSERT INTO entity (source, target, status, origin, sources, occurrences, previous_target, created_at, updated_at)
+         VALUES ('warden', '看守人', 'locked', 'human', '[]', 1, '守望者', 't', 't')`,
+      ),
+    );
+    edit(lib, FORD, '等待', '等候');
+    await tome(lib, 'sync', 'book');
+    const verified = await tome(lib, 'verify', 'book');
+    expect(verified.output.data).toMatchObject({ human_checked: 1, human_flagged: 1 });
+    expect(issuesOf(lib, 'p0000-aaaaa2')).toEqual([{ code: 'term_missing', level: 'report' }]);
+    expect((await tome(lib, 'report', 'book')).output.data['counts']).toMatchObject({ human_checks: 0, human_old_names: 1 });
+    expect((await tome(lib, 'assemble', 'book')).exit).toBe(0);
+    const report = readFileSync(vaultPath(lib, '00-交付報告.md'), 'utf8');
+    expect(report).toContain('「warden」的譯名從「守望者」改為「看守人」，有 1 處人工譯文仍用舊譯名');
+    expect(report).not.toContain('沒有用鎖定的譯名');
+    expect(report).not.toContain('## 人工譯文的檢查');
+  });
+
   it('still takes a translation back when the rule pack cannot be read, clears what was found before, and says why', async () => {
     const lib = await assembled();
     const dir = join(lib.home, 'systems', 'generic');

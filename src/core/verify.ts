@@ -292,7 +292,8 @@ function checkSegments(
 export function humanProblems(unit: VerifiableUnit, text: string, context: VerifyContext): Problem[] {
   let rest = text;
   const missing: string[] = [];
-  for (const { text: original } of unit.placeholders) {
+  // 長的先拿：`1d6` 先拿會切進 `11d6`，`11d6` 就找不到，還多出一個 `1`。一樣長的照原本的順序。
+  for (const { text: original } of [...unit.placeholders].sort((left, right) => right.text.length - left.text.length)) {
     const at = rest.indexOf(original);
     if (at < 0) missing.push(original);
     else rest = `${rest.slice(0, at)}${REMOVED}${rest.slice(at + original.length)}`;

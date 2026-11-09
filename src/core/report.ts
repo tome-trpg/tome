@@ -238,19 +238,34 @@ function holdsOld(text: string, before: string, longer: readonly string[]): bool
   return rangesIn(text, before).some(([at, end]) => !shielded.some(([start, stop]) => start <= at && end <= stop));
 }
 
+/** 舊譯名一節列了的單位與那張卡目前的譯名，用來在「人工譯文的檢查」不再列一次。 */
+function listedKey(unitId: string, target: string): string {
+  return `${unitId}\u0000${target}`;
+}
+
 /**
  * 鎖定的卡改過譯名，命中它、翻好的人工譯文還有上一個譯名（ADR-0081 第 6 項、ADR-0126）。舊譯名是實體卡的
- * `previous_target`，只記最近一次；較長譯名只看鎖定的實體卡。
+ * `previous_target`，只記最近一次；較長譯名只看鎖定的實體卡。`listed` 是列出的單位與卡目前的譯名。
  */
-function oldNamesOf(units: readonly UnitRow[], cards: readonly EntityCard[], previous: ReadonlyMap<number, string>, stale: Stale): OldName[] {
+function oldNamesOf(
+  units: readonly UnitRow[],
+  cards: readonly EntityCard[],
+  previous: ReadonlyMap<number, string>,
+  stale: Stale,
+): { readonly names: OldName[]; readonly listed: ReadonlySet<string> } {
   const humans = units.filter(({ state, human }) => state === 'DONE' && human === 1);
-  return cards.flatMap((card): OldName[] => {
+  const listed = new Set<string>();
+  const names = cards.flatMap((card): OldName[] => {
     const [term] = bookTerms([], [card]);
     const before = previous.get(card.id);
     if (term === undefined || card.target === null || before === undefined) return [];
-    const blocks = humans.filter((unit) => hitTerms(unit, [term]).length > 0 && stale(unit, card)).map(({ block_id }) => block_id);
-    return blocks.length === 0 ? [] : [{ source: card.source, before, target: card.target, blocks: [...new Set(blocks)] }];
+    const target = card.target;
+    const found = humans.filter((unit) => hitTerms(unit, [term]).length > 0 && stale(unit, card));
+    for (const { unit_id } of found) listed.add(listedKey(unit_id, target));
+    const blocks = found.map(({ block_id }) => block_id);
+    return blocks.length === 0 ? [] : [{ source: card.source, before, target, blocks: [...new Set(blocks)] }];
   });
+  return { names, listed };
 }
 
 /** 一本書的交付報告資料。`budget` 是 `book.yaml` 的預算。 */
@@ -282,10 +297,14 @@ export function collectReport(store: Store, document: IrDocument, cards: readonl
     if (state === 'FAILED_QA' && level === 'resend') resend.set(unit_id, [...new Set([...(resend.get(unit_id) ?? []), code])]);
   }
   // 模型譯文與人工譯文分開列：人工譯文的修法是在 vault 裡改（ADR-0126）。
-  const reported = (codes: readonly string[], human: number): ReportedItem[] =>
+  const reported = (codes: readonly string[], human: number, skip?: (issue: IssueRow) => boolean): ReportedItem[] =>
     issues
-      .filter((issue) => issue.state === 'DONE' && issue.human === human && issue.level === 'report' && codes.includes(issue.code))
+      .filter((issue) => issue.state === 'DONE' && issue.human === human && issue.level === 'report' && codes.includes(issue.code) && skip?.(issue) !== true)
       .map(({ block_id, code, detail }) => ({ block_id, code, detail: detailOf(detail) }));
+  // 舊譯名一節列了的人工譯文，同一張卡的「沒有用鎖定的譯名」不再列一次：同一處列兩次只會讓人以為有兩個問題。
+  const old = oldNamesOf(units, cards, previous, stale);
+  const listedOld = (issue: IssueRow): boolean =>
+    issue.code === 'term_missing' && old.listed.has(listedKey(issue.unit_id, detailOf(issue.detail)['target'] ?? ''));
   const skipped = document.pages.filter(({ status }) => status !== 'ok');
   return {
     coverage: coverageOf(units),
@@ -306,10 +325,10 @@ export function collectReport(store: Store, document: IrDocument, cards: readonl
     ],
     flags: reported(['untranslatable'], 0),
     checks: reported(REPORTED_CHECKS, 0),
-    human: reported(HUMAN_CHECKS, 1),
+    human: reported(HUMAN_CHECKS, 1, listedOld),
     variants: variantsOf(issues, cards),
     unused: unusedOf(units, cards, stale),
-    old_names: oldNamesOf(units, cards, previous, stale),
+    old_names: old.names,
     sync: changes,
   };
 }
