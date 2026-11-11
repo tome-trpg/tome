@@ -58,8 +58,8 @@ protectedFiles:
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
 - [x] 新的測試先在舊行為上失敗過
 - [x] 本機單一變異的小工具對改過的行跑過一輪，存活的補上測試或說明是等價變異
-- [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
 - [x] ADR、白皮書與 PR 都不含書本文字與商業書的書名（共用筆記 `m3-closeout-steps.md` 照 Manager 的要求寫了規則書 PDF 的路徑，只在 repo 外的共用筆記；量測的共用筆記只有數字）
 
 ## Acceptance Criteria
