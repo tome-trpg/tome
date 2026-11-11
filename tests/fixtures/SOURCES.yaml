@@ -105,4 +105,4 @@ assets:
   - path: tests/fixtures/packs/stat-fixture/tests/basic.yaml
     source: written for this repository
     license: Apache-2.0
-    sha256: 8a32c380956f07389d17f789a8a561075c661c63d955d42f1eb13d843d126bbe
+    sha256: f8bf31d55b47df263669311defdf6e3d1a3f17dfded6e3d794a7a267a6b017a0

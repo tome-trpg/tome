@@ -13,7 +13,7 @@ cases:
   - id: signs_ranges_and_thousands
     text: Grit −1; Wits +2; Reach 1–3; Ward 1,200
     role: stat_block
-    fielded: 韌性 −1；機智 +2；觸及1–3；護甲1,200
+    fielded: 韌性−1；機智+2；觸及1–3；護甲1,200
   - id: brackets_and_colons
     text: 'Grit 12 Wits 9 (Ward: 3)'
     role: stat_block

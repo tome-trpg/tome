@@ -99,6 +99,37 @@ describe('spacing around Latin text (ADR-0102)', () => {
     expect(format(text)).toBe(expected);
   });
 
+  // 正負號緊接數字時是數字的一部分（M3 收尾，維護者定的）；後面不是數字的正負號，空白照留。
+  it.each([
+    ['韌性 −1', '韌性−1'],
+    ['機智 +2', '機智+2'],
+    ['修正 -3', '修正-3'],
+    ['誤差 ±5', '誤差±5'],
+    ['受到 −2 減值', '受到−2減值'],
+    ['甲 − 乙', '甲 − 乙'],
+    ['甲 + 1', '甲 + 1'],
+    ['甲 +乙', '甲 +乙'],
+    ['甲 −x', '甲 −x'],
+    ['甲 ~1', '甲 ~1'],
+  ])('a signed number %j', (text, expected) => {
+    expect(format(text)).toBe(expected);
+  });
+
+  it('sees a signed number through a <pc>, so a style does not change the spacing', () => {
+    expect(format('韌性 <pc id="1">−1</pc>')).toBe('韌性−1');
+    expect(format('韌性 <pc id="1">+2</pc> 點')).toBe('韌性+2點');
+    expect(format('韌性 <pc id="1">+2 點</pc>')).toBe('韌性+2點');
+    expect(format('韌性 −<pc id="1">1</pc>')).toBe('韌性−1');
+    expect(format('韌性 <pc id="1">− 乙</pc>')).toBe('韌性 − 乙');
+    // 只看 `<pc>` 開頭的兩個字：正負號單獨加了樣式、數字在外面時看不到數字，空白照留。
+    expect(format('韌性 <pc id="1">−</pc>1')).toBe('韌性 −1');
+  });
+
+  // 佔位符當成拉丁字母，不是數字：骰子這類遮蔽的內容前面的正負號，空白照留。
+  it('keeps the space before a sign followed by a placeholder', () => {
+    expect(format('傷害 +<ph id="1"/>', [{ id: 1, kind: 'dice', text: '1D6' }])).toBe('傷害 +1D6');
+  });
+
   it('keeps the spaces inside Latin text and between Chinese words', () => {
     expect(format('Spot Hidden 檢定')).toBe('Spot Hidden檢定');
     expect(format('甲 乙')).toBe('甲 乙');
@@ -121,6 +152,9 @@ describe('spacing around Latin text (ADR-0102)', () => {
     expect(format('使用<pc id="1"> HP </pc>值')).toBe('使用HP值');
     expect(format('擲 <pc id="1"><ph id="1"/></pc> 次', [{ id: 1, kind: 'dice', text: '1D100' }])).toBe('擲1D100次');
     expect(format('<pc id="1">HP</pc> 是 12')).toBe('HP是12');
+    // 前面的空白看 `<pc>` 的第一個字，後面的空白看最後一個字。
+    expect(format('使用 <pc id="1">HP值</pc>')).toBe('使用HP值');
+    expect(format('<pc id="1">值HP</pc> 是')).toBe('值HP是');
   });
 });
 
