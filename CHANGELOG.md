@@ -97,7 +97,7 @@
 - 規則包 `roles.yaml` 的 `fields` 改為欄位標籤的清單，每一項依來源語言寫出標籤（例如 `{ en: HP }`），不再是名稱。舊的寫法無法通過檢查，請依新的格式改寫。`book.db` 的翻譯單位多記一欄是否在本機欄位化，既有的工作區開啟時會自動升級。
 - 翻譯的說明（`prompts/translate.md`）加入實體卡的屬性、前幾段的人物與全書提要。升級後，每本書都需要重新以 `tome estimate --confirm` 確認一次估價。已存的翻譯記憶不受影響。既有的工作區開啟時會自動升級，舊資料的這幾欄是空值。
 - `tome verify` 也檢查人工譯文：`--json` 新增 `human_checked`、`human_flagged`，只有人工譯文時不再顯示沒有可重新驗證的回應。`tome sync` 的 `--json` 新增同樣兩項，`tome report` 新增 `human_checks` 與 `human_old_names`。
-- 譯後自動排版：正負號（`+`、`-`、`−`、`±`）緊接數字時視為數字的一部分，與前面的中文之間不再保留空白，例如「韌性 −1」改為「韌性−1」，與「韌性12」一致。適用於所有譯文，包括模型的譯文與本機欄位化的數值塊；已翻譯的段落執行 `tome verify`（不消耗 token）後套用。
+- 譯後自動排版：正負號（`+`、`-`、`−`、`±`）緊接數字時視為數字的一部分，與前面的中文之間不再保留空白，例如「韌性 −1」改為「韌性−1」，與「韌性12」一致。適用於模型的譯文與本機欄位化的數值塊。已翻譯的段落：模型的譯文執行 `tome verify`（不消耗 token）後套用；欄位化的數值塊在下次執行 `tome estimate`、`tome translate` 或 `tome run` 時套用；人工譯文照原本寫的樣子，不會重新排版。
 - `tome assemble` 偵測到 vault 有尚未回收的修改時，訊息改為請先執行 `tome sync`；`--force` 改為只用來捨棄 `tome sync` 無法回收的修改。`tome status` 與 `tome report` 的 `--json` 新增人工譯文的數量 `human`，`tome report` 另新增尚待處理的無法回收修改 `sync_unrecovered`。
 
 ### 修正
