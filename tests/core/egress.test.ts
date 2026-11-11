@@ -88,6 +88,15 @@ describe('scanText (DC-1)', () => {
     expect(scanText(text, rules(['Smith'], ['Agent Smith', 'Smith Hall']))).toEqual([]);
   });
 
+  it('keeps the longest of the exceptions that start at the same place, in either order', () => {
+    expect(scanText('Bill to Forged Buyer.', rules(['Forged Buyer'], ['Forged Buyer', 'Forged']))).toEqual([]);
+    expect(scanText('Bill to Forged Buyer.', rules(['Forged Buyer'], ['Forged', 'Forged Buyer']))).toEqual([]);
+  });
+
+  it('ignores an empty exception, which would cover nothing', () => {
+    expect(scanText('Forged Buyer', rules(['Forged Buyer'], ['', '   ']))).toEqual([{ entry: 0, count: 1 }]);
+  });
+
   it('finds a hit that overlaps a covered one', () => {
     expect(scanText('xababab', rules(['abab'], ['xabab']))).toEqual([{ entry: 0, count: 1 }]);
   });
@@ -195,7 +204,12 @@ describe('guardedFetch (ADR-0039)', () => {
     });
     const blocked = client(`${server.url}/v1/messages`, post(JSON.stringify({ system: 'Forged Buyer' })));
     await expect(blocked).rejects.toBeInstanceOf(EgressBlocked);
-    await expect(blocked).rejects.toMatchObject({ hits: [{ entry: 0, count: 1 }] });
+    await expect(blocked).rejects.toMatchObject({
+      name: 'EgressBlocked',
+      code: 'translate.blocked',
+      params: { count: '1' },
+      hits: [{ entry: 0, count: 1 }],
+    });
     expect(server.requests).toHaveLength(0);
     expect(entries).toEqual([]);
   });
