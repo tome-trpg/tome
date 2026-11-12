@@ -1293,6 +1293,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0128](adr/0128-purge-and-backup-decisions.md) | tome purge 與 tome backup | M3 |
 | [ADR-0129](adr/0129-m3-closeout.md) | M3 收尾與真實翻譯的數字 | M3 |
 | [ADR-0130](adr/0130-m4-decisions.md) | M4 的範圍、回合與開工前的決定 | M4 |
+| [ADR-0131](adr/0131-egress-mutation-tests-and-windows-stall.md) | 對外出口的變異測試補強與 Windows 測試卡住的調查 | M4 |
 
 ---
 

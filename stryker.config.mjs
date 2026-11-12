@@ -30,6 +30,10 @@ export default {
   incremental: false,
   // 等於 GitHub 公開 repo 的 Linux runner 的 CPU 數。
   concurrency: 4,
+  // 時限是預設（1.5 倍加 5 秒）的兩倍，讓跑得慢但會結束的變異跑完，結果不隨 runner 的速度浮動。
+  // 回合 041 在 CI 跟預設各量兩次，維護者看過數字後留下這個設定（ADR-0131 第 8、9 項）。
+  timeoutFactor: 3,
+  timeoutMS: 10000,
   reporters: ['clear-text', 'progress', 'html', 'json'],
   // TypeScript 7 沒有 JS 編譯器 API，Stryker 在沙箱裡改寫 tsconfig 的步驟會丟錯。指向不存在的檔案，
   // 那個步驟就跳過。TOME 的 tsconfig 沒有 extends 或 references 指到專案外，不需要改寫（ADR-0110）。

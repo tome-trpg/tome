@@ -72,6 +72,8 @@ export interface FakeBatchOptions {
   archived: boolean;
   /** 下載結果時，前面這麼多次送出標頭與一半的本文之後就斷線。 */
   cutResults: number;
+  /** 查詢批次時，前面這麼多次送出標頭與一半的本文之後就斷線。 */
+  cutPolls: number;
   /** 取消時，前面這麼多個請求已經處理完，照樣有結果。 */
   keepOnCancel: number;
   /** `list` 每頁幾個。 */
@@ -93,6 +95,8 @@ export interface FakeBatch {
 export interface FakeCall {
   readonly method: string;
   readonly path: string;
+  /** 查詢字串，含開頭的 `?`，沒有就是空字串。 */
+  readonly query: string;
   readonly headers: IncomingHttpHeaders;
 }
 
@@ -120,6 +124,7 @@ const DEFAULT_BATCH: FakeBatchOptions = {
   deleteStatus: null,
   archived: false,
   cutResults: 0,
+  cutPolls: 0,
   keepOnCancel: 0,
   pageSize: 20,
 };
@@ -359,6 +364,11 @@ export async function startFakeProvider(script: FakeScript, options: Partial<Fak
     // 每查一次少一次「還在處理」。
     const shown = shownAs(found);
     if (!ended(found)) found.polls -= 1;
+    if (batch.cutPolls > 0) {
+      batch.cutPolls -= 1;
+      cutOff(response, 'application/json', JSON.stringify(shown));
+      return;
+    }
     send(response, 200, shown);
   };
 
@@ -368,24 +378,35 @@ export async function startFakeProvider(script: FakeScript, options: Partial<Fak
     else send(response, 200, scripted);
   };
 
+  const route = (request: IncomingMessage, response: ServerResponse, text: string): void => {
+    const body = JSON.parse(text === '' ? '{}' : text) as Readonly<Record<string, unknown>>;
+    const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+    calls.push({ method: request.method ?? '', path: url.pathname, query: url.search, headers: request.headers });
+    const model = /^\/v1\/models\/([^/]+)$/.exec(url.pathname)?.[1];
+    if (model !== undefined) {
+      modelRoute(response, decodeURIComponent(model));
+      return;
+    }
+    if (url.pathname.startsWith('/v1/messages/batches')) {
+      batchRoute(request, response, url, body);
+      return;
+    }
+    const seen = { body, user: userOf(body), model: String(body['model'] ?? '') };
+    const index = requests.length;
+    requests.push(seen);
+    reply(response, script(seen, index));
+  };
+
   const server = createServer((request, response) => {
     void readBody(request).then((text) => {
-      const body = JSON.parse(text === '' ? '{}' : text) as Readonly<Record<string, unknown>>;
-      const url = new URL(request.url ?? '/', 'http://127.0.0.1');
-      calls.push({ method: request.method ?? '', path: url.pathname, headers: request.headers });
-      const model = /^\/v1\/models\/([^/]+)$/.exec(url.pathname)?.[1];
-      if (model !== undefined) {
-        modelRoute(response, decodeURIComponent(model));
-        return;
+      try {
+        route(request, response, text);
+      } catch {
+        // 讀不懂的請求回 400，跟真的 API 一樣，例如批次裡少了 `custom_id` 或 `params`。
+        // 不回的話，請求會一直掛到 SDK 的 10 分鐘逾時（ADR-0131）。
+        if (response.headersSent) response.socket?.destroy();
+        else send(response, 400, { type: 'error', error: { type: 'invalid_request_error', message: 'malformed request' } });
       }
-      if (url.pathname.startsWith('/v1/messages/batches')) {
-        batchRoute(request, response, url, body);
-        return;
-      }
-      const seen = { body, user: userOf(body), model: String(body['model'] ?? '') };
-      const index = requests.length;
-      requests.push(seen);
-      reply(response, script(seen, index));
     });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));

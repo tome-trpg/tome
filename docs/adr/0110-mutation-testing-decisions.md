@@ -78,7 +78,7 @@ brief 020 要照 ADR-0063 與 ADR-0099 第 17、18 項加入 Stryker。`@stryker
 6. 修改 ADR-0063 第 2 項的做法：新增 `.github/workflows/mutation.yml`，這是這個回合唯一可以改的 workflow 檔，維護者裁定 `.github/` 底下其他檔案照樣受保護。
    * 觸發：每週日 18:00 UTC 的排程、`workflow_dispatch`，以及只在改到 `stryker.config.mjs` 或這個 workflow 時才跑的 `pull_request`。
    * 只跑 `ubuntu-24.04`。一個模組一個 job，共 6 個，用 matrix 同時跑。
-   * `timeout-minutes` 原本照估計設 150。第一次實測最長的 job 是 24 分鐘，改成 60，約留 2.5 倍。
+   * `timeout-minutes` 原本照估計設 150。第一次實測最長的 job 是 24 分鐘，改成 60，約留 2.5 倍。2026-11-12 由 ADR-0131 第 9 項改成 130：逾時設定 B 下最長的 job 是 51.1 分鐘，同樣約留 2.5 倍。
    * 每個 job 上傳 HTML 與 JSON 報告當 artifact，保留 30 天。
    * 不設成必要檢查。
    * `actions/upload-artifact` 釘在 v7.0.2 的 commit，2026-10-07 上架，已過 Action 的 7 天冷卻期（ADR-0082）。
@@ -151,7 +151,6 @@ brief 020 要照 ADR-0063 與 ADR-0099 第 17、18 項加入 Stryker。`@stryker
 <!-- @assert-count target="stryker.config.mjs" symbol="tsconfigFile: 'stryker-skips-tsconfig-rewrite.json'" expected="1" comments="include" reason="第 5 項：跳過改寫 tsconfig" -->
 <!-- @assert-count target="stryker.config.mjs" symbol="pool: 'forks'" expected="1" comments="include" reason="第 5 項：跟 npm test 一樣用 forks" -->
 <!-- @assert-count target=".github/workflows/mutation.yml" symbol="cron: '0 18 * * 0'" expected="1" comments="include" reason="第 6 項：每週排程" -->
-<!-- @assert-count target=".github/workflows/mutation.yml" symbol="timeout-minutes: 60" expected="1" comments="include" reason="第 6 項：job 的時限，照第一次實測調整" -->
 <!-- @assert-count target="stryker.config.mjs" symbol="thresholds: { high: 80, low: 60, break: 80 }," expected="1" comments="include" reason="第 9 項：門檻 80" -->
 <!-- @assert-absence target="package.json" regex="true" symbol=".mutation.:" comments="include" reason="第 11 項：不加 npm run mutation" -->
 
@@ -181,7 +180,7 @@ brief 020 要照 ADR-0063 與 ADR-0099 第 17、18 項加入 Stryker。`@stryker
 ## Open Questions
 
 - [x] 第一次 CI 實測的分數、存活與逾時數、每個 job 的時間，實測後補進這份 ADR（第 8 項）。
-- [ ] 逾時的判定會隨 runner 的速度浮動，這個回合不改逾時設定。對外出口第二次實測的 36 個逾時，比對報告與程式之後分成三類：
+- [x] 逾時的判定會隨 runner 的速度浮動，這個回合不改逾時設定。對外出口第二次實測的 36 個逾時，比對報告與程式之後分成三類：
   * 24 個是 `gate.ts` 的無窮迴圈或無窮遞迴，例如搜尋字串變成空字串、迴圈條件被改壞。Stryker 另有一道跟時間無關的檢查：執行次數超過初始測試的 100 倍就判定逾時（`mutant-test-planner.js` 的 `HIT_LIMIT_FACTOR`）。這類每次都算抓到。
   * 10 個跑得慢但會結束：`client.ts` 8 個、`anthropic.ts:144` 2 個。它們被大量很慢的 CLI 測試涵蓋，在時限內跑完就是殺掉或存活，跑不完就是逾時。
   * 2 個是 `anthropic.ts:32` 的靜態變異，要把相關測試全部跑一次。
@@ -192,4 +191,6 @@ brief 020 要照 ADR-0063 與 ADR-0099 第 17、18 項加入 Stryker。`@stryker
   以後要讓判定穩定時，再量這兩個做法：
   * `timeoutFactor` 改成 3、`timeoutMS` 改成 10000。跑得慢但會結束的變異大多能跑完，結果固定成殺掉或存活，無窮迴圈照樣由 100 倍的檢查抓到。代價是分數可能下降，job 時間也會變長，估計對外出口多 10–20 分鐘，`timeout-minutes` 可能要一起調。
   * 開 `ignoreStatic`，把 2 個靜態變異排除在分數之外。只處理靜態變異，其他會浮動的照樣浮動，照兩次實測算，對外出口是 85.43 到 85.83。
+
+  2026-11-12 由 ADR-0131 第 9 項定案：回合 041 兩個做法都量了，留 `timeoutFactor` 3、`timeoutMS` 10000，不開 `ignoreStatic`。
 - [ ] `minimatch` 11.0.1 與 `@isaacs/nonrecursive-glob-match` 1.0.1 未滿冷卻期就用了：要等 Stryker 改掉 `minimatch` 的範圍，或 `minimatch` 10.x 出修補版，才拿掉覆寫（第 2 項）。

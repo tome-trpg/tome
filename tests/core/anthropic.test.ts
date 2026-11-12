@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ProxyTracerProvider, trace, type TracerProvider } from '@opentelemetry/api';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { anthropicHost } from '../../src/core/egress/anthropic.ts';
 import { EgressBlocked, guardedFetch, type EgressEntry } from '../../src/core/egress/client.ts';
 import { TomeError } from '../../src/core/errors.ts';
 import { isApiError, type BatchItem, type LLMProvider, type RemoteBatch } from '../../src/core/llm.ts';
@@ -60,6 +62,11 @@ describe('the Anthropic adapter (ADR-0109)', () => {
     expect(llm.sdkVersion).toBe('0.137.0');
   });
 
+  it('names itself anthropic', async () => {
+    const { llm } = await connect();
+    expect(llm.id).toBe('anthropic');
+  });
+
   it('reads a refusal and a cut-off reply the same way as the fake adapter', async () => {
     const { llm } = await connect((_request, index) =>
       index === 0 ? { refusal: true, category: 'cyber' } : { text: '<s id="1">半', stop_reason: 'max_tokens' },
@@ -77,6 +84,14 @@ describe('the Anthropic adapter (ADR-0109)', () => {
   it('passes on retry-after', async () => {
     const { llm } = await connect(() => ({ status: 429, retryAfter: 7 }));
     expect(await llm.send(body())).toEqual({ outcome: 'error', status: 429, retryAfter: 7 });
+  });
+
+  it.each([
+    [0, 0],
+    [-1, null],
+  ])('reads retry-after %d as %s, as a wait is never negative', async (sent, read) => {
+    const { llm } = await connect(() => ({ status: 429, retryAfter: sent }));
+    expect(await llm.send(body())).toEqual({ outcome: 'error', status: 429, retryAfter: read });
   });
 
   it('says nothing came back when the connection drops', async () => {
@@ -166,6 +181,9 @@ describe('the Batches API through the SDK (ADR-0109 item 8)', () => {
     expect(first).toMatchObject({ batches: [{ id: 'msgbatch_2' }], next: 'msgbatch_2' });
     const second = await llm.listBatches(first.next);
     expect(second).toMatchObject({ batches: [{ id: 'msgbatch_1' }], next: null });
+    // 第一頁不帶 `after_id`，連空的 `after_id=` 也不帶。
+    const lists = fake.calls.filter(({ method, path }) => method === 'GET' && path === '/v1/messages/batches');
+    expect(lists.map(({ query }) => query)).toEqual(['?limit=20', '?limit=20&after_id=msgbatch_2']);
   });
 
   it('keeps the status of a failed create, so that the core can tell 4xx from 5xx (ADR-0108)', async () => {
@@ -179,6 +197,45 @@ describe('the Batches API through the SDK (ADR-0109 item 8)', () => {
     fake.batch.cutResults = 1;
     const created = batchOf(await llm.submitBatch([{ customId: 'tome-0-1', body: body() }]));
     expect(await llm.collectBatch(created.id)).toEqual({ outcome: 'error', status: null, retryAfter: null });
+    const items = (await llm.collectBatch(created.id)) as readonly BatchItem[];
+    expect(items.map(({ customId }) => customId)).toEqual(['tome-0-1']);
+  });
+
+  it('says nothing came back when the batch breaks off before the results, and gets them the next time (ADR-0109 item 20)', async () => {
+    const { fake, llm } = await connect();
+    const created = batchOf(await llm.submitBatch([{ customId: 'tome-0-1', body: body() }]));
+    fake.batch.cutPolls = 1;
+    expect(await llm.collectBatch(created.id)).toEqual({ outcome: 'error', status: null, retryAfter: null });
+    expect(fake.calls.filter(({ path }) => path.endsWith('/results'))).toHaveLength(0);
+    const items = (await llm.collectBatch(created.id)) as readonly BatchItem[];
+    expect(items.map(({ customId }) => customId)).toEqual(['tome-0-1']);
+  });
+
+  it('refuses to collect a batch that has no results_url yet, and downloads nothing', async () => {
+    const { fake, llm } = await connect();
+    fake.batch.polls = 3;
+    const created = batchOf(await llm.submitBatch([{ customId: 'tome-0-1', body: body() }]));
+    const error = await llm.collectBatch(created.id).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(RangeError);
+    expect((error as RangeError).message).toBe(`batch ${created.id} has no results_url`);
+    expect(fake.calls.filter(({ path }) => path.endsWith('/results'))).toHaveLength(0);
+  });
+
+  it('asks for the results file as it is, not as JSON', async () => {
+    const { fake, llm } = await connect();
+    const created = batchOf(await llm.submitBatch([{ customId: 'tome-0-1', body: body() }]));
+    await llm.collectBatch(created.id);
+    const download = fake.calls.find(({ path }) => path.endsWith('/results'));
+    expect(download?.headers.accept).toBe('application/binary');
+  });
+
+  it('reads past blank lines in the results file', async () => {
+    const { fake, llm } = await connect();
+    const created = batchOf(await llm.submitBatch([{ customId: 'tome-0-1', body: body() }]));
+    await llm.collectBatch(created.id);
+    const found = fake.batches[0];
+    if (found?.lines === undefined) throw new Error('no results');
+    found.lines = ['', ...found.lines, '   ', ''];
     const items = (await llm.collectBatch(created.id)) as readonly BatchItem[];
     expect(items.map(({ customId }) => customId)).toEqual(['tome-0-1']);
   });
@@ -252,6 +309,16 @@ describe('the ANTHROPIC_ variables change neither key, endpoint, version nor bet
     expect(headers['x-tome-extra']).toBeUndefined();
   });
 
+  it('drops a header whose name only starts or ends like one it forwards', async () => {
+    vi.stubEnv('ANTHROPIC_CUSTOM_HEADERS', 'x-tome-accept: 1\ncontent-type-extra: 1');
+    const { fake, llm } = await connect();
+    expect(await llm.send(body())).toMatchObject({ outcome: 'ok' });
+    const headers = fake.calls[0]?.headers ?? {};
+    expect(headers['x-tome-accept']).toBeUndefined();
+    expect(headers['content-type-extra']).toBeUndefined();
+    expect(headers['content-type']).toBe('application/json');
+  });
+
   it.each([['anthropic-beta: some-beta'], ['Anthropic-Beta: some-beta']])(
     'turns on no beta that TOME did not choose, from %j',
     async (custom) => {
@@ -285,5 +352,34 @@ describe('the ANTHROPIC_ variables change neither key, endpoint, version nor bet
     expect(headers['x-stainless-lang']).toBe('js');
     expect(headers['user-agent']).toContain('Anthropic/JS 0.137.0');
     expect(JSON.stringify(headers)).not.toContain('warden');
+  });
+
+  // 使用者的環境可能用 NODE_OPTIONS 掛了 OpenTelemetry 的自動插樁，全域就有 tracer provider。
+  // SDK 的 span 會帶請求的資訊，所以 TOME 連 tracer 都不取（ADR-0131）。
+  it('asks no tracer provider for a tracer, even one the process has set up (ADR-0109 item 2)', async () => {
+    const asked: string[] = [];
+    const quiet = new ProxyTracerProvider();
+    const provider: TracerProvider = {
+      getTracer: (name, version, options) => {
+        asked.push(name);
+        return quiet.getTracer(name, version, options);
+      },
+    };
+    onTestFinished(() => trace.disable());
+    expect(trace.setGlobalTracerProvider(provider)).toBe(true);
+    const { llm } = await connect();
+    expect(await llm.send(body())).toMatchObject({ outcome: 'ok' });
+    expect(await llm.submitBatch([{ customId: 'tome-0-1', body: body() }])).toMatchObject({ status: 'ended' });
+    expect(asked).toEqual([]);
+  });
+});
+
+describe('anthropicHost', () => {
+  it('gives an endpoint and a sleep only when it is given them', () => {
+    const sleep = async (): Promise<void> => undefined;
+    const given = anthropicHost(SYNTHETIC_KEY, { endpoint: 'http://127.0.0.1:9', sleep });
+    expect(given.endpoint).toBe('http://127.0.0.1:9');
+    expect(given.sleep).toBe(sleep);
+    expect(Object.keys(anthropicHost(SYNTHETIC_KEY))).toEqual(['connect']);
   });
 });

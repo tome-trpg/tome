@@ -36,8 +36,8 @@ jobs:
           - module: state
             files: src/core/state.ts
     runs-on: ubuntu-24.04
-    # 第一次實測最長的 job 是 24 分鐘，約留 2.5 倍（ADR-0110）。
-    timeout-minutes: 60
+    # 逾時設定 B 下最長的 job 是遮蔽還原的 51.1 分鐘，約留 2.5 倍（ADR-0131 第 9 項，修改 ADR-0110 第 6 項）。
+    timeout-minutes: 130
     steps:
       # 釘在 commit，旁邊註明標籤：標籤被移動就是進入這條流程的路。
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
