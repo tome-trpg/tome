@@ -81,10 +81,10 @@ protectedFiles:
   B 露出來的 17 個用 run 43069907632 的報告：補測試前都存活，跟 CI 相同；補測試後殺掉 11 個，存活的 6 個是 ADR-0131 第 3 項的 133、137、187、199、247、252，每個殺掉的都是為它補的那個測試失敗。
 - [x] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
 
-  這個 PR 每次推送（`db24f92`、`3755eab`、`4f30e86`）的 `specs`、`test` 都是 attempt 1 通過；`4f30e86` 是 run 43127039452（specs）、43127039692（test），Windows 的單元測試那一步 258 秒，沒有逾時診斷的輸出。
+  這個 PR 每次推送（`db24f92`、`3755eab`、`4f30e86`、`cc6c7f4`、`f3e999d`）的 `specs`、`test` 都是 attempt 1 通過；`4f30e86` 是 run 43127039452（specs）、43127039692（test），Windows 的單元測試那一步 258 秒，沒有逾時診斷的輸出；封存前最後一次 `f3e999d` 是 run 43134503069（specs）、43134501828（test）。
 - [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
 
-  `4f30e86` 的 `CodeQL` 是 success、0 個 annotation；三個 Analyze 各一個 annotation，都是原本就有的 ubuntu-latest 說明。
+  `4f30e86` 與 `f3e999d` 的 `CodeQL` 都是 success、0 個 annotation；三個 Analyze 各一個 annotation，都是原本就有的 ubuntu-latest 說明。
 - [x] `src/**` 沒有改動，`.github/**` 只改了 `mutation.yml` 的 `timeout-minutes`
 
   `.github/workflows/mutation.yml` 的 `timeout-minutes` 從 60 改成 130，依據是維護者 2026-11-12 的裁示（ADR-0131 第 9 項）；`.github/**` 的其他檔案沒有改動。
@@ -105,4 +105,4 @@ protectedFiles:
 - [x] Windows 卡住的分析與診斷的用法寫進 ADR-0131
 - [x] 對外出口在 CI 的分數在 95 以上
 
-  `4f30e86` 的 run 43127039506（設定 B，推送觸發，attempt 1）是 95.70：殺掉 239、逾時 6、存活 11、沒涵蓋 0，存活的就是 ADR-0131 第 3 項的 11 個。
+  `4f30e86` 的 run 43127039506（設定 B，推送觸發，attempt 1）是 95.70：殺掉 239、逾時 6、存活 11、沒涵蓋 0，存活的就是 ADR-0131 第 3 項的 11 個。之後 `cc6c7f4`（run 43133872355）與改了 `timeout-minutes` 的 `f3e999d`（run 43134501737）也都是 95.70，遮蔽還原的 job 是 40.4 與 44.9 分鐘。
