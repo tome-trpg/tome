@@ -66,19 +66,27 @@ M3 的規則書有 139 個 `FAILED_QA`，量測顯示其中 86 個只是這個�
 
 ## Invariants
 
-- [ ] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
-- [ ] 新的測試先在舊行為上失敗過，護欄測試故意改壞程式確認會失敗
+- [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
+
+  2191 個測試通過，441 個斷言都成立，299 個套件、0 違規。
+- [x] 新的測試先在舊行為上失敗過，護欄測試故意改壞程式確認會失敗
+
+  把新的測試放到 `5e0b527`（改命中之前）的複本上跑，11 個失敗。護欄有兩個：「短詞另外單獨出現時照樣要求」與「不適用的角色不參加比對」，在舊程式上也會過，改壞最長比對時會失敗。回合開頭補的兩個「不給進度回呼」也是護欄，殺不殺得掉 042 的存活變異由 `mutation-lines` 確認。
 - [ ] `mutation.yml` 在回合分支上跑過，`mutation-lines` 跑過其他改過的行，存活的補上測試或說明是等價變異
 - [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
 - [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
-- [ ] 訊息、`--json` 與紀錄都不含書本文字
+- [x] 訊息、`--json` 與紀錄都不含書本文字
+
+  新的代碼 `report.estimate_unknown` 只帶金額；命中的改動不碰訊息。量測只印數字。
 
 ## Acceptance Criteria
 
-- [ ] 維護者的決定寫成 ADR-0133（`amends: [ADR-0102, ADR-0120]`），白皮書 §9 的索引加一列
-- [ ] `hitTerms` 照 `chooseRanges` 做最長比對，`keep_source` 的卡參加比對但不回傳；`chooseRanges` 匯出給兩邊共用
-- [ ] 驗證、`<glossary>`、`<recent>`、翻譯記憶的鍵跟著用最長比對
-- [ ] S-16（`rename.ts`）與交付報告的 `unusedOf`、`oldNamesOf` 改成先用整份詞條算命中、再看那張卡在不在
-- [ ] 回合開頭：`batch.ts`、`scan.ts` 不給進度回呼也跑得完的測試；估價區間寬度 0 時用不帶百分比的說法
-- [ ] 白皮書與 CHANGELOG 更新，寫明翻譯記憶的鍵會變、已翻的書跑一次 `tome verify`
+- [x] 維護者的決定寫成 ADR-0133（`amends: [ADR-0102, ADR-0120]`），白皮書 §9 的索引加一列
+- [x] `hitTerms` 照 `chooseRanges` 做最長比對，`keep_source` 的卡參加比對但不回傳；`chooseRanges` 匯出給兩邊共用
+- [x] 驗證、`<glossary>`、`<recent>`、翻譯記憶的鍵跟著用最長比對
+- [x] S-16（`rename.ts`）與交付報告的 `unusedOf`、`oldNamesOf` 改成先用整份詞條算命中、再看那張卡在不在
+
+  報告拿不到規則包的詞條，只比實體卡（ADR-0133 第 2 項與 Open Questions）。
+- [x] 回合開頭：`batch.ts`、`scan.ts` 不給進度回呼也跑得完的測試；估價區間寬度 0 時用不帶百分比的說法
+- [x] 白皮書與 CHANGELOG 更新，寫明翻譯記憶的鍵會變、已翻的書跑一次 `tome verify`
 - [ ] PR 說明寫清楚合併後維護者的步驟，每個指令一個區塊

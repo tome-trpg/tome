@@ -569,7 +569,7 @@ flowchart LR
 | 段落編號一對一，沒有多也沒有少 | 重送 |
 | 每個 `ph`、`pc` 恰好出現一次 | 重送 |
 | 佔位符之外的數字守恆，只比阿拉伯數字，three 與「三」不算不同。單位不換算，吋、磅、貨幣都照原數字 | 重送 |
-| 命中的詞條在譯文裡是鎖定譯名 | 重送 |
+| 命中的詞條在譯文裡是鎖定譯名。一處原文只算一張卡，跟遮蔽同一條規則：起點較前的優先、同起點取較長的、互不重疊（ADR-0133） | 重送 |
 | 混入簡體字 | 重送 |
 | 長度過短，疑似摘要，比例來自目標語言設定檔 | 重送 |
 | 疑似大陸用語：OpenCC 台灣片語表加自訂清單 | 列報告 |
@@ -577,6 +577,8 @@ flowchart LR
 | 輸出的標題與表格結構跟 IR 不符 | 輸出失敗，這是程式錯誤 |
 
 長度過短的比例，`zh-TW` 是 0.2，`too_short` 照舊重送（ADR-0111）。這是第一筆數據：第一次真實翻譯自然的譯文有低於 0.3 的，少了一半的摘要約 0.19；只有一本小說、一個模型，規則書的表格與短標籤沒有數據。輸出的標題與表格結構在 `tome assemble` 寫檔前檢查（ADR-0122）。**已實作**（ADR-0123）：代名詞與實體卡不符、機翻腔訊號都只報告。代名詞：單位命中恰好一張有代名詞的鎖定卡，譯文拿掉命中的譯名與例外詞後出現別的代名詞、又沒有那張卡的代名詞才報；活躍實體不看。機翻腔：目標語言設定檔的詞表，字串或同一句裡相隔不遠的前後兩半。兩份語言資料由維護者在 2026-11-09 逐字審過，誤報率沒有量過。混入簡體字沿用 repo 的判定：標準 Big5 以外的漢字，加上 Big5 也收錄的簡體字形，字表是語言資料，鎖定譯名裡的字不算。OpenCC 只用在只報告的用語檢查。數字比原文有沒有都出現，少了重送，譯文多出來的只報告，`three` 譯成 `3` 不是錯。
+
+命中用最長比對，是因為 M3 的規則書有 139 個 `FAILED_QA`，量測顯示其中 86 個只是長的鎖定卡包住短的、驗證卻還要求短詞的譯名，重送花費約六成也來自它（ADR-0133）。`<glossary>`、`<recent>`、翻譯記憶的鍵、S-16 與交付報告都用同一個命中。
 
 失敗時只重送失敗的單位並附上原因，預設最多 3 次。到達上限標成 `FAILED_QA`，列入交付報告，輸出時保留原文，MUST NOT 靜默略過。查到的 BabelDOC、PDFMathTranslate v1 都沒有這個保證（[佐證 §1.9](research/2026-10-31-landscape.md#19-標籤協定與佔位符的前例)）。
 
@@ -1296,6 +1298,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0130](adr/0130-m4-decisions.md) | M4 的範圍、回合與開工前的決定 | M4 |
 | [ADR-0131](adr/0131-egress-mutation-tests-and-windows-stall.md) | 對外出口的變異測試補強與 Windows 測試卡住的調查 | M4 |
 | [ADR-0132](adr/0132-display-fixes-and-stale-text.md) | 四個顯示問題的修正、停在 M2 的文字，與變異測試搬到 GitHub runner | M4 |
+| [ADR-0133](adr/0133-longest-match-term-hits.md) | 譯名的命中用最長比對 | M4 |
 
 ---
 
@@ -1447,6 +1450,7 @@ M4 已實作的項目：
 | 項目 | 路徑 | 測試或斷言 |
 | :--- | :--- | :--- |
 | 即時模式的保留期說法、`tome run` 不重複、批次從 1 算起並附預計批數、花費跟估價分情況說 | `src/core/request.ts`、`src/core/scan.ts`、`src/core/pipeline.ts`、`src/core/batch.ts`、`src/core/report.ts`、`src/cli/run.ts`、`src/cli/messages/zh-TW.json` | `tests/cli/estimate.test.ts`、`tests/cli/scan.test.ts`、`tests/cli/tome-run.test.ts`、`tests/cli/batch.test.ts`、`tests/cli/report.test.ts`、`tests/core/report.test.ts`、ADR-0132 的斷言 |
+| 譯名的命中用最長比對，驗證、`<glossary>`、`<recent>`、翻譯記憶的鍵、S-16 與交付報告一致 | `src/core/mask.ts`、`src/core/verify.ts`、`src/core/rename.ts`、`src/core/report.ts` | `tests/core/verify.test.ts`、`tests/core/request.test.ts`、`tests/core/memory.test.ts`、`tests/core/report.test.ts`、`tests/cli/entities.test.ts`、ADR-0133 的斷言 |
 
 M3 已實作的項目：
 
