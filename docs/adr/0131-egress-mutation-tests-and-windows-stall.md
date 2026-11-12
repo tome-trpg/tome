@@ -116,7 +116,7 @@ Windows 上的 `test (windows-2025)` 在 `main` 的 `acef6c3`（run 42649992786�
 
    * 對外出口的三個檔案：`anthropic.ts` 96.03、`client.ts` 96.08、`gate.ts` 94.94。存活的 11 個正好是第 3 項的清單；逾時的 6 個是 `gate.ts` 的無窮迴圈類（190、191、200、201、209、212）。
    * 其他五個模組的分數與每一類的個數，跟第 8 項設定 B 的兩次相同。
-   * 遮蔽還原的 job 這次跑了 51.1 分鐘，見 Open Questions。
+   * 遮蔽還原的 job 這次跑了 51.1 分鐘，`timeout-minutes` 因此改成 130（第 9 項）。
 
 **逾時設定**
 
@@ -154,6 +154,7 @@ Windows 上的 `test (windows-2025)` 在 `main` 的 `acef6c3`（run 42649992786�
    * **留設定 B**：`stryker.config.mjs` 設 `timeoutFactor: 3`、`timeoutMS: 10000`，改的是 ADR-0110 沿用的預設，所以這份 ADR `amends: [ADR-0110]`，ADR-0110 Open Questions 的逾時那一項由這裡定案。理由是第 8 項：同一個設定兩次的結果相同，分數不再隨 runner 浮動，也不再讓存活的變異藏在逾時裡；job 時間在上限之內。
    * **不開 `ignoreStatic`**。
    * **門檻維持 80**（ADR-0110 第 9 項）。設定 B 下各模組最低的是遮蔽還原的 91.95。
+   * **`mutation.yml` 的 `timeout-minutes` 從 60 改成 130**，修改 ADR-0110 第 6 項。設定 B 下遮蔽還原的 job 三次是 34.5、39.2、51.1 分鐘（Stryker 那一步是 34.3、38.9、50.9 分鐘），同樣的結果隨 runner 的速度浮動，最慢一次離 60 分鐘只剩約 9 分鐘（第 7 項）。照 ADR-0110 第 6 項的做法，用最長的 job 約留 2.5 倍：51.1 × 2.5 ≈ 128，取 130。這是維護者在第 7 項的實測之後另外裁示的，041 的 brief 因此只開放 `mutation.yml` 這一個檔、只改這一行，`.github/**` 的其他檔案照樣受保護。
    * **對外出口在設定 B 露出來的 17 個在這個回合處理**：殺掉 11 個（第 2 項），6 個不殺（第 3 項）。遮蔽還原的 12 個與驗證的 8 個不在這個回合，記在 Open Questions，之後另開回合。
 
 **Windows 上 `test` 卡住**
@@ -187,10 +188,11 @@ Windows 上的 `test (windows-2025)` 在 `main` 的 `acef6c3`（run 42649992786�
 <!-- @assert-count target="stryker.config.mjs" symbol="timeoutFactor: 3," expected="1" reason="第 9 項：留設定 B" -->
 <!-- @assert-count target="stryker.config.mjs" symbol="timeoutMS: 10000," expected="1" reason="第 9 項：留設定 B" -->
 <!-- @assert-count target="stryker.config.mjs" symbol="ignoreStatic" expected="0" comments="include" reason="第 9 項：不開 ignoreStatic" -->
+<!-- @assert-count target=".github/workflows/mutation.yml" symbol="timeout-minutes: 130" expected="1" comments="include" reason="第 9 項：job 的時限照設定 B 的實測調整，取代 ADR-0110 第 6 項的 60" -->
 
 ## 後果
 
-對外出口的存活變異只剩走不到或等價的 11 個，分數到不了 100。設定 B 讓各模組的分數比 A 低，但不再隨 runner 浮動，存活的變異也看得到；遮蔽還原與驗證露出來的 20 個要另開回合處理。代價是遮蔽還原的 job 變長而且會浮動，最慢一次 51.1 分鐘，接近 60 分鐘的上限（Open Questions）。假供應商不再讓讀不懂的請求掛著，測試寫錯時會在幾秒內失敗，不是等 30 秒逾時。開發相依多一個 `@opentelemetry/api`，SDK 升版時要一起看版本是否相同。
+對外出口的存活變異只剩走不到或等價的 11 個，分數到不了 100。設定 B 讓各模組的分數比 A 低，但不再隨 runner 浮動，存活的變異也看得到；遮蔽還原與驗證露出來的 20 個要另開回合處理。代價是遮蔽還原的 job 變長而且會浮動，最慢一次 51.1 分鐘，job 的時限跟著從 60 分鐘放寬到 130 分鐘（第 9 項）；真的卡住的 job 要多等一個多小時才會被取消。假供應商不再讓讀不懂的請求掛著，測試寫錯時會在幾秒內失敗，不是等 30 秒逾時。開發相依多一個 `@opentelemetry/api`，SDK 升版時要一起看版本是否相同。
 
 Windows 的停頓沒有修，下次發生時 `test` 照樣會失敗，CI 照樣以 attempt 1 為準；差別是日誌裡會有判斷原因的讀數。
 
@@ -205,6 +207,7 @@ Windows 的停頓沒有修，下次發生時 `test` 照樣會失敗，CI 照樣�
 * **順便改 `src` 消掉等價變異**：這個回合不改 `src/**`。
 * **留設定 A**：分數比較高，但同一個設定隔天就差 0.70，而且 37 個存活的變異藏在逾時裡（第 8 項）。
 * **開 `ignoreStatic`**：沒有一致的好處（第 8 項）。
+* **遮蔽還原的 job 拆開，或 `timeout-minutes` 維持 60**：維護者選了把時限放寬到 130（第 9 項）。
 * **設定 B 露出來的變異全部留到之後的回合**：對外出口會停在 91.41，到不了這個回合要的 95；這 17 個都在 041 本來就在看的兩個檔案裡。
 * **Windows 加重試、拉長時限或減少 worker**：見第 13 項。
 * **Windows 吞掉暫存資料夾的 `EPERM`**：見第 12 項。
@@ -213,6 +216,6 @@ Windows 的停頓沒有修，下次發生時 `test` 照樣會失敗，CI 照樣�
 ## Open Questions
 
 - [ ] Windows 上 runner 整台停住的根本原因（第 11 項），等下次發生時讀第 14 項的診斷。
-- [ ] 設定 B 下，遮蔽還原的 job 時間會浮動到 51 分鐘：同樣的程式、同樣的結果，三次是 34.5、39.2、51.1 分鐘（設定 A 的兩次是 28.4、25.5），離 `mutation.yml` 的 `timeout-minutes` 60 只剩約 9 分鐘。Stryker 的初始測試在這三次是 2 分 32 秒、3 分 56 秒、3 分 34 秒，跟 runner 的速度有關。推測是遮蔽還原 323 個變異裡有 161 個靜態變異，每個都要跑全部涵蓋的測試，逾時的時限又跟著初始測試的時間放大；這個推測沒有逐一量過。哪天超過 60 分鐘被取消，就要調受保護的 `mutation.yml` 的 `timeout-minutes`，或拆開遮蔽還原的 job，由維護者決定。
+- [x] 設定 B 下，遮蔽還原的 job 時間會浮動到 51 分鐘：同樣的程式、同樣的結果，三次是 34.5、39.2、51.1 分鐘（設定 A 的兩次是 28.4、25.5），離 `mutation.yml` 的 `timeout-minutes` 60 只剩約 9 分鐘。Stryker 的初始測試在這三次是 2 分 32 秒、3 分 56 秒、3 分 34 秒，跟 runner 的速度有關。推測是遮蔽還原 323 個變異裡有 161 個靜態變異，每個都要跑全部涵蓋的測試，逾時的時限又跟著初始測試的時間放大；這個推測沒有逐一量過。哪天超過 60 分鐘被取消，就要調受保護的 `mutation.yml` 的 `timeout-minutes`，或拆開遮蔽還原的 job，由維護者決定。2026-11-12 由第 9 項處理：維護者選了把 `timeout-minutes` 改成 130，不拆 job。
 - [ ] 設定 B 下遮蔽還原存活的 12 個靜態變異（`mask.ts` L109–155）與驗證存活的 8 個（1、31、32、33、134、135、479、487），之後另開回合分類、補測試（第 9 項）。
 - [ ] 個資比對用 `toLowerCase` 不分大小寫，有些字母大小寫的對應不是一對一：清單寫 `Straße`、書上印 `STRASSE`，或清單寫 `Işık`、書上印 `IŞIK`，目前都不會命中。要不要改成完整的大小寫摺疊，要改 `src/core/egress/gate.ts`，由之後的回合決定。這是對照 181 號時看到的，不是變異測試的結果。

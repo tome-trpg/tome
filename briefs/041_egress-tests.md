@@ -4,6 +4,7 @@ date: 2026-11-11
 type: chore
 wave: 45
 affectedFiles:
+  - .github/workflows/mutation.yml
   - briefs/**
   - docs/WHITEPAPER.md
   - docs/adr/**
@@ -13,7 +14,12 @@ affectedFiles:
   - tests/**
   - vitest.config.ts
 protectedFiles:
-  - .github/**
+  - .github/ISSUE_TEMPLATE/**
+  - .github/dependabot.yml
+  - .github/pull_request_template.md
+  - .github/workflows/engine.yml
+  - .github/workflows/specs.yml
+  - .github/workflows/test.yml
   - .spec-brief.json
   - .spec-graph.json
   - .spec-guard.json
@@ -51,7 +57,7 @@ protectedFiles:
 - 不改 `src/**`。存活的變異如果揭露了程式的錯，停下回報，不自己改程式。
 - 不硬殺等價或走不到的變異。
 - 不碰對外出口以外模組的存活變異（驗證、遮蔽還原等）。
-- 不改 `mutation.yml` 與門檻。有 job 超過 60 分鐘被取消就停下來問。
+- 不改門檻。`mutation.yml` 只能改 `timeout-minutes`（60 改成 130），其他設定不動；`.github/**` 的其他檔案照樣受保護。依據是維護者 2026-11-12 的裁示：設定 B 下遮蔽還原的 job 跑到 51.1 分鐘，接近原本 60 分鐘的上限（ADR-0131 第 9 項）。有 job 超過時限被取消就停下來問。
 - 不在本機跑 Stryker。本機只用暫存複本一次套一個變異、跑相關的測試檔，小工具放 scratchpad，不進 repo。
 - Windows：不加重試、不拉長測試的時限、不減少 worker，也不吞掉暫存資料夾的 `EPERM`。
 
@@ -79,7 +85,9 @@ protectedFiles:
 - [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
 
   `4f30e86` 的 `CodeQL` 是 success、0 個 annotation；三個 Analyze 各一個 annotation，都是原本就有的 ubuntu-latest 說明。
-- [x] `src/**` 與 `.github/**` 沒有改動
+- [x] `src/**` 沒有改動，`.github/**` 只改了 `mutation.yml` 的 `timeout-minutes`
+
+  `.github/workflows/mutation.yml` 的 `timeout-minutes` 從 60 改成 130，依據是維護者 2026-11-12 的裁示（ADR-0131 第 9 項）；`.github/**` 的其他檔案沒有改動。
 - [x] 新的開發相依只有 `@opentelemetry/api` 1.10.0，`npm run licenses` 通過
 
   lockfile 只多根項目的一行，跟 `npm install --package-lock-only` 產生的相同；299 個套件、0 違規。

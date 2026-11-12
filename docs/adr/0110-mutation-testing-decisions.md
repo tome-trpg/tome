@@ -78,7 +78,7 @@ brief 020 要照 ADR-0063 與 ADR-0099 第 17、18 項加入 Stryker。`@stryker
 6. 修改 ADR-0063 第 2 項的做法：新增 `.github/workflows/mutation.yml`，這是這個回合唯一可以改的 workflow 檔，維護者裁定 `.github/` 底下其他檔案照樣受保護。
    * 觸發：每週日 18:00 UTC 的排程、`workflow_dispatch`，以及只在改到 `stryker.config.mjs` 或這個 workflow 時才跑的 `pull_request`。
    * 只跑 `ubuntu-24.04`。一個模組一個 job，共 6 個，用 matrix 同時跑。
-   * `timeout-minutes` 原本照估計設 150。第一次實測最長的 job 是 24 分鐘，改成 60，約留 2.5 倍。
+   * `timeout-minutes` 原本照估計設 150。第一次實測最長的 job 是 24 分鐘，改成 60，約留 2.5 倍。2026-11-12 由 ADR-0131 第 9 項改成 130：逾時設定 B 下最長的 job 是 51.1 分鐘，同樣約留 2.5 倍。
    * 每個 job 上傳 HTML 與 JSON 報告當 artifact，保留 30 天。
    * 不設成必要檢查。
    * `actions/upload-artifact` 釘在 v7.0.2 的 commit，2026-10-07 上架，已過 Action 的 7 天冷卻期（ADR-0082）。
@@ -151,7 +151,6 @@ brief 020 要照 ADR-0063 與 ADR-0099 第 17、18 項加入 Stryker。`@stryker
 <!-- @assert-count target="stryker.config.mjs" symbol="tsconfigFile: 'stryker-skips-tsconfig-rewrite.json'" expected="1" comments="include" reason="第 5 項：跳過改寫 tsconfig" -->
 <!-- @assert-count target="stryker.config.mjs" symbol="pool: 'forks'" expected="1" comments="include" reason="第 5 項：跟 npm test 一樣用 forks" -->
 <!-- @assert-count target=".github/workflows/mutation.yml" symbol="cron: '0 18 * * 0'" expected="1" comments="include" reason="第 6 項：每週排程" -->
-<!-- @assert-count target=".github/workflows/mutation.yml" symbol="timeout-minutes: 60" expected="1" comments="include" reason="第 6 項：job 的時限，照第一次實測調整" -->
 <!-- @assert-count target="stryker.config.mjs" symbol="thresholds: { high: 80, low: 60, break: 80 }," expected="1" comments="include" reason="第 9 項：門檻 80" -->
 <!-- @assert-absence target="package.json" regex="true" symbol=".mutation.:" comments="include" reason="第 11 項：不加 npm run mutation" -->
 
