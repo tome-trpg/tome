@@ -58,7 +58,7 @@ export interface Provider {
     readonly high: number;
     /** 翻譯重送的餘裕（ADR-0134）。 */
     readonly retry_margin: number;
-    /** Pass 0 的餘裕，照舊是 0.1（ADR-0134 第 4 項）。 */
+    /** Pass 0 的餘裕，照舊是 0.1（ADR-0134 第 6 項）。 */
     readonly scan_retry_margin: number;
   };
   readonly models: readonly ProviderModel[];

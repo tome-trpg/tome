@@ -123,7 +123,7 @@ describe('the gaps the M3 ledger showed (ADR-0134)', () => {
   });
 });
 
-// Pass 0 的實際花費已經在估價下限附近，ADR-0134 的三項不套在它身上（第 4 項）。
+// Pass 0 的實際花費已經在估價下限附近，ADR-0134 第 1 到 4 項不套在它身上（第 6 項）。
 describe('estimateFixedOutput, for Pass 0 (ADR-0118)', () => {
   it('is what it was before ADR-0134 with the shipped provider', () => {
     // 3000 字元 ÷ 3 = 1000 個輸入 token，加 1000 個輸出 token，Sonnet 5.5 的批次價，乘 1.1 的餘裕。

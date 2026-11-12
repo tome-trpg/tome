@@ -68,7 +68,7 @@ export function withThinking(model: ProviderModel, tokens: number): number {
 
 /**
  * 輸出跟輸入的長度無關的請求，例如 Pass 0 每個候選詞回一張卡（ADR-0118）。`tokens` 是不含思考的輸出。
- * 整個提示照 `chars_per_token` 算，沒有單位的標籤；ADR-0134 的三項不套在這裡（第 4 項）。
+ * 整個提示照 `chars_per_token` 算，沒有單位的標籤；ADR-0134 第 1 到 4 項不套在這裡（第 6 項）。
  */
 export function estimateFixedOutput(
   provider: Provider,
