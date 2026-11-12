@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 date: 2026-11-12
 type: feature
 wave: 48
@@ -70,17 +70,27 @@ protectedFiles:
 
 ## Invariants
 
-- [ ] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
-- [ ] 新的測試先在舊行為上失敗過
+- [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
+
+  2213 個測試通過，449 個斷言都成立，299 個套件、0 違規。
+- [x] 新的測試先在舊行為上失敗過
+
+  新的測試放在改估價器之前的程式（`85c1568`）上跑，18 個失敗：估價器 12 個、schema 4 個、請求的估價 2 個。Pass 0 的兩個測試是護欄，在舊程式上也會通過，用來確認 Pass 0 的估價不變；schema 拒絕打錯的欄位與不合理的值，在舊程式上也會通過。
 - [ ] `mutation-lines` 跑過改過的行，存活的變異補上測試，或說明為什麼等價
 - [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
 - [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
-- [ ] Pass 0 的估價跟改之前相同
+- [x] Pass 0 的估價跟改之前相同
+
+  `tests/core/estimate.test.ts`：用隨附的設定檔算 Pass 0，結果跟改之前的算式（乘 1.1 的餘裕）相同；前綴的比例與單位的標籤不影響 Pass 0。
 
 ## Acceptance Criteria
 
-- [ ] 維護者的決定寫成 ADR-0134（`amends: [ADR-0103, ADR-0114]`），白皮書 §9 的索引加一列
-- [ ] `providers/anthropic.yaml` 的 `estimate` 加上 `unit_output_tokens: 12`、`unit_input_tokens: 6`、`prefix_chars_per_token: 2.4`，`retry_margin` 改成 0.25；schema 加這三個欄位
-- [ ] 翻譯的估價：輸入是前綴字元 ÷ `prefix_chars_per_token`，加 `user` 字元 ÷ `chars_per_token`，加單位數 × `unit_input_tokens`；輸出另加單位數 × `unit_output_tokens`
-- [ ] 測試用合成的請求，分別改單位數、前綴長度與 `user` 長度，看估價怎麼動
-- [ ] 白皮書與 CHANGELOG 更新，寫明已確認的估價要重新 `tome estimate --confirm`，預算檢查會比較早停下
+- [x] 維護者的決定寫成 ADR-0134（`amends: [ADR-0103, ADR-0114]`），白皮書 §9 的索引加一列
+- [x] `providers/anthropic.yaml` 的 `estimate` 加上 `unit_output_tokens: 12`、`unit_input_tokens: 6`、`prefix_chars_per_token: 2.4`，`retry_margin` 改成 0.25；schema 加這三個欄位
+
+  Pass 0 照舊用 0.1 的餘裕，放在新欄位 `scan_retry_margin`，schema 一共加四個欄位（ADR-0134 第 6 項）。
+- [x] 翻譯的估價：輸入是前綴字元 ÷ `prefix_chars_per_token`，加 `user` 字元 ÷ `chars_per_token`，加單位數 × `unit_input_tokens`；輸出另加單位數 × `unit_output_tokens`
+
+  輸出的標籤加在思考的倍數之外，跟 `max_tokens` 相同（ADR-0134 第 2 項）。
+- [x] 測試用合成的請求，分別改單位數、前綴長度與 `user` 長度，看估價怎麼動
+- [x] 白皮書與 CHANGELOG 更新，寫明已確認的估價要重新 `tome estimate --confirm`，預算檢查會比較早停下
