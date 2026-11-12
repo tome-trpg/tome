@@ -133,6 +133,12 @@ describe('estimateFixedOutput, for Pass 0 (ADR-0118)', () => {
     expect(high_usd).toBeCloseTo(middle * 1.3, 12);
   });
 
+  it('counts thinking as output on a model that cannot turn it off (ADR-0037)', () => {
+    // 1000 個輸出 token 乘 Opus 5.5 的 1.5，批次的輸出價 10，乘 1.1 的餘裕與上限的 1.3。
+    const { high_usd } = estimateFixedOutput(profile, opus, 0, 1000, 'batch');
+    expect(high_usd).toBeCloseTo(((1000 * 1.5 * 10) / 1_000_000) * 1.1 * 1.3, 12);
+  });
+
   it('ignores the prefix ratio and the tags of units', () => {
     const before = estimateFixedOutput(simple, opus, 3000, 1000, 'realtime');
     const after = estimateFixedOutput(
