@@ -94,8 +94,12 @@ protectedFiles:
 - [ ] 新的 workflow 在 GitHub runner 上跑過這個回合改過的行，存活的補上測試或說明是等價變異
 
   **Delegated** 到合併之後與回合 043：`workflow_dispatch` 要 workflow 先在預設分支上才觸發得到，新 workflow 合進 main 之前，沒辦法在 042 的分支上 dispatch。維護者在 2026-11-12 選定 042 照常合併，合併後在 main 上 dispatch `mutation-lines` 跑 042 改過的行，存活的在 043 開頭只用測試補，結果寫進 043 的 ADR（ADR-0132 第 11 項）。
-- [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
+
+  PR 81 的兩次推送都是 attempt 1 通過：`894256b`（run 43175907650、43175907527）與 `9a862b2`（specs run 43176416882、test run 43176416820），兩個 OS 都是。`mutation.yml` 沒有觸發。
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+
+  `9a862b2` 的 `CodeQL` 是 success、0 個 annotation；三個 Analyze 各一個 annotation，都是原本就有的 ubuntu-latest 說明。
 - [x] 訊息、進度、`--json` 與紀錄都不含書本文字
 
   新的發現與進度只帶數字與代碼；`tests/cli/estimate.test.ts` 確認估價的輸出不含書本文字。
