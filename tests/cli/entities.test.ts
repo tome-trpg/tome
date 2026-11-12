@@ -247,6 +247,19 @@ describe('S-16: changing a locked card (ADR-0120)', () => {
     expect(units(lib.home).map(({ state }) => state)).toEqual(['QUEUED', 'IN_FLIGHT', 'DONE']);
   });
 
+  // 短卡只出現在長卡裡時，那些單位照長卡翻，沒有短卡的譯名可換：改短卡的譯名或屬性都不該動到它們（ADR-0133）。
+  it('leaves alone the units where a changed card only sits inside a longer one', async () => {
+    const { lib, provider } = await translatedBook();
+    const sent = provider.requests.length;
+    await tome(lib, null, 'glossary', 'import', 'book', csv('source,target,class,gender,pronoun\nWarden,守衛,person,,\n'));
+    const renamed = await tome(lib, null, 'glossary', 'import', 'book', csv('source,target,class,gender,pronoun\nWarden,看守人,person,,\n'));
+    expect(renamed.output.findings.find(({ code }) => code === 'glossary.renamed')?.params).toMatchObject({ replaced: '0', resend: '0', reset: '0' });
+    const reworded = await tome(lib, null, 'glossary', 'import', 'book', csv('source,target,class,gender,pronoun\nWarden,看守人,person,male,他\n'));
+    expect(reworded.output.findings.find(({ code }) => code === 'glossary.renamed')?.params).toMatchObject({ replaced: '0', resend: '0', reset: '0' });
+    expect(units(lib.home).map(({ state }) => state)).toEqual(['DONE', 'DONE', 'DONE']);
+    expect(provider.requests).toHaveLength(sent);
+  });
+
   it('does the same when the review file changes a locked translation', async () => {
     const { lib } = await translatedBook();
     await tome(lib, null, 'glossary', 'review', 'book');

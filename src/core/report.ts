@@ -225,15 +225,25 @@ function variantsOf(issues: readonly IssueRow[], cards: readonly EntityCard[]): 
     .map(([source, targets]) => ({ source, targets: [...targets].map(([target, units]) => ({ target, units })) }));
 }
 
+/**
+ * 每個單位命中哪些鎖定的卡。用全部的卡一起比，長的卡包住短的時只算長的（ADR-0133）；一次只拿一張卡比，
+ * 看不到包住它的長卡。報告拿不到規則包的詞條，只比實體卡。
+ */
+function cardHits(units: readonly UnitRow[], cards: readonly EntityCard[]): ReadonlyMap<string, ReadonlySet<string>> {
+  const terms = bookTerms([], cards);
+  return new Map(units.map((unit) => [unit.unit_id, new Set(hitTerms(unit, terms).map(({ text }) => text))]));
+}
+
 /** 鎖定的卡，命中它、翻好的單位譯文裡沒有它的譯名，多半是鎖定前翻的（ADR-0123）。舊譯名一節列了的人工譯文不重複列。 */
 function unusedOf(units: readonly UnitRow[], cards: readonly EntityCard[], stale: Stale): UnusedTarget[] {
   const done = units.filter(({ state, translation }) => state === 'DONE' && translation !== null);
+  const hits = cardHits(done, cards);
   return cards.flatMap((card): UnusedTarget[] => {
     const [term] = bookTerms([], [card]);
     if (term === undefined || card.target === null) return [];
     const target = card.target;
     const blocks = done
-      .filter((unit) => hitTerms(unit, [term]).length > 0 && !(unit.translation ?? '').includes(target) && !stale(unit, card))
+      .filter((unit) => hits.get(unit.unit_id)?.has(term.text) === true && !(unit.translation ?? '').includes(target) && !stale(unit, card))
       .map(({ block_id }) => block_id);
     return blocks.length === 0 ? [] : [{ source: card.source, target, blocks: [...new Set(blocks)] }];
   });
@@ -274,13 +284,14 @@ function oldNamesOf(
   stale: Stale,
 ): { readonly names: OldName[]; readonly listed: ReadonlySet<string> } {
   const humans = units.filter(({ state, human }) => state === 'DONE' && human === 1);
+  const hits = cardHits(humans, cards);
   const listed = new Set<string>();
   const names = cards.flatMap((card): OldName[] => {
     const [term] = bookTerms([], [card]);
     const before = previous.get(card.id);
     if (term === undefined || card.target === null || before === undefined) return [];
     const target = card.target;
-    const found = humans.filter((unit) => hitTerms(unit, [term]).length > 0 && stale(unit, card));
+    const found = humans.filter((unit) => hits.get(unit.unit_id)?.has(term.text) === true && stale(unit, card));
     for (const { unit_id } of found) listed.add(listedKey(unit_id, target));
     const blocks = found.map(({ block_id }) => block_id);
     return blocks.length === 0 ? [] : [{ source: card.source, before, target, blocks: [...new Set(blocks)] }];

@@ -217,6 +217,47 @@ describe('locked terms (ADR-0102)', () => {
   });
 });
 
+// 一處原文只算一張卡，跟遮蔽同一條規則：起點較前的優先、同起點取較長的、互不重疊（ADR-0133）。
+describe('the longest match (ADR-0133)', () => {
+  const source = 'The Grey Warden lights a lantern at the old ferry before dawn.';
+  const translation = '在黎明之前，灰袍守望者點亮老渡口的提燈，等候第一班船靠岸。';
+  const nested = [term('Warden', '看守人'), term('Grey Warden', '灰袍守望者')];
+
+  it('counts only the longer term where a shorter one sits inside it', () => {
+    expect(hitTerms(unit(source), nested).map(({ text }) => text)).toEqual(['Grey Warden']);
+    expect(codes(verifyFragment(unit(source), `<s id="1">${translation}</s>`, context({ terms: nested })))).toEqual([]);
+  });
+
+  it('still wants the shorter term where it also stands alone', () => {
+    const text = 'The Grey Warden and a Warden of the ferry wait together before dawn.';
+    expect(hitTerms(unit(text), nested).map(({ text: hit }) => hit)).toEqual(['Warden', 'Grey Warden']);
+    const verdict = verifyFragment(unit(text), '<s id="1">灰袍守望者與渡口的守衛在黎明前一起等候。</s>', context({ terms: nested }));
+    expect(verdict.problems).toEqual([{ code: 'term_missing', level: 'resend', detail: { term: 'Warden', target: '看守人' } }]);
+  });
+
+  it('takes the one that starts first where two overlap, as the masking does', () => {
+    const text = 'Travellers cross the Salt Marsh Wardens road before the tide turns back.';
+    const terms = [term('Marsh Wardens', '沼澤守衛'), term('Salt Marsh', '鹽沼')];
+    expect(hitTerms(unit(text), terms).map(({ text: hit }) => hit)).toEqual(['Salt Marsh']);
+  });
+
+  it('takes the term listed first where two are the same stretch', () => {
+    const text = 'The Warden lights a lantern at the old ferry before dawn.';
+    const terms = [term('Warden', '看守人'), term('warden', '守衛', { match: { case_sensitive: false } })];
+    expect(hitTerms(unit(text), terms).map(({ text: hit }) => hit)).toEqual(['Warden']);
+  });
+
+  it('does not count a term inside a keep_source term, which the model never sees', () => {
+    const terms = [term('Warden', '看守人'), term('Grey Warden', 'Grey Warden', { keep_source: true })];
+    expect(hitTerms(unit(source), terms)).toEqual([]);
+  });
+
+  it('leaves a term of another role out of the contest', () => {
+    const terms = [term('Warden', '看守人'), term('Grey Warden', '灰袍守望者', { match: { roles: ['heading'] } })];
+    expect(hitTerms(unit(source), terms).map(({ text }) => text)).toEqual(['Warden']);
+  });
+});
+
 describe('bookTerms: the locked entity cards and the pack terms (ADR-0120)', () => {
   const source = 'The Warden lights a lantern at the old Ferry before dawn.';
   const translation = '在黎明之前，看守人點亮老渡口的提燈，等候第一班船靠岸。';

@@ -328,7 +328,8 @@ describe('collectReport: the edges (ADR-0123)', () => {
       { source: 'Salt Marsh', target: '鹽沼地', blocks: ['p3'] },
       { source: 'Warden', target: '看守人', blocks: ['p5'] },
       { source: 'Ferry', target: '渡船', blocks: ['p5'] },
-      { source: 'Tide', target: '潮水', blocks: ['p5', 'p7'] },
+      // p7 的「Tide」只出現在「Tide Pool」裡，命中的是長的那張卡，不算「Tide」沒用上（ADR-0133）。
+      { source: 'Tide', target: '潮水', blocks: ['p5'] },
     ]);
     expect(report.human).toEqual([
       { block_id: 'p1', code: 'term_missing', detail: { term: 'Tide Pool', target: '大潮' } },
@@ -337,7 +338,7 @@ describe('collectReport: the edges (ADR-0123)', () => {
       { block_id: 'p5', code: 'term_missing', detail: { term: 'Warden', target: '看守人' } },
     ]);
     expect(reportCounts(report)).toMatchObject({ unused: 4, human_old_names: 3, human_checks: 4 });
-    expect(reportedBlocks(report)).toEqual(new Set(['p6', 'f1', 'p3', 'p5', 'p7', 'p1', 'p2', 'p4', 'p10']));
+    expect(reportedBlocks(report)).toEqual(new Set(['p6', 'f1', 'p3', 'p5', 'p1', 'p2', 'p4', 'p10']));
   });
 
   it('knows no old name of a card that is no longer locked', () => {
@@ -349,6 +350,39 @@ describe('collectReport: the edges (ADR-0123)', () => {
     addUnit(db, 'p1', 0, 'The Salt Marsh floods.', 'DONE', '鹽沼淹水了。');
     db.run("UPDATE unit SET human = 1 WHERE unit_id = 'p1'");
     expect(collectReport(db, DOCUMENT, [card(1, 'Salt Marsh', '鹽沼地', 'proposed')], null).old_names).toEqual([]);
+  });
+
+  // 短卡只出現在長卡裡時，人工譯文照長卡寫：短卡改過譯名，也不算內含它的舊譯名（ADR-0133）。
+  it('does not list an old name of a shorter card that only sits inside a longer card', () => {
+    const db = store();
+    for (const [id, source, target, previous] of [
+      [1, 'Warden', '看守人', '守衛'],
+      [2, 'Grey Warden', '灰袍守望者', null],
+    ] as const) {
+      db.run(
+        `INSERT INTO entity (id, source, target, status, origin, sources, occurrences, previous_target, created_at, updated_at)
+         VALUES (?, ?, ?, 'locked', 'human', '[]', 1, ?, 't', 't')`,
+        id,
+        source,
+        target,
+        previous,
+      );
+    }
+    // p1 的「守衛」是人自己寫的別的字，不是「Warden」的舊譯名：原文的 Warden 只在 Grey Warden 裡。
+    addUnit(db, 'p1', 0, 'The Grey Warden waits.', 'DONE', '灰袍守望者帶著守衛在等。');
+    addUnit(db, 'p2', 1, 'A Warden waits.', 'DONE', '一名守衛在等。');
+    db.run("UPDATE unit SET human = 1");
+    const report = collectReport(db, DOCUMENT, [card(1, 'Warden', '看守人'), card(2, 'Grey Warden', '灰袍守望者')], null);
+    expect(report.old_names).toEqual([{ source: 'Warden', before: '守衛', target: '看守人', blocks: ['p2'] }]);
+  });
+
+  // 短卡只出現在長卡裡時不算命中：譯文照長卡寫，不算短卡沒用上（ADR-0133）。
+  it('does not call a shorter card unused where it only sits inside a longer card', () => {
+    const db = store();
+    addUnit(db, 'p1', 0, 'The Grey Warden waits.', 'DONE', '灰袍守望者在等。');
+    addUnit(db, 'p2', 1, 'A Warden waits.', 'DONE', '一名守衛在等。');
+    const report = collectReport(db, DOCUMENT, [card(1, 'Warden', '看守人'), card(2, 'Grey Warden', '灰袍守望者')], null);
+    expect(report.unused).toEqual([{ source: 'Warden', target: '看守人', blocks: ['p2'] }]);
   });
 
   it('counts the failed cards as pending, and leaves out a locked card every translation uses', () => {

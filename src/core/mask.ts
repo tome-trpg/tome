@@ -62,13 +62,16 @@ const LETTERS = /\p{L}/gu;
 const WORD_START = /^[\p{L}\p{N}]/u;
 const WORD_END = /[\p{L}\p{N}]$/u;
 
-/** 起點較前的優先，同起點取較長的，再相同時取列在前面的（ADR-0100）。 */
-function chooseRanges(ranges: readonly MaskRange[]): MaskRange[] {
+/**
+ * 起點較前的優先，同起點取較長的，再相同時取列在前面的（ADR-0100）。譯名的命中也用它，
+ * 同一段原文在遮蔽與驗證得到一樣的答案（ADR-0133）。
+ */
+export function chooseRanges<T extends { readonly start: number; readonly end: number }>(ranges: readonly T[]): T[] {
   // 陣列排序是穩定的，所以長度也相同時，列在前面的還是在前面。
   const ordered = ranges
     .filter(({ start, end }) => end > start)
     .sort((left, right) => left.start - right.start || right.end - left.end);
-  const chosen: MaskRange[] = [];
+  const chosen: T[] = [];
   let cursor = 0;
   for (const range of ordered) {
     if (range.start < cursor) continue;

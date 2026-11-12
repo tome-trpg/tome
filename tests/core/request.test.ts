@@ -482,6 +482,15 @@ describe('entity cards in the request (ADR-0120)', () => {
     );
   });
 
+  // 長的卡包住短的時，請求只給長的那張，不再同時給兩張（ADR-0133）。
+  it('lists only the longer card in <glossary> where a shorter one sits inside it', () => {
+    const units = [unit('a', 'The Grey Warden waits by the Marsh.')];
+    const terms = [card('Warden', '看守人'), card('Grey Warden', '灰袍守望者'), card('Marsh', '鹽沼')];
+    const body = userMessage(request(units, ['a']), { terms, pack: generic() });
+    expect(body).toContain('<glossary>\n<term source="Grey Warden" target="灰袍守望者"/>\n<term source="Marsh" target="鹽沼"/>\n</glossary>');
+    expect(body).not.toContain('source="Warden"');
+  });
+
   it('has no <recent> when nothing is active', () => {
     const units = [unit('a', 'The Warden waits.')];
     const terms = [card('Warden', '守望者', { pronoun: '她' })];
@@ -541,6 +550,12 @@ describe('activeEntities (ADR-0120)', () => {
     expect(active(units, [person('First Name'), person('Second Name')], 'now')).toEqual(['First Name']);
     const both = [unit('b0', 'First Name.'), unit('b1', 'Second Name.'), unit('now', 'It moves.')];
     expect(active(both, [person('First Name'), person('Second Name')], 'now')).toEqual(['Second Name', 'First Name']);
+  });
+
+  // 前面只出現在長名字裡的短名字，不算提到過它（ADR-0133）。
+  it('does not count a name that only sits inside a longer one', () => {
+    const units = [unit('b0', 'Grey Name spoke.'), unit('now', 'It moves.')];
+    expect(active(units, [person('Name'), person('Grey Name', '他')], 'now')).toEqual(['Grey Name']);
   });
 
   it(`sends at most ${ACTIVE_LIMIT}`, () => {
