@@ -99,6 +99,10 @@
 - `tome verify` 也檢查人工譯文：`--json` 新增 `human_checked`、`human_flagged`，只有人工譯文時不再顯示沒有可重新驗證的回應。`tome sync` 的 `--json` 新增同樣兩項，`tome report` 新增 `human_checks` 與 `human_old_names`。
 - 譯後自動排版：正負號（`+`、`-`、`−`、`±`）緊接數字時視為數字的一部分，與前面的中文之間不再保留空白，例如「韌性 −1」改為「韌性−1」，與「韌性12」一致。適用於模型的譯文與本機欄位化的數值塊。已翻譯的段落：模型的譯文執行 `tome verify`（不消耗 token）後套用；欄位化的數值塊在下次執行 `tome estimate`、`tome translate` 或 `tome run` 時套用；人工譯文照原本寫的樣子，不會重新排版。
 - `tome assemble` 偵測到 vault 有尚未回收的修改時，訊息改為請先執行 `tome sync`；`--force` 改為只用來捨棄 `tome sync` 無法回收的修改。`tome status` 與 `tome report` 的 `--json` 新增人工譯文的數量 `human`，`tome report` 另新增尚待處理的無法回收修改 `sync_unrecovered`。
+- 即時模式的估價（`tome estimate --realtime`、`tome scan-terms --realtime`、`tome run --realtime`）不再顯示批次資料的保留天數，改為說明 TOME 沒有登記即時模式的保留期、以供應商的政策為準；批次模式照舊顯示天數。保留期改成獨立的一行：`--json` 新增 `estimate.retention` 或 `estimate.retention_realtime`，`estimate.done` 與 `scan.estimate` 的 `params` 不再有 `retention`。
+- `tome run` 不再把分章層級與預算這兩行各顯示兩次，改為顯示在翻譯的估價旁邊。同一次以 `--chapter-level` 換了層級時，只顯示換過之後的層級。
+- 批次的進度改為從 1 算起，表示這次執行送出的第幾批，並附上預計的批數；有重送時預計的批數會跟著增加。接著等候上次送出的批次時，改為顯示「上次送出的一批」。翻譯與專有名詞掃描都一樣，`--json` 不變。
+- `tome report` 與交付報告改為分情況說明花費與估價的關係：超出上限多少、在估價區間內的位置、低於下限多少，不到 1% 與尚無花費另有說法，不再出現「落在估價區間的 199%」這類數字。交付報告估價表的欄名「落在估價區間」改為「與估價相比」。`tome report` 的 `--json` 依情況使用不同的代碼，`data.estimates` 的 `position` 不變。
 
 ### 修正
 
