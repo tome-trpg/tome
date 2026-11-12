@@ -34,6 +34,8 @@ brief 017 開工前比對 ADR-0099 與白皮書 §5.7、§8.1，留下這些沒�
 **估價**
 
 8. 字元數除以 `chars_per_token`，輸出乘 `output_ratio`，再乘思考的 `output_factor`，最後乘 `1 + retry_margin`。區間是這個數字乘 `low` 與 `high`。預設用 Batch 的價格。
+
+   2026-11-12 由 ADR-0134 第 1、2、6 項修改：翻譯請求的靜態前綴改用 `prefix_chars_per_token`，輸入與輸出都加上每個單位的標籤（`unit_input_tokens`、`unit_output_tokens`）；Pass 0 照舊，餘裕改讀 `scan_retry_margin`。
 9. 顯示資料保留時間、模型、單位數、字元數、請求數、美元區間與預算。
 
 **請求**

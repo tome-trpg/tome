@@ -104,6 +104,10 @@
 - 批次的進度改為從 1 算起，表示這次執行送出的第幾批，並附上預計的批數；有重送時預計的批數會跟著增加。接著等候上次送出的批次時，改為顯示「上次送出的一批」。翻譯與專有名詞掃描都一樣，`--json` 不變。
 - `tome report` 與交付報告改為分情況說明花費與估價的關係：超出上限多少、在估價區間內的位置、低於下限多少，不到 1% 與尚無花費另有說法，不再出現「落在估價區間的 199%」這類數字。交付報告估價表的欄名「落在估價區間」改為「與估價相比」。`tome report` 的 `--json` 依情況使用不同的代碼，`data.estimates` 的 `position` 不變。
 - 估價區間的上下限相同、花費剛好等於它時，`tome report` 不再顯示「在估價區間內（-% 處）」，只列出估價與花費；`--json` 使用 `report.estimate_unknown`。
+- 翻譯的估價變高：計入每個翻譯單位的標籤；每個請求都會附上的說明文字與全書提要，改依實測的字元與 token 比例計算；重送的預留從 10% 提高為 25%。依兩本書的紀錄，過去估價的中間值比實際花費低約二到三成。這些數字只依一個模型、兩本書的紀錄提出，之後的試翻會再校準。專有名詞掃描（`tome scan-terms`）的估價不變。
+  - 升級後，每本書都需要重新以 `tome estimate --confirm` 確認一次估價。尚未送出的 `tome scan-terms` 也需要重新以 `--confirm` 確認：它的估價數字不變，但確認的內容包含同一份供應商設定檔。
+  - 預算檢查以估價上限為準。估價變高後，`tome translate` 與 `tome run` 會比較早因預算停下；預算原本接近舊估價上限的書，需要以 `tome estimate --budget <美元> --confirm` 提高預算。
+  - `providers/anthropic.yaml` 的 `estimate` 新增 `prefix_chars_per_token`、`unit_input_tokens`、`unit_output_tokens`、`scan_retry_margin`，`tome-provider/1` 的 schema 一併要求這四項。
 
 ### 修正
 

@@ -444,7 +444,12 @@ export function sizeRequest(request: PlannedRequest, options: SizeOptions): Size
   return {
     body: requestBody(request, { prefix, user, model, provider }),
     sourceChars,
-    estimate: estimateRequest(provider, model, { promptChars: prefix.length + user.length, sourceChars }, mode),
+    estimate: estimateRequest(
+      provider,
+      model,
+      { prefixChars: prefix.length, userChars: user.length, sourceChars, units: request.units.length },
+      mode,
+    ),
   };
 }
 
