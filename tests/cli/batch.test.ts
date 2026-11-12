@@ -690,6 +690,7 @@ describe('a batch left from before (ADR-0107 items 11, 15 and 16)', () => {
     const { exit, output } = await tome(lib, host, 'translate', 'book', '--realtime');
     expect(exit).toBe(1);
     expect(found(output, 'batch.pending')?.params).toEqual({ book: 'book' });
+    expect(output.data).toEqual({ book: 'book' });
     expect(provider.requests).toHaveLength(1);
     expect(statesOf(lib.home)).toEqual(['IN_FLIGHT', 'IN_FLIGHT', 'IN_FLIGHT']);
   });
