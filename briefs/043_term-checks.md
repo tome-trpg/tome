@@ -75,8 +75,12 @@ M3 的規則書有 139 個 `FAILED_QA`，量測顯示其中 86 個只是這個�
 - [x] `mutation.yml` 在回合分支上跑過，`mutation-lines` 跑過其他改過的行，存活的補上測試或說明是等價變異
 
   `mutation.yml` run 43188869711：驗證 94.90、遮蔽還原 91.95，存活清單跟 041 時相同，`hitTerms` 新寫的行全部殺掉。`mutation-lines` run 43188875208：60 個殺掉 55，042 留下的三處都殺掉；`rename.ts:141` 存活，補測試後重跑（run 43195435876）殺掉；其餘 4 個是等價或走不到，理由寫在 ADR-0133 第 8 項。
-- [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
+
+  PR 82 的每次推送（`2dfef7b`、`d2d7289`、`78b53ea`）都是 attempt 1 通過，兩個 OS 都是；`78b53ea` 是 run 43196363165（specs）、43196363161（test）。
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+
+  `78b53ea` 的 `CodeQL` 是 success、0 個 annotation；三個 Analyze 各一個 annotation，都是原本就有的 ubuntu-latest 說明。
 - [x] 訊息、`--json` 與紀錄都不含書本文字
 
   新的代碼 `report.estimate_unknown` 只帶金額；命中的改動不碰訊息。量測只印數字。
@@ -91,4 +95,6 @@ M3 的規則書有 139 個 `FAILED_QA`，量測顯示其中 86 個只是這個�
   報告拿不到規則包的詞條，只比實體卡（ADR-0133 第 2 項與 Open Questions）。
 - [x] 回合開頭：`batch.ts`、`scan.ts` 不給進度回呼也跑得完的測試；估價區間寬度 0 時用不帶百分比的說法
 - [x] 白皮書與 CHANGELOG 更新，寫明翻譯記憶的鍵會變、已翻的書跑一次 `tome verify`
-- [ ] PR 說明寫清楚合併後維護者的步驟，每個指令一個區塊
+- [x] PR 說明寫清楚合併後維護者的步驟，每個指令一個區塊
+
+  PR 82 的「合併之後（維護者）」：`verify book1`、`report book1`、要的話 `translate book1 --retry-failed`、`assemble book1`，各一個區塊。
