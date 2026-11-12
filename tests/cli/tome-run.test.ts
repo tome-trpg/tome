@@ -333,7 +333,51 @@ describe('tome run (ADR-0127)', () => {
     expect(stopped.output.data).toMatchObject({ stopped_at: 'extract', next: null, stages: [expect.objectContaining({ stage: 'extract' })] });
   });
 
-  it('keeps the budget and the chapters in book.yaml even when it stops at Pass 0, and knows no --confirm or --trial', async () => {
+  // 試翻排在審定之後、估價之前；試翻也要花錢，所以先停下來請使用者確認（ADR-0135）。
+  it('stops for the trial after the review when asked, and goes on once the book is calibrated', async () => {
+    const lib = await book();
+    const host = await provider();
+    await tome(lib, undefined, 'run', 'book', '--budget', '5', '--realtime');
+    expect((await tome(lib, host, 'scan-terms', 'book', '--confirm', '--realtime')).exit).toBe(0);
+    reviewed(lib);
+    const trial = await tome(lib, undefined, 'run', 'book', '--trial', '--realtime');
+    expect(trial.exit).toBe(0);
+    expect(codes(trial.output).slice(-2)).toEqual(['trial.not_confirmed', 'run.stopped']);
+    expect(trial.output.data).toMatchObject({ stopped_at: 'trial', next: 'tome trial book --confirm --realtime' });
+    expect((trial.output.data['stages'] as { stage: string }[]).map(({ stage }) => stage)).toEqual(['extract', 'scan', 'review', 'trial']);
+    expect(trial.progress).toContain('tome run：試翻的估價。');
+    // `--trial` 不存進 `book.yaml`：沒加的時候不試翻，直接到估價。
+    expect(readFileSync(join(lib.home, 'books', 'book', 'book.yaml'), 'utf8')).not.toContain('trial');
+    const plain = await tome(lib, undefined, 'run', 'book', '--realtime');
+    expect(plain.output.data).toMatchObject({ stopped_at: 'estimate' });
+
+    expect((await tome(lib, host, 'trial', 'book', '--confirm', '--realtime')).exit).toBe(0);
+    // 這本書只有一個請求，試翻就翻完了，估價沒有要送的，直接輸出。
+    const after = await tome(lib, undefined, 'run', 'book', '--trial', '--realtime');
+    expect(after.exit).toBe(0);
+    expect(codes(after.output)).toContain('trial.calibrated');
+    expect((after.output.data['stages'] as { stage: string }[]).map(({ stage }) => stage)).toEqual([
+      'extract',
+      'scan',
+      'review',
+      'trial',
+      'estimate',
+      'assemble',
+    ]);
+    expect(after.output.data).toMatchObject({ stopped_at: null });
+  });
+
+  it('asks for the trial in the mode it runs in', async () => {
+    const lib = await book();
+    const host = await provider();
+    await tome(lib, undefined, 'run', 'book', '--budget', '5');
+    expect((await tome(lib, host, 'scan-terms', 'book', '--confirm')).exit).toBe(0);
+    reviewed(lib);
+    const trial = await tome(lib, undefined, 'run', 'book', '--trial');
+    expect(trial.output.data).toMatchObject({ stopped_at: 'trial', next: 'tome trial book --confirm' });
+  });
+
+  it('keeps the budget and the chapters in book.yaml even when it stops at Pass 0, and knows no --confirm', async () => {
     const lib = await book();
     const stopped = await tome(lib, undefined, 'run', 'book', '--budget', '5', '--chapter-level', '1', '--chapters', '1');
     expect(stopped.output.data).toMatchObject({ stopped_at: 'scan' });
@@ -342,6 +386,6 @@ describe('tome run (ADR-0127)', () => {
     expect(config).toMatch(/chapters: ['"]?1['"]?/u);
     expect(config).toContain('chapter_level: 1');
     expect((await tome(lib, undefined, 'run', 'book', '--chapters', '9')).exit).toBe(2);
-    for (const flag of ['--confirm', '--trial']) expect((await tome(lib, undefined, 'run', 'book', flag)).exit).toBe(2);
+    expect((await tome(lib, undefined, 'run', 'book', '--confirm')).exit).toBe(2);
   });
 });

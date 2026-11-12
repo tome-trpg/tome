@@ -485,6 +485,17 @@ async function drainBatches(batchRun: BatchRun, carried: readonly Work[]): Promi
   }
 }
 
+/**
+ * 試翻的批次（ADR-0135）：先收上次留下的批次，再把挑中的單位送成批次，跟翻譯同一條路。
+ * 只送 `run.only` 裡的單位。
+ */
+export async function sendInBatches(run: Run, options: BatchOptions): Promise<Finding | null> {
+  const batchRun: BatchRun = { run, options, numbered: 0 };
+  const settled = await settleOutstanding(batchRun);
+  if (settled.stop !== null) return settled.stop;
+  return drainBatches(batchRun, settled.next);
+}
+
 /** `tome translate`（批次模式）。一本書同時只跑一個流程（ADR-0054）。 */
 export function translateInBatches(options: BatchOptions): Promise<PlanOutcome> {
   return withBookLock(options.home, options.slug, () => translateInBatchesLocked(options));

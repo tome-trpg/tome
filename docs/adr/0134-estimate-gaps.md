@@ -54,6 +54,8 @@ ADR-0129 第 7 項量到估價器在第一次送出上低估約 24%：輸入比�
 **翻譯的估價**
 
 1. 修改 ADR-0103 第 8 項：翻譯請求的輸入 token ＝ 靜態前綴的字元 ÷ `prefix_chars_per_token` ＋ `user` 的字元 ÷ `chars_per_token` ＋ 單位數 × `unit_input_tokens`。
+
+   2026-11-12 ADR-0135 第 9 項：算式不變，程式拆成前綴與其餘兩行，快取只碰得到前綴。這一項的斷言移到 ADR-0135。
 2. 修改 ADR-0103 第 8 項：翻譯請求的輸出 token ＝ 原文字元 ÷ `chars_per_token` × `output_ratio` × 思考的 `output_factor`，再加上單位數 × `unit_output_tokens`。標籤加在思考的倍數之外，跟 `max_tokens` 的寫法一樣（ADR-0114 第 2 項）。
 3. `providers/anthropic.yaml` 的 `estimate` 加三個欄位，schema 跟著加，三個都必填：
    * `unit_output_tokens: 12`、`unit_input_tokens: 6`：以規則書的擬合為主（11.4、6.4），它的單位數是公有領域的 20 倍，擬合也穩。標籤怎麼切 token 跟模型的 tokenizer 有關，所以放在供應商設定檔，跟 `chars_per_token` 同一層。
@@ -86,7 +88,6 @@ ADR-0129 第 7 項量到估價器在第一次送出上低估約 24%：輸入比�
 <!-- @assert-count target="providers/anthropic.yaml" symbol="  unit_output_tokens: 12" expected="1" reason="第 3 項：每個單位的標籤，輸出" -->
 <!-- @assert-count target="providers/anthropic.yaml" symbol="  retry_margin: 0.25" expected="1" reason="第 4 項：翻譯重送的餘裕" -->
 <!-- @assert-count target="providers/anthropic.yaml" symbol="  scan_retry_margin: 0.1" expected="1" reason="第 6 項：Pass 0 的餘裕照舊" -->
-<!-- @assert-count target="src/core/estimate.ts" symbol="input: prefixChars / prefix_chars_per_token + userChars / chars_per_token + unit_input_tokens * units," expected="1" reason="第 1 項：前綴與 user 各用自己的比例，加上單位的標籤" -->
 <!-- @assert-count target="src/core/estimate.ts" symbol="output: outputTokens(provider, model, sourceChars) + unit_output_tokens * units," expected="1" reason="第 2 項：標籤加在思考的倍數之外" -->
 <!-- @assert-count target="src/core/request.ts" symbol="export const UNIT_OUTPUT_TOKENS = 16;" expected="1" reason="第 5 項：max_tokens 的額度不改" -->
 

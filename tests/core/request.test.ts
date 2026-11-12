@@ -4,6 +4,7 @@ import { loadTargetLanguage } from '../../src/core/language.ts';
 import { maskText } from '../../src/core/mask.ts';
 import { findPack, resolvePack, type LocalizedTerm, type ResolvedPack } from '../../src/core/pack.ts';
 import { staticPrefix } from '../../src/core/prompt.ts';
+import { estimateRequest } from '../../src/core/estimate.ts';
 import { findModel, loadProvider } from '../../src/core/provider.ts';
 import { chapterMap, parseChapters } from '../../src/core/chapters.ts';
 import {
@@ -637,6 +638,25 @@ describe('requestBody', () => {
     expect(maxTokens(provider, sonnet, cells) - maxTokens(provider, sonnet, plain)).toBe(80);
   });
 
+  // 斷點只有一個，在靜態前綴的結尾（ADR-0135）。
+  it('marks the end of the static prefix for the prompt cache when asked', () => {
+    const [request] = planRequests([unit('a', text(300))], ONE_CHAPTER);
+    if (request === undefined) throw new Error('no request');
+    const prefix = staticPrefix(language, generic());
+    const cached = requestBody(request, { prefix, user: 'x', model: opus, provider, cache: { ttl: '1h', hitRate: 0 } });
+    expect(cached.system).toEqual([{ type: 'text', text: prefix, cache_control: { type: 'ephemeral', ttl: '1h' } }]);
+    const quick = requestBody(request, { prefix, user: 'x', model: opus, provider, cache: { ttl: '5m', hitRate: 0.9 } });
+    expect(quick.system).toEqual([{ type: 'text', text: prefix, cache_control: { type: 'ephemeral', ttl: '5m' } }]);
+    expect(cached.messages).toEqual([{ role: 'user', content: 'x' }]);
+  });
+
+  it('sends the prefix as plain text without a cache', () => {
+    expect(body(3000).system).toBe(staticPrefix(language, generic()));
+    const [request] = planRequests([unit('a', text(300))], ONE_CHAPTER);
+    if (request === undefined) throw new Error('no request');
+    expect(requestBody(request, { prefix: 'p', user: 'x', model: opus, provider, cache: null }).system).toBe('p');
+  });
+
   it('sends no sampling parameters, the current API refuses them', () => {
     for (const name of ['temperature', 'top_p', 'top_k']) expect(body(3000)).not.toHaveProperty(name);
   });
@@ -662,6 +682,21 @@ describe('sizeRequest (ADR-0134)', () => {
     const output = (150 / 3) * 1.2 + 5 * 12;
     expect(sized.estimate.high_usd).toBeCloseTo((input * 1 + output * 5) / 1_000_000, 12);
     expect(sized.estimate.low_usd).toBe(sized.estimate.high_usd);
+  });
+
+  // 試翻校準的倍數與快取，估價與請求內容用同一份（ADR-0135）。
+  it('passes the calibration and the cache on to both the estimate and the body', () => {
+    const cells = Array.from({ length: 5 }, (_, index) => unit(`c${index}`, text(30)));
+    const [request] = planRequests(cells, ONE_CHAPTER);
+    if (request === undefined) throw new Error('no request');
+    const pack = generic();
+    const prefix = staticPrefix(language, pack);
+    const user = userMessage(request, { terms: [], pack });
+    const context = { calibration: { input: 1.2, output: 0.9 }, cache: { ttl: '1h', hitRate: 0.7 } } as const;
+    const sized = sizeRequest(request, { prefix, model: sonnet, provider: flat, mode: 'batch', terms: [], pack, ...context });
+    const size = { prefixChars: prefix.length, userChars: user.length, sourceChars: 150, units: 5 };
+    expect(sized.estimate).toEqual(estimateRequest(flat, sonnet, size, 'batch', context));
+    expect(sized.body.system).toEqual([{ type: 'text', text: prefix, cache_control: { type: 'ephemeral', ttl: '1h' } }]);
   });
 
   it('costs more for a request of many short units than for one unit of the same text', () => {

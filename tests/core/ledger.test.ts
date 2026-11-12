@@ -40,6 +40,15 @@ describe('costOf', () => {
     const usage = { input_tokens: 60_000, output_tokens: 0, cache_read_tokens: 60_000, cache_write_tokens: 0 };
     expect(costOf(usage, haiku, 'realtime')).toBeCloseTo((0.5 * 60_000 + 0.05 * 60_000) / 1_000_000);
   });
+
+  // 試翻的批次用 1 小時的快取，寫入的價錢是 5 分鐘的 1.6 倍（ADR-0135）。
+  it('prices the one hour cache writes at their own price', () => {
+    const hour = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 1_000_000, cache_write_1h_tokens: 1_000_000 };
+    expect(costOf(hour, opus, 'realtime')).toBeCloseTo(8);
+    expect(costOf(hour, opus, 'batch')).toBeCloseTo(4);
+    const mixed = { ...hour, cache_write_1h_tokens: 400_000 };
+    expect(costOf(mixed, opus, 'realtime')).toBeCloseTo(0.6 * 5 + 0.4 * 8);
+  });
 });
 
 describe('recordUsage (ADR-0081 item 12)', () => {
@@ -176,6 +185,20 @@ describe('recordUsage (ADR-0081 item 12)', () => {
     const database = store();
     expect(spentUsd(database)).toBe(0);
     database.close();
+  });
+
+  // 試翻的花費要分得出來：Q-6 不含試翻，校準只看試翻的請求（ADR-0135）。
+  it('marks the requests of a trial, and leaves the others unmarked', () => {
+    const database = store();
+    const usage = { input_tokens: 10, output_tokens: 10, cache_read_tokens: 0, cache_write_tokens: 0 };
+    recordUsage(database, { request_id: 't1', model: opus, mode: 'batch', usage, units: [{ unit_id: 'a', chars: 1 }], ...REPLY, trial: true });
+    recordUsage(database, { request_id: 'r1', model: opus, mode: 'batch', usage, units: [{ unit_id: 'b', chars: 1 }], ...REPLY });
+    const rows = database.all<{ request_id: string; trial: number }>('SELECT request_id, trial FROM ledger ORDER BY request_id');
+    database.close();
+    expect(rows).toEqual([
+      { request_id: 'r1', trial: 0 },
+      { request_id: 't1', trial: 1 },
+    ]);
   });
 
   // 批次收回到一半中斷時會再下載一次結果，同一筆費用不能記兩次（ADR-0107）。

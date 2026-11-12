@@ -15,6 +15,9 @@ import {
 import { openStore, type Store } from '../../src/core/store.ts';
 import { tempDir } from '../helpers.ts';
 
+/** 遷移第 15 版之前確認的估價：沒有中間值，沒有校準，不算 Q-6（ADR-0135）。 */
+const UNCALIBRATED = { middle_usd: null, calibrated: false, q6: null } as const;
+
 // 交付報告（ADR-0123）。文字都是這裡編的。
 
 function block(id: string, role: string, page = 0): DocumentBlock {
@@ -417,7 +420,7 @@ describe('compareEstimate (ADR-0132)', () => {
   function item(low: number, high: number, spent: number): EstimateItem {
     const width = high - low;
     const position = width > 0 ? Math.round(((spent - low) / width) * 100) : null;
-    return { stage: 'translate', mode: 'batch', created_at: 't', low_usd: low, high_usd: high, spent_usd: spent, position };
+    return { ...UNCALIBRATED, stage: 'translate', mode: 'batch', created_at: 't', low_usd: low, high_usd: high, spent_usd: spent, position };
   }
 
   // 前四列是 M3 收尾的數字（ADR-0129 第 4、5 項）。
@@ -448,8 +451,8 @@ describe('renderReport (ADR-0123)', () => {
     coverage: { total: 4, kept: 1, fielded: 0, human: 0, done: 2, in_flight: 0, blocked: 1, failed: 1, refused: 0, left: 0 },
     spent: { translate: 0.4, scan: 0.15, budget: 5 },
     estimates: [
-      { stage: 'translate', mode: 'batch', created_at: '2026-11-09T00:50:00.000Z', low_usd: 0.2, high_usd: 0.6, spent_usd: 0.4, position: 50 },
-      { stage: 'scan', mode: 'realtime', created_at: '2026-11-09T00:20:00.000Z', low_usd: 0.1, high_usd: 0.1, spent_usd: 0.15, position: null },
+      { ...UNCALIBRATED, stage: 'translate', mode: 'batch', created_at: '2026-11-09T00:50:00.000Z', low_usd: 0.2, high_usd: 0.6, spent_usd: 0.4, position: 50 },
+      { ...UNCALIBRATED, stage: 'scan', mode: 'realtime', created_at: '2026-11-09T00:20:00.000Z', low_usd: 0.1, high_usd: 0.1, spent_usd: 0.15, position: null },
     ],
     pending_cards: 1,
     untranslated: [
@@ -651,11 +654,11 @@ describe('renderReport (ADR-0123)', () => {
   it('says in the table how each spending compares with its estimate', () => {
     const at = '2026-11-09T00:00:00.000Z';
     const rows: EstimateItem[] = [
-      { stage: 'translate', mode: 'batch', created_at: at, low_usd: 0.1786, high_usd: 0.2902, spent_usd: 0.1713, position: -7 },
-      { stage: 'translate', mode: 'batch', created_at: at, low_usd: 0.0438, high_usd: 0.0712, spent_usd: 0.0437, position: 0 },
-      { stage: 'translate', mode: 'batch', created_at: at, low_usd: 1, high_usd: 2, spent_usd: 2.005, position: 101 },
-      { stage: 'translate', mode: 'batch', created_at: at, low_usd: 1, high_usd: 2, spent_usd: 0, position: -100 },
-      { stage: 'translate', mode: 'batch', created_at: at, low_usd: 1, high_usd: 1, spent_usd: 1, position: null },
+      { ...UNCALIBRATED, stage: 'translate', mode: 'batch', created_at: at, low_usd: 0.1786, high_usd: 0.2902, spent_usd: 0.1713, position: -7 },
+      { ...UNCALIBRATED, stage: 'translate', mode: 'batch', created_at: at, low_usd: 0.0438, high_usd: 0.0712, spent_usd: 0.0437, position: 0 },
+      { ...UNCALIBRATED, stage: 'translate', mode: 'batch', created_at: at, low_usd: 1, high_usd: 2, spent_usd: 2.005, position: 101 },
+      { ...UNCALIBRATED, stage: 'translate', mode: 'batch', created_at: at, low_usd: 1, high_usd: 2, spent_usd: 0, position: -100 },
+      { ...UNCALIBRATED, stage: 'translate', mode: 'batch', created_at: at, low_usd: 1, high_usd: 1, spent_usd: 1, position: null },
     ];
     const text = renderReport({ ...filled().report, estimates: rows }, vaultTexts.report, place);
     expect(text).toContain('| 與估價相比 |');

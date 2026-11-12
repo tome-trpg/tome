@@ -92,7 +92,9 @@ describe('tome estimate (ADR-0103)', () => {
     const lib = await library();
     const { io, stdout } = lib.session();
     await run(['estimate', 'book'], io);
-    expect(stdout()).toContain('尚未以實際用量校準');
+    // 沒有試翻過的書，另一行說還沒校準，並提示可以試翻（ADR-0135）。
+    expect(stdout()).toContain('估價尚未以這本書的實際用量校準');
+    expect(stdout()).toContain('tome trial');
     expect(stdout()).toContain('保留 29 天');
     expect(stdout()).not.toContain('warden');
     expect((await estimate(lib)).text).not.toContain('warden');

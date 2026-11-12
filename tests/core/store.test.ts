@@ -391,11 +391,45 @@ describe('migrations', () => {
       store.all('SELECT path, sha256 FROM sync_file'),
     ];
     store.close();
-    expect(pragma(path, 'user_version')).toBe(14);
+    expect(pragma(path, 'user_version')).toBe(LATEST_BOOK);
     expect(rows).toEqual([
       [{ unit_id: 'p0000-aaaaaa', human: 0 }],
       [{ path: '01.md', kind: 'merged', before_block: 'a', after_block: null }],
       [{ path: '01.md', sha256: 'h' }],
+    ]);
+  });
+
+  // 試翻（ADR-0135）：舊的帳本列不是試翻，舊的估價沒有中間值、沒有校準，不算 Q-6。
+  it('adds the calibration and the trial, and leaves old ledger rows and estimates out of both (ADR-0135)', () => {
+    const path = join(tempDir(), 'book.db');
+    const old = openStore(path, 'book', MIGRATIONS.book.slice(0, 14));
+    old.run(
+      `INSERT INTO ledger (request_id, unit_id, model, mode, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, created_at)
+       VALUES ('r', 'u', 'm', 'batch', 1, 1, 0, 0, 0.1, 't')`,
+    );
+    old.run("INSERT INTO estimate (stage, mode, model, requests, low_usd, high_usd, created_at) VALUES ('translate', 'batch', 'm', 1, 0.1, 0.3, 't')");
+    old.close();
+    const store = openStore(path, 'book');
+    store.run(
+      `INSERT INTO calibration (model, mode, input_factor, output_factor, requests, resend_ratio, cache_ttl, cache_hit_rate, created_at)
+       VALUES ('m', 'batch', 1.1, 0.9, 5, 0.2, '1h', 0.8, 't')`,
+    );
+    store.run("INSERT INTO trial_unit (unit_id, model, mode) VALUES ('u', 'm', 'batch')");
+    const twice = (): void => store.run("INSERT INTO calibration (model, mode, input_factor, output_factor, requests, resend_ratio, created_at) VALUES ('m', 'batch', 1, 1, 1, 0, 't')");
+    const rows = [
+      store.all('SELECT request_id, trial FROM ledger'),
+      store.all('SELECT stage, middle_usd, calibrated FROM estimate'),
+      store.all('SELECT model, mode, cache_ttl FROM calibration'),
+      store.all('SELECT unit_id FROM trial_unit'),
+    ];
+    expect(twice).toThrow();
+    store.close();
+    expect(pragma(path, 'user_version')).toBe(15);
+    expect(rows).toEqual([
+      [{ request_id: 'r', trial: 0 }],
+      [{ stage: 'translate', middle_usd: null, calibrated: 0 }],
+      [{ model: 'm', mode: 'batch', cache_ttl: '1h' }],
+      [{ unit_id: 'u' }],
     ]);
   });
 

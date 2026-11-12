@@ -36,6 +36,10 @@ export interface FakeRequest {
 interface FakeUsage {
   readonly input_tokens: number;
   readonly output_tokens: number;
+  /** 提示快取的讀寫，跟真的 API 一樣不算在 `input_tokens` 裡（ADR-0135）。 */
+  readonly cache_read_input_tokens?: number;
+  readonly cache_creation_input_tokens?: number;
+  readonly cache_creation?: { readonly ephemeral_5m_input_tokens: number; readonly ephemeral_1h_input_tokens: number };
 }
 
 export type FakeReply =

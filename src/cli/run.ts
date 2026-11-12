@@ -44,6 +44,7 @@ import { bookStatus } from '../core/status.ts';
 import { collectScans, countOutstanding, scanTerms } from '../core/scan.ts';
 import { importGlossary, reviewGlossary } from '../core/glossary.ts';
 import { translateBook } from '../core/translate.ts';
+import { trialBook } from '../core/trial.ts';
 import { verifyBook } from '../core/verify.ts';
 import {
   initWorkspace,
@@ -393,6 +394,29 @@ const COMMANDS: readonly Command[] = [
     },
   },
   {
+    path: ['trial'],
+    options: {
+      budget: { type: 'string' },
+      confirm: { type: 'boolean' },
+      realtime: { type: 'boolean' },
+    },
+    positionals: 1,
+    // 不加 --confirm 只估價，不連網也不取金鑰，比照 scan-terms（ADR-0135）。
+    run: async (parsed, io) => {
+      const slug = parsed.positionals[0];
+      if (slug === undefined) throw missing('book');
+      const options = {
+        home: resolveHome(io.env, io.platform),
+        slug,
+        mode: requestMode(parsed.values),
+        budget: stringValue(parsed, 'budget'),
+        confirm: parsed.values['confirm'] === true,
+      };
+      if (!options.confirm) return trialBook(options);
+      return withHost(io, { book: slug }, (host) => trialBook({ ...options, host, ...progressOf(io) }));
+    },
+  },
+  {
     path: ['estimate'],
     options: {
       budget: { type: 'string' },
@@ -448,6 +472,7 @@ const COMMANDS: readonly Command[] = [
       chapters: { type: 'string' },
       'chapter-level': { type: 'string' },
       realtime: { type: 'boolean' },
+      trial: { type: 'boolean' },
     },
     positionals: 1,
     // 一路跑到下一個要人點頭的地方；金鑰到翻譯那一步才取（ADR-0127）。
@@ -464,6 +489,7 @@ const COMMANDS: readonly Command[] = [
           budget: stringValue(parsed, 'budget'),
           chapters: stringValue(parsed, 'chapters'),
           chapterLevel: stringValue(parsed, 'chapter-level'),
+          trial: parsed.values['trial'] === true,
           texts: vaultTexts,
           extract: {
             ...hostOptions(io),

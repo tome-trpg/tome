@@ -22,6 +22,8 @@ ADR-0055 定了 `tome run` 一路跑到下一個人工關卡，各階段指令�
 2. **Pass 0 停下來確認**（維護者選的，問題第 2 項）：Pass 0 有要送的（`scan.not_confirmed`），顯示估價就停，請使用者跑 `tome scan-terms <書> --confirm`；沒有要送的（`scan.nothing`）直接往下。`tome run` 不送 Pass 0。**修改 ADR-0055 第 3 項**：兩個關卡之外，Pass 0 的花費也要停下來確認，這一次只是確認花費，不是人工審定（G-3、ADR-0118）。
 3. **停下時結束碼 0**（維護者選的，問題第 3 項）：加一個 `warn` 的 `run.stopped`，說下一步要跑哪個指令（`tome scan-terms <書> --confirm`、`tome glossary review <書>`、`tome estimate <書> --confirm`，用即時模式時加 `--realtime`）；`--json` 的 `data` 寫 `stopped_at`（`scan`、`review`、`estimate`）與 `next`。整條跑完是 `run.done`（`info`）。定案 ADR-0113 第 23 項的結束碼。
 4. **032 不做試翻**（問題第 4 項）：不收 `--trial`（回「不認得的選項」）；`tome trial`、`--trial` 與「試翻後要不要停」（ADR-0055 第 4 項）照路線圖在 M4。定案 ADR-0113 第 23 項的 `--trial`。
+
+   2026-11-12 由 ADR-0135 第 4 項修改：`tome run` 收 `--trial`，過了審定就顯示試翻的估價並停下，請使用者跑 `tome trial --confirm`。這一項的斷言移到 ADR-0135。
 5. **批次翻譯等到結束**，跟 `tome translate` 一樣；中斷後再跑 `tome run` 會接回還在跑的批次（問題第 5 項）。
 6. **某一步有問題時分兩種**（維護者選的，問題第 6 項）：
    * **沒做完就停在那裡**：解析、Pass 0、確認估價、輸出有 `fail` 的發現（例如 `extract.no_engine`、`estimate.over_budget`、`assemble.edited`），或翻譯停在半路（`translate.done` 以外的 `fail`：個資閘門擋下、超過預算、供應商失敗、沒有金鑰）。結束碼照那一步的發現，不加 `run.stopped`，`next` 是 `null`。
@@ -42,8 +44,6 @@ ADR-0055 定了 `tome run` 一路跑到下一個人工關卡，各階段指令�
 <!-- @assert-count target="src/core/pipeline.ts" symbol="force: false" expected="1" reason="第 8 項：不覆蓋改過的 vault" -->
 <!-- @assert-count target="src/core/pipeline.ts" symbol="from './sync.ts'" expected="0" reason="第 8 項：不自動跑 tome sync" -->
 <!-- @assert-count target="src/core/pipeline.ts" symbol="withBookLock(options.home, options.slug, () => runLocked(options))" expected="1" reason="第 10 項：整條拿一次書的鎖" -->
-<!-- @assert-count target="src/cli/run.ts" symbol="trial" expected="0" comments="include" reason="第 4 項：032 不收 --trial" -->
-
 ## 後果
 
 一本加入過的書，反覆跑 `tome run` 並照它說的指令點頭，就能一路到 vault；每次停下都說明為什麼、下一步是什麼，結束碼 0，腳本分得出「等人」與「出問題」（後者是 1 或 2）。比白皮書寫的兩個關卡多停一次（Pass 0 的花費），換來第一次花錢前一定看過估價。批次翻譯期間 `tome run` 會一直等，最久 24 小時，要馬上拿到結果的用 `--realtime`。
