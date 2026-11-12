@@ -144,6 +144,14 @@ describe('estimateFixedOutput, for Pass 0 (ADR-0118)', () => {
     );
     expect(after).toEqual(before);
   });
+
+  // 候選詞與全書提要都走這裡，用 `scan_retry_margin`，翻譯的 `retry_margin` 不影響它（ADR-0134 第 6 項）。
+  it('uses scan_retry_margin, not the margin of translation', () => {
+    const base = estimateFixedOutput(tuned({ scan_retry_margin: 0 }), sonnet, 3000, 1000, 'batch');
+    expect(estimateFixedOutput(tuned({ scan_retry_margin: 0, retry_margin: 0.5 }), sonnet, 3000, 1000, 'batch')).toEqual(base);
+    const padded = estimateFixedOutput(tuned({ scan_retry_margin: 0.3 }), sonnet, 3000, 1000, 'batch');
+    expect(padded.high_usd).toBeCloseTo(base.high_usd * 1.3, 12);
+  });
 });
 
 describe('sumEstimates', () => {
