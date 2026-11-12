@@ -26,14 +26,52 @@
     "estimate": {
       "description": "Proposals until a trial run measures them.",
       "type": "object",
-      "required": ["chars_per_token", "output_ratio", "low", "high", "retry_margin"],
+      "required": [
+        "chars_per_token",
+        "prefix_chars_per_token",
+        "unit_input_tokens",
+        "unit_output_tokens",
+        "output_ratio",
+        "low",
+        "high",
+        "retry_margin",
+        "scan_retry_margin"
+      ],
       "additionalProperties": false,
       "properties": {
-        "chars_per_token": { "type": "number", "exclusiveMinimum": 0 },
+        "chars_per_token": {
+          "description": "Characters per token of the user message and of Pass 0's prompt.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "prefix_chars_per_token": {
+          "description": "Characters per token of the static prefix of a translation request.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "unit_input_tokens": {
+          "description": "Tokens each unit's tags add to the input of a translation request.",
+          "type": "number",
+          "minimum": 0
+        },
+        "unit_output_tokens": {
+          "description": "Tokens each unit's tags add to the output of a translation request.",
+          "type": "number",
+          "minimum": 0
+        },
         "output_ratio": { "type": "number", "exclusiveMinimum": 0 },
         "low": { "type": "number", "exclusiveMinimum": 0 },
         "high": { "type": "number", "exclusiveMinimum": 0 },
-        "retry_margin": { "type": "number", "minimum": 0 }
+        "retry_margin": {
+          "description": "Room for resent translation requests.",
+          "type": "number",
+          "minimum": 0
+        },
+        "scan_retry_margin": {
+          "description": "Room for resent Pass 0 requests.",
+          "type": "number",
+          "minimum": 0
+        }
       }
     },
     "models": {

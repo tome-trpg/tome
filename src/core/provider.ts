@@ -46,11 +46,20 @@ export interface Provider {
   readonly verified: string;
   readonly retention_days: number;
   readonly estimate: {
+    /** `user` 與 Pass 0 的提示，每個 token 的字元。 */
     readonly chars_per_token: number;
+    /** 翻譯的靜態前綴，每個 token 的字元（ADR-0134）。 */
+    readonly prefix_chars_per_token: number;
+    /** 每個單位的標籤在輸入與輸出另外要的 token（ADR-0134）。 */
+    readonly unit_input_tokens: number;
+    readonly unit_output_tokens: number;
     readonly output_ratio: number;
     readonly low: number;
     readonly high: number;
+    /** 翻譯重送的餘裕（ADR-0134）。 */
     readonly retry_margin: number;
+    /** Pass 0 的餘裕，照舊是 0.1（ADR-0134 第 4 項）。 */
+    readonly scan_retry_margin: number;
   };
   readonly models: readonly ProviderModel[];
 }

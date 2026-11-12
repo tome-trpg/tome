@@ -19,6 +19,7 @@ import {
   REQUEST_CHARS,
   REQUEST_UNITS,
   requestBody,
+  sizeRequest,
   splitRequest,
   UNIT_OUTPUT_TOKENS,
   userMessage,
@@ -638,6 +639,48 @@ describe('requestBody', () => {
 
   it('sends no sampling parameters, the current API refuses them', () => {
     for (const name of ['temperature', 'top_p', 'top_k']) expect(body(3000)).not.toHaveProperty(name);
+  });
+});
+
+// 估價的輸入分成靜態前綴與 `user`，再加上每個單位的標籤（ADR-0134）。
+describe('sizeRequest (ADR-0134)', () => {
+  const sonnet = findModel(provider, 'claude-sonnet-5-5');
+  /** 低與高都是 1、沒有餘裕，估價就是中間值。 */
+  const flat = { ...provider, estimate: { ...provider.estimate, low: 1, high: 1, retry_margin: 0 } };
+
+  it('prices the prefix, user and the tags of every unit apart', () => {
+    const cells = Array.from({ length: 5 }, (_, index) => unit(`c${index}`, text(30)));
+    const [request] = planRequests(cells, ONE_CHAPTER);
+    if (request === undefined) throw new Error('no request');
+    const pack = generic();
+    const prefix = staticPrefix(language, pack);
+    const user = userMessage(request, { terms: [], pack });
+    const sized = sizeRequest(request, { prefix, model: sonnet, provider: flat, mode: 'batch', terms: [], pack });
+    expect(sized.sourceChars).toBe(150);
+    // 前綴每 2.4 個字元一個 token，`user` 每 3 個，每個單位輸入 6、輸出 12 個；Sonnet 5.5 的批次價。
+    const input = prefix.length / 2.4 + user.length / 3 + 5 * 6;
+    const output = (150 / 3) * 1.2 + 5 * 12;
+    expect(sized.estimate.high_usd).toBeCloseTo((input * 1 + output * 5) / 1_000_000, 12);
+    expect(sized.estimate.low_usd).toBe(sized.estimate.high_usd);
+  });
+
+  it('costs more for a request of many short units than for one unit of the same text', () => {
+    const pack = generic();
+    const prefix = staticPrefix(language, pack);
+    const options = { prefix, model: sonnet, provider: flat, mode: 'batch' as const, terms: [], pack };
+    const [one] = planRequests([unit('a', text(400))], ONE_CHAPTER);
+    const [many] = planRequests(
+      Array.from({ length: 40 }, (_, index) => unit(`c${index}`, text(10))),
+      ONE_CHAPTER,
+    );
+    if (one === undefined || many === undefined) throw new Error('no request');
+    const single = sizeRequest(one, options);
+    const split = sizeRequest(many, options);
+    expect(split.sourceChars).toBe(single.sourceChars);
+    // 原文一樣長，多出來的是 39 個單位的標籤；`user` 也長一些。
+    const tags = (39 * 6 * 1 + 39 * 12 * 5) / 1_000_000;
+    const longer = ((userMessage(many, options).length - userMessage(one, options).length) / 3) / 1_000_000;
+    expect(split.estimate.high_usd - single.estimate.high_usd).toBeCloseTo(tags + longer, 12);
   });
 });
 

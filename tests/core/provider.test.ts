@@ -44,6 +44,36 @@ describe('providers/anthropic.yaml', () => {
   });
 });
 
+// 每個單位的標籤與靜態前綴的比例（ADR-0134）。
+describe('the estimate of tome-provider/1', () => {
+  const value = parse(readFileSync('providers/anthropic.yaml', 'utf8')) as { estimate: Record<string, unknown> };
+
+  function withEstimate(estimate: Record<string, unknown>): boolean {
+    return validateProvider({ ...value, estimate }).ok;
+  }
+
+  it.each(['prefix_chars_per_token', 'unit_input_tokens', 'unit_output_tokens'])('needs %s', (key) => {
+    const { [key]: _gone, ...rest } = value.estimate;
+    expect(withEstimate(rest)).toBe(false);
+  });
+
+  it('refuses a typo in the estimate', () => {
+    expect(withEstimate({ ...value.estimate, unit_output_token: 12 })).toBe(false);
+  });
+
+  it.each([
+    ['prefix_chars_per_token', 0],
+    ['unit_input_tokens', -1],
+    ['unit_output_tokens', -1],
+  ])('refuses %s of %d', (key, bad) => {
+    expect(withEstimate({ ...value.estimate, [key]: bad })).toBe(false);
+  });
+
+  it('takes no tags at all', () => {
+    expect(withEstimate({ ...value.estimate, unit_input_tokens: 0, unit_output_tokens: 0 })).toBe(true);
+  });
+});
+
 describe('finding a model', () => {
   it('refuses a model that is not on the list, and says which are (ADR-0099 item 20)', () => {
     expect(() => findModel(profile, 'claude-nonexistent')).toThrow(

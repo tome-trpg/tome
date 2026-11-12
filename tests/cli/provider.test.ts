@@ -190,7 +190,17 @@ describe('the data of tome provider list (ADR-0106)', () => {
   });
 
   // 快取 M2 沒開，思考倍數與估價比例沒量過，伺服器端回退還沒確認，TOME 也不用它。
-  it.each(['cache_read', 'cache_write', 'thinking', 'output_factor', 'fallback', 'chars_per_token', 'retry_margin'])(
+  it.each([
+    'cache_read',
+    'cache_write',
+    'thinking',
+    'output_factor',
+    'fallback',
+    'chars_per_token',
+    'retry_margin',
+    'unit_input_tokens',
+    'unit_output_tokens',
+  ])(
     'leaves %s out',
     async (key) => {
       const { text } = await list();

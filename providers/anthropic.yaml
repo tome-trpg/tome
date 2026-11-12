@@ -11,13 +11,23 @@ verified: 2026-11-02
 # Batch 結果在供應商端保留的天數，估價時顯示（DC-3）。
 retention_days: 29
 
-# 全部是提案，沒有量過，M4 的 tome trial 才校準（ADR-0103、H-13）。
+# 全部是提案，M4 的試翻才依書校準（ADR-0103、H-13）。標籤、前綴與兩個餘裕依 M3 兩本書的帳本補上
+# （ADR-0134），只有 Sonnet 5.5 的數據。
 estimate:
+  # `user` 與 Pass 0 的提示，每個 token 的字元。
   chars_per_token: 3
+  # 翻譯的靜態前綴（TOME 的提示加上全書提要），每個 token 的字元。
+  prefix_chars_per_token: 2.4
+  # 每個單位的 `<s id>` 標籤，在輸入與輸出另外要的 token。
+  unit_input_tokens: 6
+  unit_output_tokens: 12
   output_ratio: 1.2
   low: 0.8
   high: 1.3
-  retry_margin: 0.1
+  # 翻譯的重送，M3 兩本書約是第一次送出的四分之一。
+  retry_margin: 0.25
+  # Pass 0 的重送很少，實際花費已在估價下限附近，照舊。
+  scan_retry_margin: 0.1
 
 # 價格是美元／百萬 token。thinking.mode：none 是關不掉，只能降 effort，
 # 估價要乘 output_factor；between_tools 與 disabled 是這個模型關閉思考的寫法。
