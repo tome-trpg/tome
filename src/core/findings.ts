@@ -203,6 +203,7 @@ export const FINDING_CODES = [
   'trial.changed',
   'trial.done',
   'trial.estimate',
+  'trial.in_flight',
   'trial.next',
   'trial.no_budget',
   'trial.no_data',

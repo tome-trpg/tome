@@ -282,3 +282,69 @@ describe('tome trial (ADR-0135)', () => {
     expect(q6?.params).toMatchObject({ percent: expect.stringMatching(/^[+−-]?\d+(\.\d)?$/u) });
   });
 });
+
+// 試翻的批次送出之後被中斷（Ctrl+C、休眠、重開機）：單位是 `IN_FLIGHT`，不是做完了。校準要等收回，
+// 挑中的單位不能清掉，否則收回的帳會記成翻譯、算進 Q-6，下次還要再試翻一次（ADR-0135 第 3 項）。
+describe('a trial whose batch has not come back (ADR-0135)', () => {
+  /** 批次送出了，查詢一直失敗：`tome trial --confirm` 停在還沒收回，跟被中斷一樣。之後查詢就正常、批次已結束。 */
+  async function interrupted(): Promise<{ lib: Library; provider: FakeProvider; host: FakeHost }> {
+    const lib = await longBook();
+    const provider = await startFakeProvider(GOOD, { polls: 5, pollStatus: 500 });
+    const host = fakeHost(provider);
+    await shown(lib);
+    const stopped = await tome(lib, host, 'trial', 'book', '--confirm');
+    expect(stopped.exit).toBe(1);
+    expect(provider.batches).toHaveLength(1);
+    expect(count(lib.home, "SELECT COUNT(*) AS count FROM unit WHERE state = 'IN_FLIGHT'")).toBe(5);
+    provider.batch.pollStatus = null;
+    provider.batch.polls = 0;
+    provider.batches.forEach((batch) => (batch.polls = 0));
+    return { lib, provider, host };
+  }
+
+  function calibrations(home: string): number {
+    return count(home, 'SELECT COUNT(*) AS count FROM calibration');
+  }
+
+  it('neither calibrates nor forgets the trial while its batch is out', async () => {
+    const { lib, provider } = await interrupted();
+    const calls = provider.calls.length;
+    const waiting = await tome(lib, undefined, 'trial', 'book');
+    expect(waiting.exit).toBe(0);
+    expect(codes(waiting.output)).toContain('trial.in_flight');
+    expect(waiting.output.findings.find(({ code }) => code === 'trial.in_flight')?.params).toEqual({
+      book: 'book',
+      count: '5',
+      flags: '--confirm',
+    });
+    expect(codes(waiting.output)).not.toContain('trial.done');
+    expect(calibrations(lib.home)).toBe(0);
+    expect(count(lib.home, 'SELECT COUNT(*) AS count FROM trial_unit')).toBe(5);
+    expect(provider.calls).toHaveLength(calls);
+  });
+
+  it('collects the batch on tome trial --confirm, then calibrates without sending again', async () => {
+    const { lib, provider, host } = await interrupted();
+    const done = await tome(lib, host, 'trial', 'book', '--confirm');
+    expect(done.exit).toBe(0);
+    expect(codes(done.output)).toContain('trial.done');
+    expect(provider.batches).toHaveLength(1);
+    expect(count(lib.home, 'SELECT COUNT(DISTINCT request_id) AS count FROM ledger WHERE trial = 1')).toBe(5);
+    expect(count(lib.home, 'SELECT COUNT(*) AS count FROM ledger WHERE trial = 0')).toBe(0);
+    expect(calibrations(lib.home)).toBe(1);
+    expect(count(lib.home, 'SELECT COUNT(*) AS count FROM trial_unit')).toBe(0);
+  });
+
+  it('calibrates without sending once tome batch collect brought the trial back', async () => {
+    const { lib, provider, host } = await interrupted();
+    expect((await tome(lib, host, 'batch', 'collect', 'book')).exit).toBe(0);
+    expect(count(lib.home, 'SELECT COUNT(DISTINCT request_id) AS count FROM ledger WHERE trial = 1')).toBe(5);
+    const calls = provider.calls.length;
+    const done = await tome(lib, undefined, 'trial', 'book');
+    expect(done.exit).toBe(0);
+    expect(codes(done.output)).toContain('trial.done');
+    expect(provider.calls).toHaveLength(calls);
+    expect(calibrations(lib.home)).toBe(1);
+    expect(count(lib.home, 'SELECT COUNT(*) AS count FROM trial_unit')).toBe(0);
+  });
+});

@@ -392,6 +392,7 @@
     "trial.changed": "這次的試翻估價與上次顯示的不同，或尚未估價過，因此沒有送出。請確認上述估價後，再執行一次 tome trial {book} {flags}。",
     "trial.done": "試翻完成：以 {requests} 個請求校準，實際用量是估價的輸入 {input} 倍、輸出 {output} 倍，重送的花費是第一次送出的 {resend}%。試翻共花費 ${spent} 美元，譯文已留下，翻譯時不會再送。",
     "trial.estimate": "試翻的估價：從 {planned} 個請求中平均挑出 {requests} 個（{units} 個翻譯單位）先翻，使用 {model}，預估 ${low} 至 ${high} 美元，已含提示快取的寫入。此為本機估算。",
+    "trial.in_flight": "試翻送出的 {count} 個翻譯單位還沒收回，還不能校準。請執行 tome trial {book} {flags} 收回並完成試翻；批次模式也可以先以 tome batch collect {book} 收回，再執行 tome trial {book}。",
     "trial.next": "估價已依試翻校準，請執行 tome estimate {book} {flags} 確認後再翻譯。",
     "trial.no_budget": "尚未設定預算。送出前必須設定，請加上 --budget <美元>。",
     "trial.no_data": "試翻沒有可用來校準的請求，估價維持原本的算法。",

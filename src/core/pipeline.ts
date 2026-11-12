@@ -104,7 +104,9 @@ async function runLocked(options: RunOptions): Promise<PlanOutcome> {
   if (options.trial === true) {
     const tried = await step('trial', () => trialLocked({ home, slug, mode, confirm: false }));
     if (failed(tried.findings)) return outcome('trial', null);
-    if (tried.findings.some(({ code }) => code === 'trial.not_confirmed')) return gate('trial', `tome trial ${slug} --confirm${realtime}`);
+    // 試翻還沒確認，或送出去還沒收回：都停在這裡，不往下估價、翻譯。
+    const waiting = tried.findings.some(({ code }) => code === 'trial.not_confirmed' || code === 'trial.in_flight');
+    if (waiting) return gate('trial', `tome trial ${slug} --confirm${realtime}`);
   }
 
   // 關卡二：沒有確認、或確認的估價跟現在的不同就停。沒有要送的就直接輸出。

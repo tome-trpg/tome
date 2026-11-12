@@ -51,6 +51,7 @@ ADR-0130 第 21 項把回合 045 排成 `tome trial`、`--trial`、試翻後停�
 1. `tome trial <書> [--confirm] [--budget <美元>] [--realtime]` 比照 `tome scan-terms`（ADR-0118 第 8 項）：不加 `--confirm` 只在本機估價、不連網、不取金鑰；加了而且估價跟上次顯示的相同才送。試翻的估價照挑到的請求逐一組出來算，不用每個請求的平均推。試翻計入預算，送出前用估價上限檢查，批次是每批、即時是每個請求。
 2. **大小與選法**：在 `--chapters` 範圍內規劃好的請求裡，平均間隔挑整個請求，取每一段的中間；約 10%（四捨五入），最少 5 個、最多 30 個，不超過規劃好的數量。規則照建議不改：樣本外的替代（044 之前的估價器）挑 5 到 30 個、各種起點，Q-6 最差 −11.7%，在 ±20% 以內；取開頭的一律偏高。樣本內的數字更小，但不能當成新書的預期。
 3. **譯文留下**：試翻的單位照一般翻譯驗證、重送，通過就是 `DONE`，主翻譯跳過它們。挑中的單位記在 `book.db` 的 `trial_unit`，校準後清掉；中斷了再跑 `tome trial --confirm` 接著做。挑中的都做完、只是還沒校準時（例如批次由 `tome batch collect` 收回），下一次 `tome trial` 不送，直接校準。
+   * 挑中的單位送出去還沒收回或還沒驗證完（`IN_FLIGHT`、`RECEIVED`，例如試翻的批次在等待時被中斷）時，不算做完，不校準、也不清掉挑中的單位：加 `--confirm` 先收回、做完再校準，那次的確認已經涵蓋它；不加只說怎麼收回（`trial.in_flight`）；`tome run --trial` 停在試翻。否則收回的帳會記成翻譯、算進 Q-6，下次還要再試翻一次。
 4. **`tome run --trial`**：修改 ADR-0127 第 4 項。過了審定的關卡之後，這本書在目前的模型與模式還沒校準，就顯示試翻的估價並停下（`run.stopped`，結束碼 0），請使用者跑 `tome trial <書> --confirm`（即時模式加 `--realtime`），比照 Pass 0；已經校準過就說 `trial.calibrated`、接著往下。`--trial` 不存進 `book.yaml`。
 5. **不另設「試翻後要不要停」**：修改 ADR-0055 第 4 項。試翻後面一定是確認估價的關卡，校準會讓估價改變，本來就要停下確認。
 
@@ -89,6 +90,8 @@ ADR-0130 第 21 項把回合 045 排成 `tome trial`、`--trial`、試翻後停�
 <!-- @assert-count target="src/core/trial.ts" symbol="export const TRIAL_MIN = 5;" expected="1" reason="第 2 項：最少 5 個" -->
 <!-- @assert-count target="src/core/trial.ts" symbol="export const TRIAL_MAX = 30;" expected="1" reason="第 2 項：最多 30 個" -->
 <!-- @assert-count target="src/core/trial.ts" symbol="export const TRIAL_TTL: Readonly<Record<RequestMode, CacheTtl>> = { batch: '1h', realtime: '5m' };" expected="1" reason="第 11 項：批次 1 小時、即時 5 分鐘" -->
+<!-- @assert-count target="src/core/trial.ts" symbol="state IN ('IN_FLIGHT', 'RECEIVED') AND unit_id IN (SELECT unit_id FROM trial_unit)" expected="1" reason="第 3 項：送出去還沒收回的試翻不算做完" -->
+<!-- @assert-count target="src/core/pipeline.ts" symbol="code === 'trial.in_flight'" expected="1" reason="第 3 項：試翻還沒收回時 tome run 停在試翻" -->
 <!-- @assert-count target="src/cli/run.ts" symbol="trial: { type: 'boolean' }" expected="1" reason="第 4 項：tome run 收 --trial，修改 ADR-0127 第 4 項" -->
 <!-- @assert-count target="src/core/pipeline.ts" symbol="trialLocked({ home, slug, mode, confirm: false })" expected="1" reason="第 4 項：tome run 不送試翻，只估價後停下" -->
 <!-- @assert-count target="src/core/book.ts" symbol="trial" expected="0" comments="include" reason="第 4 項：--trial 不存進 book.yaml" -->

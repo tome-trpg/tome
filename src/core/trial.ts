@@ -74,6 +74,18 @@ function unitIds(requests: readonly PlannedRequest[]): string[] {
   return requests.flatMap(({ units }) => units.map(({ unit_id }) => unit_id));
 }
 
+/**
+ * 挑中、已經送出但還沒驗證完的單位：批次還在供應商那邊，或送出之後被中斷。它們不是待送的，也不是做完了，
+ * 要先收回才能校準（ADR-0135 第 3 項）。
+ */
+function unsettledTrial(store: Store): number {
+  return (
+    store.get<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM unit WHERE state IN ('IN_FLIGHT', 'RECEIVED') AND unit_id IN (SELECT unit_id FROM trial_unit)",
+    )?.count ?? 0
+  );
+}
+
 /** 這次要試翻的請求：上次挑中、還沒做完的接著做；沒有就從規劃好的請求挑。 */
 function trialRequests(store: Store, plan: BookPlan): { readonly requests: PlannedRequest[]; readonly resumed: boolean } {
   const saved = trialUnitIds(store);
@@ -256,6 +268,14 @@ async function prepare(options: TrialOptions, override: PlanOverride): Promise<P
     if (calibrated !== null) {
       const done = finding('trial.calibrated', 'info', { book: slug, requests: String(calibrated.requests) });
       return { outcome: { data: { book: slug, mode, model, calibrated: true }, findings: [done, ...warnings] } };
+    }
+    // 上次的試翻送出去還沒收回：加了 `--confirm` 才連網收回、做完、再校準，那次的確認已經涵蓋它；
+    // 沒加就說怎麼收，不校準、也不清掉挑中的單位，收回的帳才會記成試翻（ADR-0135 第 3 項）。
+    const unsettled = unsettledTrial(store);
+    if (unsettled > 0) {
+      if (confirm) return { only: trialUnitIds(store) };
+      const out = finding('trial.in_flight', 'warn', { book: slug, count: String(unsettled), flags: CONFIRM_FLAGS[mode] });
+      return { outcome: { data: { book: slug, mode, model, calibrated: false, in_flight: unsettled }, findings: [out, ...warnings] } };
     }
     const { requests, resumed } = trialRequests(store, plan);
     // 上次的試翻都做完了、只是還沒校準（例如批次由 `tome batch collect` 收回）：不用再送，直接校準。

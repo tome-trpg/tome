@@ -367,6 +367,25 @@ describe('tome run (ADR-0127)', () => {
     expect(after.output.data).toMatchObject({ stopped_at: null });
   });
 
+  // 試翻的批次還沒收回時不能往下估價、翻譯：收回的帳要記成試翻，校準才完整（ADR-0135 第 3 項）。
+  it('stops at the trial while its batch has not come back', async () => {
+    const lib = await book();
+    const fake = await startFakeProvider(GOOD, { polls: 5, pollStatus: 500 });
+    const host = fakeHost(fake);
+    // Pass 0 用即時模式，查詢失敗只擋得到批次。
+    await tome(lib, undefined, 'run', 'book', '--budget', '5', '--realtime');
+    expect((await tome(lib, host, 'scan-terms', 'book', '--confirm', '--realtime')).exit).toBe(0);
+    reviewed(lib);
+    expect((await tome(lib, undefined, 'run', 'book', '--trial')).output.data).toMatchObject({ stopped_at: 'trial' });
+    expect((await tome(lib, host, 'trial', 'book', '--confirm')).exit).toBe(1);
+    const out = await tome(lib, undefined, 'run', 'book', '--trial');
+    expect(out.exit).toBe(0);
+    expect(codes(out.output)).toContain('trial.in_flight');
+    expect(out.output.data).toMatchObject({ stopped_at: 'trial', next: 'tome trial book --confirm' });
+    expect((out.output.data['stages'] as { stage: string }[]).map(({ stage }) => stage)).toEqual(['extract', 'scan', 'review', 'trial']);
+    expect(withStore(lib.home, (store) => store.all('SELECT model FROM calibration'))).toEqual([]);
+  });
+
   it('asks for the trial in the mode it runs in', async () => {
     const lib = await book();
     const host = await provider();
