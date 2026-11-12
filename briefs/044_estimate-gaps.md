@@ -72,13 +72,19 @@ protectedFiles:
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
 
-  2213 個測試通過，449 個斷言都成立，299 個套件、0 違規。
+  2215 個測試通過，449 個斷言都成立，299 個套件、0 違規。
 - [x] 新的測試先在舊行為上失敗過
 
-  新的測試放在改估價器之前的程式（`85c1568`）上跑，18 個失敗：估價器 12 個、schema 4 個、請求的估價 2 個。維護者選定 `scan_retry_margin` 之後補的「Pass 0 用自己的餘裕」在舊程式上也會失敗（舊程式讀 `retry_margin`）。Pass 0 另外兩個測試是護欄，在舊程式上也會通過，用來確認 Pass 0 的估價不變；schema 拒絕打錯的欄位與不合理的值，在舊程式上也會通過。
-- [ ] `mutation-lines` 跑過改過的行，存活的變異補上測試，或說明為什麼等價
-- [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+  新的測試放在改估價器之前的程式（`85c1568`）上跑，18 個失敗：估價器 12 個、schema 4 個、請求的估價 2 個。維護者選定 `scan_retry_margin` 之後補的「Pass 0 用自己的餘裕」在舊程式上也會失敗（舊程式讀 `retry_margin`）。Pass 0 另外兩個測試是護欄，在舊程式上也會通過，用來確認 Pass 0 的估價不變；schema 拒絕打錯的欄位與不合理的值，在舊程式上也會通過。為了殺掉 `withThinking` 的存活變異補的 Opus 5.5 Pass 0 測試，在舊程式上也會通過：那一行的行為沒變，它守的是思考的倍數。
+- [x] `mutation-lines` 跑過改過的行，存活的變異補上測試，或說明為什麼等價
+
+  run 43228582368（`2e94949`）：整個 `estimate.ts` 加上 `request.ts:447-452`，42 個殺掉 41 個。存活的 `estimate.ts:66`（`withThinking` 的 `*` 換成 `/`）補了 Opus 5.5 的 Pass 0 測試，重跑那一行（run 43230612464，`e8f90af`）2 個都殺掉。結果寫在 ADR-0134 第 8 項。
+- [x] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
+
+  PR 83 的每次推送（`2e94949`、`e8f90af`）都是 attempt 1 通過，兩個 OS 都是；`e8f90af` 是 run 43230622248（specs）、43230622095（test）。
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+
+  `e8f90af` 的 `CodeQL` 是 success、0 個 annotation；三個 Analyze 各一個 annotation，都是原本就有的 ubuntu-latest 說明。
 - [x] Pass 0 的估價跟改之前相同
 
   `tests/core/estimate.test.ts`：用隨附的設定檔算 Pass 0，結果跟改之前的算式（乘 1.1 的餘裕）相同；前綴的比例與單位的標籤不影響 Pass 0。
