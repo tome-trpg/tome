@@ -58,6 +58,7 @@ import {
   REQUEST_UNITS,
   parseBudget,
   piiRulesOf,
+  retentionFinding,
   type MessagesBody,
   type PlanOutcome,
 } from './request.ts';
@@ -394,6 +395,8 @@ interface ScanRun extends BatchHost {
   summaryAttempts: number;
   sent: number;
   batches: number;
+  /** 這次執行送出、供應商確認收到的批數，進度的編號（ADR-0132）。 */
+  numbered: number;
 }
 
 interface Step {
@@ -747,10 +750,10 @@ interface Collected extends Step {
 
 const FOREIGN: Collected = { next: [], stop: null, foreign: true };
 
-/** 等結束、收回、套用、刪除，跟翻譯的批次一樣（ADR-0107）。 */
-async function collect(run: ScanRun, row: BatchRow, remoteId: string, unverified: boolean): Promise<Collected> {
+/** 等結束、收回、套用、刪除，跟翻譯的批次一樣（ADR-0107）。`shown` 是進度印的編號（ADR-0132）。 */
+async function collect(run: ScanRun, row: BatchRow, remoteId: string, unverified: boolean, shown: number | null): Promise<Collected> {
   const { store } = run;
-  const ended: RemoteBatch | Finding = await waitFor(run, run.onWait, row, remoteId);
+  const ended: RemoteBatch | Finding = await waitFor(run, run.onWait, shown, remoteId);
   if ('level' in ended) return { ...stopAt(ended), foreign: false };
   if (ended.archivedAt !== null) {
     if (unverified) return FOREIGN;
@@ -830,7 +833,7 @@ async function settleOutstanding(run: ScanRun): Promise<Step> {
       remoteId = found;
     }
     if (remoteId === null) throw new RangeError(`batch ${row.id} has no remote id`);
-    const collected = await collect(run, row, remoteId, unverified);
+    const collected = await collect(run, row, remoteId, unverified, null);
     if (collected.foreign) {
       rejected.add(remoteId);
       store.run('UPDATE batch SET remote_id = NULL WHERE id = ?', row.id);
@@ -909,8 +912,12 @@ async function sendBatch(run: ScanRun, works: readonly ScanWork[]): Promise<Step
     remote.expiresAt,
     row.id,
   );
-  run.onBatchSent?.(row.id, prepared.length);
-  const collected = await collect(run, { ...row, state: 'submitted', remote_id: remote.id }, remote.id, false);
+  // Pass 0 每一輪把剩下的全部放進同一批，照當時的佇列算，預計的批數就是到這一批為止；
+  // 有重送時下一輪再加一（ADR-0132）。
+  run.numbered += 1;
+  run.onBatchSent?.(run.numbered, prepared.length, run.numbered);
+  const submitted = { ...row, state: 'submitted' as const, remote_id: remote.id };
+  const collected = await collect(run, submitted, remote.id, false, run.numbered);
   return { next: collected.next, stop: collected.stop };
 }
 
@@ -1003,7 +1010,6 @@ function estimateParams(plan: ScanPlan): Readonly<Record<string, string>> {
     requests: String(plan.works.length),
     low: usd(plan.estimate.low_usd),
     high: usd(plan.estimate.high_usd),
-    retention: String(plan.provider.profile.retention_days),
   };
 }
 
@@ -1055,6 +1061,7 @@ function startRun(options: ScanOptions, book: Book, store: Store, plan: ScanPlan
     summaryAttempts: 0,
     sent: 0,
     batches: 0,
+    numbered: 0,
   };
 }
 
@@ -1080,12 +1087,14 @@ export async function scanLocked(options: ScanOptions): Promise<PlanOutcome> {
     const prices = stale.level === 'warn' ? [stale] : [];
     const outstanding = outstandingBatches(store, 'scan');
     const nothing = plan.works.length === 0 && outstanding === 0;
-    const shownEstimate = nothing ? finding('scan.nothing', 'info') : finding('scan.estimate', 'info', estimateParams(plan));
+    const shownEstimate = nothing
+      ? [finding('scan.nothing', 'info')]
+      : [finding('scan.estimate', 'info', estimateParams(plan)), retentionFinding(mode, plan.provider.profile)];
     const spent = spentUsd(store);
     const limit = book.config.budget_usd;
     const money = limit === undefined ? [] : [finding('estimate.budget', 'info', { budget: usd(limit), spent: usd(spent) })];
     const data = { book: slug, ...estimateData(plan), budget_usd: limit ?? null, spent_usd: spent, confirmed: false };
-    const shownFindings = [shownEstimate, ...money, ...warnings, ...prices];
+    const shownFindings = [...shownEstimate, ...money, ...warnings, ...prices];
     const flags = CONFIRM_FLAGS[mode];
     if (!confirm || nothing) {
       const reminder = nothing ? [] : [finding('scan.not_confirmed', 'info', { book: slug, flags })];

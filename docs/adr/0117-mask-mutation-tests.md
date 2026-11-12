@@ -40,6 +40,8 @@ depends-on: [ADR-0063, ADR-0110, ADR-0116]
    * `unitRuns` 對不到樣式的編號（281 條件換 false、283 沒涵蓋）：沒有樣式的範圍不加標記，攤平後一樣。036 補了一個測試涵蓋這條路，283 由沒涵蓋變成存活。
    * `foldCase` 的 `toLowerCase` 換 `toUpperCase`（288，035 之前就有）：原文與詞條兩邊用同一個函式，只有長 s（`ſ`）這類罕見字元結果不同。
 3. 本機確認的方式：一支 Node 小工具（放 scratchpad，不進 repo）把 worktree 的 `src`、`tests` 與設定複製到暫存資料夾，`node_modules` 用目錄連結，一次套一個變異到複本的 `mask.ts`，只跑 `tests/core/mask.test.ts`，結束碼不是 0 就算殺掉，跑完刪掉複本。它不是 Stryker，每個變異約 1.3 秒。新測試加上去之前 41 個都存活，加上去之後殺掉 28 個、存活 13 個，存活的就是上面的等價清單。正式的分數用 `workflow_dispatch` 在回合分支上跑 `mutation.yml`。
+
+   2026-11-12 由 ADR-0132 第 8 項修改：本機不再跑變異測試，這支小工具也不跑；六個關鍵模組照樣在回合分支上跑 `mutation.yml`，其他改過的行用 `mutation-lines.yml`。
 4. 預估分數：Stryker 把逾時算成偵測到，(261 + 21 + 28) / 323 = **95.98**。
 5. **CI 實測**：2026-11-08，`182e930`，用 `workflow_dispatch` 在回合分支上跑 `mutation.yml`（run 42447828630），條件跟 ADR-0110 的實測相同。分數是下載各 job 的 JSON 報告算的：
 

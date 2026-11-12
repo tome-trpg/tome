@@ -1,0 +1,66 @@
+# 指定的檔案與行號的變異測試（docs/adr/0132-display-fixes-and-stale-text.md）。
+# 回合改過的行在這裡跑，本機不跑變異測試。六個關鍵模組照樣用 mutation.yml。
+# 只能手動觸發；沿用 stryker.config.mjs 的設定，只跑指定的範圍，所以不套用 break 門檻。
+# 公開 repo 的 CI 不放任何金鑰。
+name: mutation-lines
+
+on:
+  workflow_dispatch:
+    inputs:
+      mutate:
+        description: 要變異的範圍，照 Stryker 的 mutate 寫法，例如 src/core/report.ts:180-200；好幾個用逗號分隔
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    runs-on: ubuntu-24.04
+    # 跟 mutation.yml 一樣（ADR-0131 第 9 項）。
+    timeout-minutes: 130
+    steps:
+      # 釘在 commit，旁邊註明標籤：標籤被移動就是進入這條流程的路。
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      # 輸入先放進環境變數再用，不直接嵌進指令。只收 src/ 底下的 .ts 檔，可以加 :起-迄 的行號。
+      - name: Check the range
+        env:
+          MUTATE: ${{ inputs.mutate }}
+        run: |
+          pattern='^src/[A-Za-z0-9_./-]+\.ts(:[0-9]+-[0-9]+)?(,src/[A-Za-z0-9_./-]+\.ts(:[0-9]+-[0-9]+)?)*$'
+          if [[ ! "$MUTATE" =~ $pattern || "$MUTATE" == *..* ]]; then
+            echo "::error::mutate must be src/ TypeScript files with optional line ranges, separated by commas"
+            exit 1
+          fi
+
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      # Stryker 的命令列沒有覆寫門檻的選項。這次執行另外產生一個設定檔，沿用 stryker.config.mjs，
+      # 只把 break 拿掉；它只存在於 runner，不進 repo。
+      - name: Mutation testing
+        env:
+          MUTATE: ${{ inputs.mutate }}
+        run: |
+          cat > stryker-lines.config.mjs <<'EOF'
+          import base from './stryker.config.mjs';
+          export default { ...base, thresholds: { ...base.thresholds, break: null } };
+          EOF
+          npx --no-install @stryker-mutator/core run stryker-lines.config.mjs --mutate "$MUTATE"
+
+      - name: Upload the report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutation-lines
+          path: reports/mutation/
+          retention-days: 30

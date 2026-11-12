@@ -3,7 +3,15 @@ import { describe, expect, it, onTestFinished } from 'vitest';
 import { vaultTexts } from '../../src/cli/messages.ts';
 import type { EntityCard } from '../../src/core/entities.ts';
 import type { DocumentBlock, IrDocument } from '../../src/core/ir.ts';
-import { collectReport, renderReport, reportCounts, reportedBlocks, type BookReport } from '../../src/core/report.ts';
+import {
+  collectReport,
+  compareEstimate,
+  renderReport,
+  reportCounts,
+  reportedBlocks,
+  type BookReport,
+  type EstimateItem,
+} from '../../src/core/report.ts';
 import { openStore, type Store } from '../../src/core/store.ts';
 import { tempDir } from '../helpers.ts';
 
@@ -370,6 +378,36 @@ describe('collectReport: the edges (ADR-0123)', () => {
   });
 });
 
+describe('compareEstimate (ADR-0132)', () => {
+  /** 位置照 `collectReport` 的算法。 */
+  function item(low: number, high: number, spent: number): EstimateItem {
+    const width = high - low;
+    const position = width > 0 ? Math.round(((spent - low) / width) * 100) : null;
+    return { stage: 'translate', mode: 'batch', created_at: 't', low_usd: low, high_usd: high, spent_usd: spent, position };
+  }
+
+  // 前四列是 M3 收尾的數字（ADR-0129 第 4、5 項）。
+  it.each([
+    ['the rule book went over', item(0.8194, 1.3315, 1.8383), { comparison: 'over', percent: 38 }],
+    ['its Pass 0 stayed under', item(0.1786, 0.2902, 0.1713), { comparison: 'under', percent: 4 }],
+    ['the short story Pass 0 stayed under by less than 1%', item(0.0438, 0.0712, 0.0437), { comparison: 'under_small', percent: null }],
+    ['the short story landed inside', item(0.3315, 0.5386, 0.5061), { comparison: 'within', percent: 84 }],
+    ['a spending over by less than 1%', item(1, 2, 2.019), { comparison: 'over_small', percent: null }],
+    ['a spending over by exactly 1%', item(1, 2, 2.02), { comparison: 'over', percent: 1 }],
+    ['a spending under by exactly 1%', item(1, 2, 0.99), { comparison: 'under', percent: 1 }],
+    ['a spending on the upper bound', item(1, 2, 2), { comparison: 'within', percent: 100 }],
+    ['a spending on the lower bound', item(1, 2, 1), { comparison: 'within', percent: 0 }],
+    ['no spending yet', item(1, 2, 0), { comparison: 'none', percent: null }],
+    ['an estimate with no width, met exactly', item(1, 1, 1), { comparison: 'unknown', percent: null }],
+    ['an estimate with no width, gone over', item(1, 1, 1.5), { comparison: 'over', percent: 50 }],
+    ['a spending under by half, rounding the percent to 50', item(1, 2, 0.5), { comparison: 'under', percent: 50 }],
+    // 上限是 0 時不拿它去除：不說超出無限大，照區間寬度 0 處理。
+    ['an estimate of nothing that was spent on anyway', item(0, 0, 0.5), { comparison: 'unknown', percent: null }],
+  ])('tells %s', (_name, estimate, expected) => {
+    expect(compareEstimate(estimate)).toEqual(expected);
+  });
+});
+
 describe('renderReport (ADR-0123)', () => {
   const place = (id: string): string => `[[01#^${id}|01]]`;
   const FULL: BookReport = {
@@ -488,10 +526,10 @@ describe('renderReport (ADR-0123)', () => {
         '',
         '### 估價與實際花費',
         '',
-        '| 確認時間（UTC） | 階段 | 模式 | 估價（美元） | 之後的花費（美元） | 落在估價區間 |',
+        '| 確認時間（UTC） | 階段 | 模式 | 估價（美元） | 之後的花費（美元） | 與估價相比 |',
         '| --- | --- | --- | --- | --- | --- |',
-        '| 2026-11-09 00:50 | 翻譯 | 批次 | 0.20～0.60 | 0.40 | 50% |',
-        '| 2026-11-09 00:20 | 實體卡 | 即時 | 0.10～0.10 | 0.15 | - |',
+        '| 2026-11-09 00:50 | 翻譯 | 批次 | 0.20～0.60 | 0.40 | 在估價區間內（50% 處） |',
+        '| 2026-11-09 00:20 | 實體卡 | 即時 | 0.10～0.10 | 0.15 | 超出上限 50% |',
         '',
         '## 未翻譯的單位（2）',
         '',
@@ -571,8 +609,25 @@ describe('renderReport (ADR-0123)', () => {
   it('shows the money and the estimates as a table', () => {
     const text = renderReport(filled().report, vaultTexts.report, place);
     expect(text).toContain('- 花費：翻譯 $0.40 美元、實體卡 $0.15 美元，共 $0.55 美元。預算 $5.00 美元。');
-    expect(text).toContain('| 2026-11-09 00:50 | 翻譯 | 批次 | 0.20～0.60 | 0.40 | 50% |');
-    expect(text).toContain('| 2026-11-09 00:20 | 實體卡 | 即時 | 0.10～0.10 | 0.15 | - |');
+    expect(text).toContain('| 2026-11-09 00:50 | 翻譯 | 批次 | 0.20～0.60 | 0.40 | 在估價區間內（50% 處） |');
+    expect(text).toContain('| 2026-11-09 00:20 | 實體卡 | 即時 | 0.10～0.10 | 0.15 | 超出上限 50% |');
+  });
+
+  // 欄名不再是「落在估價區間」，每一種情況的寫法都在表裡（ADR-0132）。
+  it('says in the table how each spending compares with its estimate', () => {
+    const at = '2026-11-09T00:00:00.000Z';
+    const rows: EstimateItem[] = [
+      { stage: 'translate', mode: 'batch', created_at: at, low_usd: 0.1786, high_usd: 0.2902, spent_usd: 0.1713, position: -7 },
+      { stage: 'translate', mode: 'batch', created_at: at, low_usd: 0.0438, high_usd: 0.0712, spent_usd: 0.0437, position: 0 },
+      { stage: 'translate', mode: 'batch', created_at: at, low_usd: 1, high_usd: 2, spent_usd: 2.005, position: 101 },
+      { stage: 'translate', mode: 'batch', created_at: at, low_usd: 1, high_usd: 2, spent_usd: 0, position: -100 },
+      { stage: 'translate', mode: 'batch', created_at: at, low_usd: 1, high_usd: 1, spent_usd: 1, position: null },
+    ];
+    const text = renderReport({ ...filled().report, estimates: rows }, vaultTexts.report, place);
+    expect(text).toContain('| 與估價相比 |');
+    expect(text).not.toContain('落在估價區間');
+    for (const cell of ['低於下限 4%', '低於下限不到 1%', '超出上限不到 1%', '尚無花費']) expect(text).toContain(`| ${cell} |`);
+    expect(text).toContain('| 1.00～1.00 | 1.00 | - |');
   });
 
   it('says there is nothing where a section is empty, and leaves out the estimates and the advice', () => {

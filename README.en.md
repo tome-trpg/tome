@@ -5,7 +5,7 @@ TOME (TRPG Omnilingual Markdown Engine) is a command-line tool that runs locally
 [繁體中文](README.md)
 
 > [!IMPORTANT]
-> **Status: in development, not yet released.** Parsing and the core of translation are complete. There is no output to read yet, and npm holds only a placeholder version with no code. See [Development status](#development-status) for the state of each feature.
+> **Status: in development, not yet released.** TOME can parse a book, translate it, and write the result as an Obsidian vault you can read, but npm still holds only a placeholder version with no code. See [Development status](#development-status) for the state of each feature.
 
 ## Overview
 
@@ -43,12 +43,18 @@ The following features are design goals. See [Development status](#development-s
 | Rule pack management | `tome system new`, `list`, `lint`, `test` | Implemented, with the built-in `generic` pack |
 | Parsing engine management | `tome engine add`, `list`, `remove` | Implemented |
 | Page parsing | `tome extract` | Implemented: native text pages are handed to a parsing engine, assembled into a document, and checked for lost characters |
+| Proper-noun extraction | `tome scan-terms` | Implemented: picks out proper nouns locally and asks a model to propose translations, with an estimate to confirm before anything is sent. The quality of the proposals is not verified yet |
+| Term review | `tome glossary review`, `tome glossary import` | Implemented: lock or reject proposals in a local review file, or import your own translations from CSV |
 | Cost estimate | `tome estimate`, `tome translate --dry-run` | Implemented: runs locally with no network; the ratios are not calibrated yet |
-| Translation | `tome translate`, `tome batch status`, `collect`, `cancel` | Implemented: sends in batches by default, or one request at a time with `--realtime`. Run against the real API on a public-domain short story and most of one rulebook, in batch mode with one model only |
+| Translation | `tome translate`, `tome batch status`, `collect`, `cancel` | Implemented: sends in batches by default, or one request at a time with `--realtime`. Run against the real API on a public-domain short story and most of one rulebook, in both batch and real-time mode, with one model only |
 | Translation re-verification | `tome verify` | Implemented; spends no tokens |
 | Side-by-side review | `tome preview` | Implemented; stays on this machine |
+| Output | `tome assemble` | Implemented: writes the translation and a delivery report as an Obsidian vault, with no network |
+| Reading edits back | `tome sync` | Implemented: stores the passages edited in the vault as human translations |
+| Delivery report numbers | `tome report` | Implemented: prints counts only, with no network |
 | Progress and spending | `tome status` | Implemented: reads local data only, with no network |
-| Output | Not available | Planned |
+| Run it through | `tome run` | Implemented: runs from parsing to output and stops where a cost or the terms need your confirmation |
+| Delete and back up | `tome purge`, `tome backup` | Implemented: lists what it will delete and deletes only after you confirm |
 
 ## Out of scope
 

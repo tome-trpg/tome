@@ -647,8 +647,17 @@ function planParams(plan: BookPlan): Readonly<Record<string, string>> {
     chars: String(plan.chars),
     low: usd(plan.estimate.low_usd),
     high: usd(plan.estimate.high_usd),
-    retention: String(plan.provider.profile.retention_days),
   };
+}
+
+/**
+ * 估價時說資料在供應商端留多久（DC-3）。供應商設定檔只登記了批次的天數，即時模式不寫天數，
+ * 只說以供應商的政策為準。翻譯與 Pass 0 的估價共用（ADR-0132）。
+ */
+export function retentionFinding(mode: RequestMode, provider: Provider): Finding {
+  return mode === 'batch'
+    ? finding('estimate.retention', 'info', { retention: String(provider.retention_days) })
+    : finding('estimate.retention_realtime', 'info');
 }
 
 export interface EstimateOptions {
@@ -759,14 +768,14 @@ export async function estimateLocked(options: EstimateOptions): Promise<PlanOutc
     const prices = stale.level === 'warn' ? [stale] : [];
     const summary =
       plan.requests.length === 0
-        ? finding('estimate.nothing', 'info')
-        : finding('estimate.done', 'info', planParams(plan));
+        ? [finding('estimate.nothing', 'info')]
+        : [finding('estimate.done', 'info', planParams(plan)), retentionFinding(plan.mode, plan.provider.profile)];
     const budget = book.config.budget_usd;
     const spent = spentUsd(store);
     const { confirmed, findings: decided } = confirmation(store, plan, budget, spent, confirm);
     return {
       data: { book: slug, ...planData(plan), budget_usd: budget ?? null, spent_usd: spent, confirmed },
-      findings: [summary, ...fieldedFindings(plan.fieldedCount), ...plan.levelFindings, ...decided, ...warnings, ...prices],
+      findings: [...summary, ...fieldedFindings(plan.fieldedCount), ...plan.levelFindings, ...decided, ...warnings, ...prices],
     };
   } finally {
     store.close();

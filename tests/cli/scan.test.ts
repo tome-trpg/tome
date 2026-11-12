@@ -125,7 +125,9 @@ describe('tome scan-terms without --confirm (ADR-0118)', () => {
     const { exit, output, text } = await scan(lib, undefined);
     expect(exit).toBe(0);
     expect(spy).not.toHaveBeenCalled();
-    expect(codes(output)).toEqual(['scan.estimate', 'scan.not_confirmed']);
+    expect(codes(output)).toEqual(['scan.estimate', 'estimate.retention', 'scan.not_confirmed']);
+    expect(output.findings.slice(0, 2).map(({ level }) => level)).toEqual(['info', 'info']);
+    expect(output.findings[1]?.params).toEqual({ retention: '29' });
     expect(output.data).toMatchObject({ candidates: 3, terms: 3, summary: true, requests: 2, confirmed: false });
     expect(entities(lib.home).map(({ source, status, occurrences }) => [source, status, occurrences])).toEqual([
       ['Salt Marsh', 'candidate', 3],
@@ -134,6 +136,14 @@ describe('tome scan-terms without --confirm (ADR-0118)', () => {
     ]);
     // 候選詞與上下文都是書本文字，訊息裡只有數字（ADR-0059）。
     for (const word of ['Salt Marsh', 'Grey Warden', 'tide stones']) expect(text).not.toContain(word);
+  });
+
+  // 即時模式的保留天數沒有登記，Pass 0 跟翻譯一樣只說以供應商的政策為準（ADR-0132）。
+  it('gives no retention in days when it estimates for realtime', async () => {
+    const lib = await book();
+    const { output } = await scan(lib, undefined, '--realtime');
+    expect(codes(output)).toEqual(['scan.estimate', 'estimate.retention_realtime', 'scan.not_confirmed']);
+    expect(output.findings.slice(0, 2).map(({ level }) => level)).toEqual(['info', 'info']);
   });
 
   it('asks for scanner_model, as TOME has no default model', async () => {
@@ -234,6 +244,7 @@ describe('tome scan-terms --confirm (ADR-0118)', () => {
     const sent = provider.requests.length;
     const { output } = await scan(lib, host, '--realtime', '--confirm');
     expect(codes(output)).toEqual(['scan.nothing', 'estimate.budget']);
+    expect(output.findings[0]?.level).toBe('info');
     expect(provider.requests).toHaveLength(sent);
   });
 
@@ -320,6 +331,24 @@ describe('tome scan-terms in batches (ADR-0118)', () => {
     expect(progress).toContain('批次模式');
     const rows = withStore(lib.home, (store) => store.all<{ stage: string; state: string }>('SELECT stage, state FROM batch'));
     expect(rows).toEqual([{ stage: 'scan', state: 'collected' }]);
+  });
+
+  // 編號是這次執行的第幾批，不是 `batch` 表的列號；Pass 0 把剩下的全部放進一批（ADR-0132）。
+  it('counts its batches from one, past the rows already in the table', async () => {
+    const lib = await book();
+    withStore(lib.home, (store) =>
+      store.run(
+        "INSERT INTO batch (nonce, state, requests, high_usd, created_at, stage) VALUES ('old', 'collected', 1, 0.01, ?, 'translate')",
+        new Date().toISOString(),
+      ),
+    );
+    const { host } = await fake(GOOD, { polls: 1 });
+    const { exit, output, progress } = await confirmed(lib, host);
+    expect(exit).toBe(0);
+    // 剛送出的批次不是認回來的，不說找回上次中斷前的批次。
+    expect(codes(output)).not.toContain('batch.recovered');
+    expect(progress).toContain('已送出第 1 批（預計共 1 批），含 2 個請求。');
+    expect(progress).toContain('第 1 批處理中，已等待 1 分鐘。');
   });
 
   it('is collected by tome batch collect after a run that broke off, and translation batches are left alone', async () => {

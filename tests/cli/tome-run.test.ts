@@ -159,6 +159,39 @@ describe('tome run (ADR-0127)', () => {
     expect(codes(again.output).at(-1)).toBe('run.done');
   });
 
+  // 解析與估價都印分章層級、Pass 0 與估價都印預算，接起來只留最後一次；同一次改了層級時，
+  // 解析那一步印的是舊的層級（ADR-0132）。
+  it('prints the chapter level and the budget once, as the estimate sees them', async () => {
+    const lib = await book();
+    const path = join(lib.home, 'books', 'book', 'ir', 'document.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    const sections = [
+      {
+        title: 'Book',
+        block_id: 'p0000-aaaaa1',
+        children: [
+          { title: 'One', block_id: 'p0000-aaaaa2', children: [] },
+          { title: 'Two', block_id: 'p0000-aaaaa3', children: [] },
+        ],
+      },
+    ];
+    writeFileSync(path, JSON.stringify({ ...document, sections }));
+    const host = await provider();
+    const first = await tome(lib, undefined, 'run', 'book', '--budget', '5');
+    expect(codes(first.output).filter((code) => code === 'chapters.levels')).toHaveLength(1);
+    expect((await tome(lib, host, 'scan-terms', 'book', '--confirm')).exit).toBe(0);
+    reviewed(lib);
+
+    const { output } = await tome(lib, undefined, 'run', 'book', '--chapter-level', '2');
+    const found = codes(output);
+    expect(output.data).toMatchObject({ stopped_at: 'estimate' });
+    expect(found.filter((code) => code === 'estimate.budget')).toHaveLength(1);
+    expect(found.indexOf('estimate.budget')).toBeGreaterThan(found.indexOf('estimate.done'));
+    const levels = output.findings.filter(({ code }) => code === 'chapters.levels');
+    expect(levels.map(({ params }) => params['level'])).toEqual(['2']);
+    expect(found.indexOf('chapters.levels')).toBeGreaterThan(found.indexOf('estimate.done'));
+  });
+
   it('carries the real-time mode into the commands it asks for, and translates in real time', async () => {
     const lib = await book();
     const host = await provider();
