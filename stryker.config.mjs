@@ -31,7 +31,7 @@ export default {
   // 等於 GitHub 公開 repo 的 Linux runner 的 CPU 數。
   concurrency: 4,
   // 時限是預設（1.5 倍加 5 秒）的兩倍，讓跑得慢但會結束的變異跑完，結果不隨 runner 的速度浮動。
-  // 回合 041 在 CI 量這個設定，維護者看過數字再決定留不留（ADR-0110 Open Questions、ADR-0131）。
+  // 回合 041 在 CI 跟預設各量兩次，維護者看過數字後留下這個設定（ADR-0131 第 8、9 項）。
   timeoutFactor: 3,
   timeoutMS: 10000,
   reporters: ['clear-text', 'progress', 'html', 'json'],

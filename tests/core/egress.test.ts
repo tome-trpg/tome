@@ -30,8 +30,22 @@ describe('scanText (DC-1)', () => {
     expect(scanText('LICENSED TO FORGED BUYER', rules(['forged buyer']))).toHaveLength(1);
   });
 
+  // 德文的姓名全大寫時，ß 會寫成大寫的 ẞ。轉小寫時兩者相同，轉大寫時 ß 變成 SS、ẞ 不變（ADR-0131）。
+  it('ignores case for the capital sharp s, too, as in a German name in capitals', () => {
+    expect(scanText('LICENSED TO ANNA WEIẞ', rules(['Anna Weiß']))).toEqual([{ entry: 0, count: 1 }]);
+  });
+
   it('treats any run of spaces as one space, as a PDF breaks lines anywhere', () => {
     expect(scanText('Forged\n  Buyer', rules(['Forged Buyer']))).toHaveLength(1);
+  });
+
+  it('trims the spaces a user left around an entry', () => {
+    expect(scanText('Licensed to Forged Buyer.', rules(['  Forged Buyer  ']))).toEqual([{ entry: 0, count: 1 }]);
+  });
+
+  // 空白只合併、不拿掉：拿掉的話，NPC 的名字 Joann 會蓋住購買者 Jo Ann 的 Ann（ADR-0131）。
+  it('keeps the space between words, so an exception does not cover a name across it', () => {
+    expect(scanText('Joann waves. Bill to Jo Ann.', rules(['Ann'], ['Joann']))).toEqual([{ entry: 0, count: 1 }]);
   });
 
   it('normalizes full-width forms', () => {
@@ -138,6 +152,17 @@ describe('scanBody (ADR-0099 item 25)', () => {
     expect(scanBody(body('Forged "Buyer"'), rules(['Forged "Buyer"']))).toHaveLength(1);
   });
 
+  // null 沒有字串可讀，要跳過，不能讓整份本文退回成沒解開跳脫的原文（ADR-0131）。
+  it('sees through JSON escapes when the request also holds a null', () => {
+    const withNull = JSON.stringify({ model: 'm', metadata: null, system: 'Forged\nBuyer' });
+    expect(scanBody(withNull, rules(['Forged Buyer']))).toEqual([{ entry: 0, count: 1 }]);
+  });
+
+  it('puts a line break between strings, so a name split across two of them still matches', () => {
+    const split = JSON.stringify({ stop_sequences: ['Licensed to Forged', 'Buyer'] });
+    expect(scanBody(split, rules(['Forged Buyer']))).toEqual([{ entry: 0, count: 1 }]);
+  });
+
   it('sees through the escaping of the tag protocol', () => {
     expect(scanBody(body('<s id="1">Hart &amp; Sons</s>'), rules(['Hart & Sons']))).toHaveLength(1);
   });
@@ -225,6 +250,20 @@ describe('guardedFetch (ADR-0039)', () => {
       { model: 'a,b', bytes: true },
       { model: '', bytes: false },
     ]);
+  });
+
+  it('names only the models it can read, past a request with no model or no params', async () => {
+    const server = await startFakeProvider(() => ({ text: 'ok' }));
+    const { entries, record } = recorder();
+    const client = guardedFetch({ endpoint: server.url, provider: 'anthropic', rules: NONE, record });
+    const requests = [
+      { custom_id: 'c0', params: { model: 'a' } },
+      { custom_id: 'c1', params: { model: 5 } },
+      { custom_id: 'c2', params: null },
+      { custom_id: 'c3' },
+    ];
+    await client(`${server.url}/v1/messages/batches`, post(JSON.stringify({ requests })));
+    expect(entries.map(({ model }) => model)).toEqual(['a']);
   });
 
   it('scans the whole batch before it goes out', async () => {
