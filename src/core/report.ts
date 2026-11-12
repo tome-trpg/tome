@@ -581,8 +581,11 @@ function estimateFinding(item: EstimateItem): Finding {
       return finding('report.estimate_under_small', 'info', money);
     case 'none':
       return finding('report.estimate_none', 'info', { low: money.low, high: money.high });
+    // 區間寬度是 0、花費剛好等於它：說不出落在哪裡，只說估價與花費（ADR-0133）。
+    case 'unknown':
+      return finding('report.estimate_unknown', 'info', money);
     default:
-      return finding('report.estimate', 'info', { ...money, position: percent === null ? '-' : String(percent) });
+      return finding('report.estimate', 'info', { ...money, position: String(percent) });
   }
 }
 

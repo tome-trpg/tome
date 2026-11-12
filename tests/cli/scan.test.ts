@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Envelope } from '../../src/cli/output.ts';
 import { run } from '../../src/cli/run.ts';
+import { POLL_SECONDS } from '../../src/core/batch.ts';
 import { openBookStore, type Store } from '../../src/core/store.ts';
 import {
   FAKE_BRIEF,
@@ -331,6 +332,17 @@ describe('tome scan-terms in batches (ADR-0118)', () => {
     expect(progress).toContain('批次模式');
     const rows = withStore(lib.home, (store) => store.all<{ stage: string; state: string }>('SELECT stage, state FROM batch'));
     expect(rows).toEqual([{ stage: 'scan', state: 'collected' }]);
+  });
+
+  // 進度的回呼只有 CLI 給；核心的 API 不給也要送得出去、等得到結果（ADR-0133）。
+  it('sends and waits without the progress callbacks, which only the CLI gives', async () => {
+    const lib = await book();
+    const { host } = await fake(GOOD, { polls: 1 });
+    await scan(lib, undefined, '--budget', '5');
+    const { scanTerms } = await import('../../src/core/scan.ts');
+    const outcome = await scanTerms({ home: lib.home, slug: 'book', mode: 'batch', confirm: true, host });
+    expect(outcome.data).toMatchObject({ mode: 'batch', batches: 1, proposed: 3 });
+    expect(host.waits).toEqual([POLL_SECONDS]);
   });
 
   // 編號是這次執行的第幾批，不是 `batch` 表的列號；Pass 0 把剩下的全部放進一批（ADR-0132）。

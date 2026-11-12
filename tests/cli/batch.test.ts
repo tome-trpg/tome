@@ -207,6 +207,17 @@ describe('tome translate in batches (ADR-0107)', () => {
     expect(progress).not.toContain('第 4 批');
   });
 
+  // 進度的回呼只有 CLI 給；核心的 API 不給也要送得出去、等得到結果（ADR-0133）。
+  it('sends and waits without the progress callbacks, which only the CLI gives', async () => {
+    const lib = await confirmed();
+    const { host } = await fake(GOOD, { polls: 1 });
+    const { translateInBatches } = await import('../../src/core/batch.ts');
+    const outcome = await translateInBatches({ home: lib.home, slug: 'book', host, retryFailed: false });
+    expect(outcome.data).toMatchObject({ batches: 1, done: 3 });
+    expect(host.waits).toEqual([POLL_SECONDS]);
+    expect(statesOf(lib.home)).toEqual(['DONE', 'DONE', 'DONE']);
+  });
+
   // 預計的批數每送一批重算，重送讓批數變多時跟著變大（ADR-0132）。
   it('raises the planned count when a split adds a batch', async () => {
     const lib = await confirmed();
