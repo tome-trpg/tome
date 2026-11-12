@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 date: 2026-11-12
 type: feature
 wave: 49
@@ -80,22 +80,32 @@ Q-6 有了算法：實際的翻譯花費 ÷ 校準後估價的中間值 − 1，
 
 ## Invariants
 
-- [ ] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
-- [ ] 新的測試先在舊行為上失敗過
+- [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
+
+  2262 個測試通過，461 個斷言都成立、每一條都看過它失敗，299 個套件、0 違規。
+- [x] 新的測試先在舊行為上失敗過
+
+  新的測試放在改程式之前（`d320d70`）跑，28 個失敗，`tests/core/trial.test.ts` 整個載不進來（沒有 `trial.ts`）；之後補的遷移第 15 版測試在舊程式上也會失敗（沒有那幾張表）。護欄有兩個：估價不給校準與快取時跟原本相同、請求不開快取時 `system` 照舊是字串，在舊程式上也會通過。
 - [ ] `mutation-lines` 跑過改過的行，存活的變異補上測試，或說明為什麼等價
 - [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
 - [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
-- [ ] 沒有試翻的書，請求與估價跟改之前相同：不帶 `cache_control`，估價不變
-- [ ] 訊息、`--json` 與紀錄都不含書本文字
+- [x] 沒有試翻的書，請求與估價跟改之前相同：不帶 `cache_control`，估價不變
+
+  `tests/cli/trial.test.ts`「sends the prefix as plain text for a book with no trial」；估價的金額不變，`tome estimate` 多一行 `estimate.uncalibrated` 提示可以試翻。
+- [x] 訊息、`--json` 與紀錄都不含書本文字
+
+  新的代碼只帶數量、金額、百分比與指令；`tests/cli/trial.test.ts` 確認輸出不含合成的句子。
 
 ## Acceptance Criteria
 
-- [ ] 維護者的決定寫成 ADR-0135，白皮書 §9 的索引加一列
-- [ ] 模擬的結果寫進 ADR-0135，試翻的大小依它定案
-- [ ] `tome trial [--confirm] [--budget] [--realtime]` 比照 `tome scan-terms`；試翻計入預算，譯文留下
-- [ ] `tome run --trial` 過了審定就停下，結束碼 0；已有校準就跳過；`--trial` 不存進 `book.yaml`
-- [ ] 校準存進 `book.db` 的新表，估價套用它，有校準時進指紋
-- [ ] 試翻的請求帶 `cache_control`，命中率記下來；過損益兩平點時主翻譯才開快取，估價照命中率算
-- [ ] 帳本照實際的 TTL 計價，分得出試翻的花費
-- [ ] `estimate` 表記中間值與有沒有校準，`tome report` 印出 Q-6
-- [ ] 白皮書、README 與 CHANGELOG 更新
+- [x] 維護者的決定寫成 ADR-0135，白皮書 §9 的索引加一列
+- [x] 模擬的結果寫進 ADR-0135，試翻的大小依它定案
+
+  樣本內（ADR-0134 的估價器）與樣本外的替代（044 之前的估價器）分開寫。
+- [x] `tome trial [--confirm] [--budget] [--realtime]` 比照 `tome scan-terms`；試翻計入預算，譯文留下
+- [x] `tome run --trial` 過了審定就停下，結束碼 0；已有校準就跳過；`--trial` 不存進 `book.yaml`
+- [x] 校準存進 `book.db` 的新表，估價套用它，有校準時進指紋
+- [x] 試翻的請求帶 `cache_control`，命中率記下來；過損益兩平點時主翻譯才開快取，估價照命中率算
+- [x] 帳本照實際的 TTL 計價，分得出試翻的花費
+- [x] `estimate` 表記中間值與有沒有校準，`tome report` 印出 Q-6
+- [x] 白皮書、README 與 CHANGELOG 更新
