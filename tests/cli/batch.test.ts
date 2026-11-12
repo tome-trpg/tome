@@ -180,9 +180,51 @@ describe('tome translate in batches (ADR-0107)', () => {
     expect(exit).toBe(0);
     expect(host.waits).toEqual([POLL_SECONDS, POLL_SECONDS]);
     expect(progress.startsWith('開始翻譯：批次模式，共 1 個請求。\n')).toBe(true);
-    expect(progress).toContain('已送出第 1 批，含 1 個請求。');
+    expect(progress).toContain('已送出第 1 批（預計共 1 批），含 1 個請求。');
     expect(progress).toContain('第 1 批處理中，已等待 1 分鐘。');
     expect(progress).toContain('第 1 批處理中，已等待 2 分鐘。');
+  });
+
+  // 進度的編號是這次執行送出的第幾批，不是 `batch` 表的列號：Pass 0 也用這張表（ADR-0132）。
+  it('counts the batches of this run from one, past the rows Pass 0 left in the table', async () => {
+    const lib = await confirmed();
+    withStore(lib.home, (store) => {
+      for (let index = 0; index < 3; index += 1) {
+        store.run(
+          "INSERT INTO batch (nonce, state, requests, high_usd, created_at, stage) VALUES (?, 'collected', 1, 0.01, ?, 'scan')",
+          `scan${index}`,
+          new Date().toISOString(),
+        );
+      }
+    });
+    const { host } = await fake(GOOD, { polls: 1 });
+    const { exit, progress } = await translate(lib, host);
+    expect(exit).toBe(0);
+    expect(progress).toContain('已送出第 1 批（預計共 1 批），含 1 個請求。');
+    expect(progress).toContain('第 1 批處理中，已等待 1 分鐘。');
+    expect(progress).not.toContain('第 4 批');
+  });
+
+  // 預計的批數每送一批重算，重送讓批數變多時跟著變大（ADR-0132）。
+  it('raises the planned count when a split adds a batch', async () => {
+    const lib = await confirmed();
+    const { host } = await fake(REFUSE_FIRST, { reverse: true });
+    const { progress } = await translate(lib, host);
+    expect(progress).toContain('已送出第 1 批（預計共 1 批），含 1 個請求。');
+    expect(progress).toContain('已送出第 2 批（預計共 2 批），含 2 個請求。');
+  });
+
+  it('numbers no batch whose create was refused, and starts from one again on the next run', async () => {
+    const lib = await confirmed();
+    const { provider, host } = await fake(GOOD, { createStatus: 400 });
+    const first = await translate(lib, host);
+    expect(first.exit).toBe(1);
+    expect(first.progress).not.toContain('已送出第');
+    provider.batch.createStatus = null;
+    const second = await translate(lib, host);
+    expect(second.exit).toBe(0);
+    expect(batchRows(lib.home)).toHaveLength(2);
+    expect(second.progress).toContain('已送出第 1 批（預計共 1 批），含 1 個請求。');
   });
 
   it('sends nothing for a book that is done', async () => {
@@ -577,6 +619,17 @@ describe('a batch left from before (ADR-0107 items 11, 15 and 16)', () => {
     expect(exit).toBe(0);
     expect(provider.batches).toHaveLength(1);
     expect(statesOf(lib.home)).toEqual(['DONE', 'DONE', 'DONE']);
+  });
+
+  // 上一次送出的批次不是這次執行的第幾批，不給編號（ADR-0132）。
+  it('gives no number to the batch from before while it waits for it', async () => {
+    const { lib, provider, host } = await leftOver();
+    provider.batches.forEach((batch) => (batch.polls = 2));
+    const { exit, progress } = await translate(lib, host);
+    expect(exit).toBe(0);
+    expect(progress).toContain('上次送出的一批處理中，已等待 1 分鐘。');
+    expect(progress).toContain('上次送出的一批處理中，已等待 2 分鐘。');
+    expect(progress).not.toMatch(/第 \d+ 批處理中/u);
   });
 
   /** 估價確認之後書的內容改了，`tome batch collect` 照樣收回（第 17 項）。 */

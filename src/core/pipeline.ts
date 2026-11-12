@@ -41,6 +41,18 @@ function failed(findings: readonly Finding[]): boolean {
   return findings.some(({ level }) => level === 'fail');
 }
 
+/**
+ * 各步的發現接起來時，同一行會印兩次：分章層級（解析與估價都印）、預算（Pass 0 與估價都印）、
+ * 價目表過期（兩次估價都印）。代碼、等級、參數都相同的只留最後一次。分章層級不論參數只留最後一次：
+ * `--chapter-level` 在解析之後才寫進 `book.yaml`，解析那一步印的可能是舊的層級（ADR-0132）。
+ */
+function once(findings: readonly Finding[]): Finding[] {
+  const keyOf = ({ code, level, params }: Finding): string =>
+    code === 'chapters.levels' ? code : JSON.stringify([code, level, Object.entries(params).sort(([a], [b]) => a.localeCompare(b))]);
+  const last = new Map(findings.map((item, index) => [keyOf(item), index]));
+  return findings.filter((item, index) => last.get(keyOf(item)) === index);
+}
+
 async function runLocked(options: RunOptions): Promise<PlanOutcome> {
   const { home, slug, mode, budget } = options;
   const stages: { readonly stage: RunStep; readonly data: PlanOutcome['data'] }[] = [];
@@ -48,7 +60,7 @@ async function runLocked(options: RunOptions): Promise<PlanOutcome> {
   const realtime = mode === 'realtime' ? ' --realtime' : '';
   const outcome = (stopped: RunStep | null, next: string | null, last: readonly Finding[] = []): PlanOutcome => ({
     data: { book: slug, stages, stopped_at: stopped, next },
-    findings: [...findings, ...last],
+    findings: once([...findings, ...last]),
   });
   // 停在要人點頭的地方：結束碼 0，說下一步要跑哪個指令（ADR-0127）。
   const gate = (step: RunStep, command: string): PlanOutcome => outcome(step, command, [finding('run.stopped', 'warn', { book: slug, command })]);

@@ -230,10 +230,14 @@ function progressOf(io: Io): Pick<BatchOptions, 'onProgress' | 'onBatchSent' | '
       io.stderr.write(progressText(mode === 'realtime' ? 'translate_realtime' : 'translate_batch', { requests: String(requests) })),
     onRetry: retryProgress(io),
     onProgress: (done, total) => io.stderr.write(progressText('unit', { done: String(done), total: String(total) })),
-    onBatchSent: (batch, requests) =>
-      io.stderr.write(progressText('batch_sent', { batch: String(batch), requests: String(requests) })),
+    onBatchSent: (batch, requests, planned) =>
+      io.stderr.write(progressText('batch_sent', { batch: String(batch), requests: String(requests), planned: String(planned) })),
     onBatchWait: (batch, minutes) =>
-      io.stderr.write(progressText('batch_wait', { batch: String(batch), minutes: String(minutes) })),
+      io.stderr.write(
+        batch === null
+          ? progressText('batch_wait_earlier', { minutes: String(minutes) })
+          : progressText('batch_wait', { batch: String(batch), minutes: String(minutes) }),
+      ),
   };
 }
 

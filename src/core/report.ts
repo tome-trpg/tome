@@ -1,7 +1,7 @@
 import { readBook } from './book.ts';
 import { entityCards, type EntityCard } from './entities.ts';
 import { readDocument } from './extract.ts';
-import { finding } from './findings.ts';
+import { finding, type Finding } from './findings.ts';
 import type { IrDocument } from './ir.ts';
 import { needsLlm, type Placeholder } from './mask.ts';
 import { usd } from './provider.ts';
@@ -73,6 +73,26 @@ export interface EstimateItem {
   readonly spent_usd: number;
   /** 花費落在估價區間的哪裡，0 是下限、100 是上限；區間寬度是 0 時是 null。 */
   readonly position: number | null;
+}
+
+/**
+ * 花費跟估價比的情況（ADR-0132）。超出上限與低於下限的百分比對上限或下限算，四捨五入到整數，
+ * 不到 1% 另成一類；在區間內用 `position`。區間寬度是 0 時照舊是 `unknown`。
+ */
+export type EstimateComparison = 'over' | 'over_small' | 'within' | 'under' | 'under_small' | 'none' | 'unknown';
+
+export function compareEstimate(item: EstimateItem): { readonly comparison: EstimateComparison; readonly percent: number | null } {
+  const { low_usd: low, high_usd: high, spent_usd: spent, position } = item;
+  if (spent === 0) return { comparison: 'none', percent: null };
+  if (high > 0 && spent > high) {
+    const over = (spent / high - 1) * 100;
+    return over < 1 ? { comparison: 'over_small', percent: null } : { comparison: 'over', percent: Math.round(over) };
+  }
+  if (spent < low) {
+    const under = (1 - spent / low) * 100;
+    return under < 1 ? { comparison: 'under_small', percent: null } : { comparison: 'under', percent: Math.round(under) };
+  }
+  return position === null ? { comparison: 'unknown', percent: null } : { comparison: 'within', percent: position };
 }
 
 /** 鎖定的卡改了譯名，命中它的人工譯文還用上一個譯名（ADR-0126）。 */
@@ -354,6 +374,8 @@ export interface ReportTexts {
     readonly row: string;
     readonly stages: Readonly<Record<string, string>>;
     readonly modes: Readonly<Record<string, string>>;
+    /** 「與估價相比」那一欄，依 `compareEstimate` 的情況選，`{percent}` 是百分比（ADR-0132）。 */
+    readonly compare: Readonly<Record<EstimateComparison, string>>;
   };
   readonly states: Readonly<Record<string, string>>;
   readonly codes: Readonly<Record<string, string>>;
@@ -417,6 +439,7 @@ export function renderReport(report: BookReport, texts: ReportTexts, place: (blo
   if (report.estimates.length > 0) {
     lines.push('', `### ${texts.estimates.title}`, '', texts.estimates.header, `|${' --- |'.repeat(texts.estimates.header.split('|').length - 2)}`);
     for (const item of report.estimates) {
+      const { comparison, percent } = compareEstimate(item);
       lines.push(
         fill(texts.estimates.row, {
           time: item.created_at.slice(0, 16).replace('T', ' '),
@@ -425,7 +448,7 @@ export function renderReport(report: BookReport, texts: ReportTexts, place: (blo
           low: money(item.low_usd),
           high: money(item.high_usd),
           spent: money(item.spent_usd),
-          position: item.position === null ? '-' : `${item.position}%`,
+          compare: fill(texts.estimates.compare[comparison], { percent: String(percent ?? '') }),
         }),
       );
     }
@@ -542,6 +565,26 @@ export function reportCounts(report: BookReport): Record<string, number> {
   };
 }
 
+/** 最近一次確認的估價跟之後的花費，依情況各一個代碼，只帶數字（ADR-0132）。 */
+function estimateFinding(item: EstimateItem): Finding {
+  const money = { low: usd(item.low_usd), high: usd(item.high_usd), spent: usd(item.spent_usd) };
+  const { comparison, percent } = compareEstimate(item);
+  switch (comparison) {
+    case 'over':
+      return finding('report.estimate_over', 'info', { ...money, percent: String(percent) });
+    case 'over_small':
+      return finding('report.estimate_over_small', 'info', money);
+    case 'under':
+      return finding('report.estimate_under', 'info', { ...money, percent: String(percent) });
+    case 'under_small':
+      return finding('report.estimate_under_small', 'info', money);
+    case 'none':
+      return finding('report.estimate_none', 'info', { low: money.low, high: money.high });
+    default:
+      return finding('report.estimate', 'info', { ...money, position: percent === null ? '-' : String(percent) });
+  }
+}
+
 /** `tome report`。只印數字，不寫檔、不拿書的鎖，等批次時也能用（ADR-0123）。 */
 export function reportBook(home: string, slug: string): PlanOutcome {
   const book = readBook(home, slug);
@@ -554,17 +597,7 @@ export function reportBook(home: string, slug: string): PlanOutcome {
     const text = (values: Readonly<Record<string, number>>): Record<string, string> =>
       Object.fromEntries(Object.entries(values).map(([name, value]) => [name, String(value)]));
     const latest = report.estimates.at(-1);
-    const estimate =
-      latest === undefined
-        ? []
-        : [
-            finding('report.estimate', 'info', {
-              low: usd(latest.low_usd),
-              high: usd(latest.high_usd),
-              spent: usd(latest.spent_usd),
-              position: latest.position === null ? '-' : String(latest.position),
-            }),
-          ];
+    const estimate = latest === undefined ? [] : [estimateFinding(latest)];
     return {
       data: { book: slug, coverage: report.coverage, spent_usd: spent, spent: report.spent, estimates: report.estimates, counts },
       findings: [

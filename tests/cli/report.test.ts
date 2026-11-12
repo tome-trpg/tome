@@ -96,24 +96,52 @@ describe('tome report (ADR-0123)', () => {
     const row = withStore(lib.home, (store) => store.get<{ stage: string; mode: string; requests: number }>('SELECT stage, mode, requests FROM estimate'));
     expect(row).toEqual({ stage: 'translate', mode: 'realtime', requests: 1 });
     const { output } = await tome(lib, 'report', 'book');
+    // 確認之後還沒花錢：不說落在哪裡，只說尚無花費（ADR-0132）。
     expect(output.findings.map(({ code, level }) => [code, level])).toEqual([
       ['report.coverage', 'info'],
-      ['report.estimate', 'info'],
+      ['report.estimate_none', 'info'],
       ['report.issues', 'info'],
     ]);
-    const latest = (output.data['estimates'] as { position: number | null }[]).at(-1);
-    expect(output.findings[1]?.params).toMatchObject({ spent: '0.00', position: String(latest?.position) });
+    expect(Object.keys(output.findings[1]?.params ?? {})).toEqual(['low', 'high']);
     expect(output.data).toMatchObject({ spent: { budget: 100 } });
   });
 
-  it('writes a dash where the estimate has no width', async () => {
+  /** 一筆估價與之後的一筆花費，數字是 M3 收尾的（ADR-0129 第 5 項）。 */
+  async function spentAgainst(stage: 'translate' | 'scan', low: number, high: number, spent: number): Promise<Library> {
     const lib = await book();
-    withStore(lib.home, (store) =>
+    withStore(lib.home, (store) => {
       store.run(
-        "INSERT INTO estimate (stage, mode, model, requests, low_usd, high_usd, created_at) VALUES ('translate', 'batch', 'm', 1, 0.2, 0.2, 't')",
-      ),
-    );
-    const { output } = await tome(lib, 'report', 'book');
-    expect(output.findings.find(({ code }) => code === 'report.estimate')?.params).toMatchObject({ low: '0.20', high: '0.20', position: '-' });
+        "INSERT INTO estimate (stage, mode, model, requests, low_usd, high_usd, created_at) VALUES (?, 'batch', 'm', 1, ?, ?, '2026-11-09T00:00:00.000Z')",
+        stage,
+        low,
+        high,
+      );
+      store.run(
+        `INSERT INTO ledger (request_id, unit_id, model, mode, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, created_at)
+         VALUES ('r1', ?, 'm', 'batch', 0, 0, 0, 0, ?, '2026-11-09T01:00:00.000Z')`,
+        stage === 'scan' ? 'term:1' : 'p0000-aaaaa1',
+        spent,
+      );
+    });
+    return lib;
+  }
+
+  // 花費超出上限時說超出多少，不說「落在估價區間的 199%」；`--json` 的 position 照舊（ADR-0132）。
+  it('says how far the spending went over the upper bound', async () => {
+    const lib = await spentAgainst('translate', 0.8194, 1.3315, 1.8383);
+    const { output, text } = await tome(lib, 'report', 'book');
+    expect(output.findings[1]).toMatchObject({ code: 'report.estimate_over', params: { low: '0.82', high: '1.33', spent: '1.84', percent: '38' } });
+    expect(text).toContain('超出上限 38%');
+    expect(output.findings[1]?.message).not.toContain('199');
+    expect((output.data['estimates'] as { position: number | null }[]).at(-1)?.position).toBe(199);
+  });
+
+  it('says how far the spending stayed under the lower bound, and when it is less than 1%', async () => {
+    const under = await tome(await spentAgainst('scan', 0.1786, 0.2902, 0.1713), 'report', 'book');
+    expect(under.output.findings[1]).toMatchObject({ code: 'report.estimate_under', params: { percent: '4' } });
+    expect(under.text).toContain('低於下限 4%');
+    const barely = await tome(await spentAgainst('scan', 0.0438, 0.0712, 0.0437), 'report', 'book');
+    expect(barely.output.findings[1]?.code).toBe('report.estimate_under_small');
+    expect(barely.text).toContain('低於下限不到 1%');
   });
 });

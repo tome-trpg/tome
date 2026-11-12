@@ -63,9 +63,13 @@ const NONCE_BYTES = 8;
 const MISSING = 'missing';
 
 export interface BatchOptions extends TranslateOptions {
-  /** 用本機的批次編號，中斷之後再跑也是同一個號碼。 */
-  readonly onBatchSent?: (batch: number, requests: number) => void;
-  readonly onBatchWait?: (batch: number, minutes: number) => void;
+  /**
+   * 這次執行送出的第幾批，從 1 算起，供應商確認收到才算；`planned` 是預計的批數，每送一批照當時的
+   * 佇列重算（ADR-0132）。
+   */
+  readonly onBatchSent?: (batch: number, requests: number, planned: number) => void;
+  /** 等的是這次送出的第幾批；續跑時接著等上一次送出的批次是 null（ADR-0132）。 */
+  readonly onBatchWait?: (batch: number | null, minutes: number) => void;
 }
 
 export interface BatchRow {
@@ -80,6 +84,8 @@ export interface BatchRow {
 interface BatchRun {
   readonly run: Run;
   readonly options: BatchOptions;
+  /** 這次執行送出、供應商確認收到的批數，進度的編號（ADR-0132）。 */
+  numbered: number;
 }
 
 /** 批次的共用動作要的東西。翻譯與 Pass 0 的流程都有（ADR-0118）。 */
@@ -176,11 +182,14 @@ export function remove(run: BatchHost, remoteId: string): Promise<void> {
   });
 }
 
-/** 等到整批結束。沒有逾時，批次最晚在建立後 24 小時結束（ADR-0107 第 12 項）。 */
+/**
+ * 等到整批結束。沒有逾時，批次最晚在建立後 24 小時結束（ADR-0107 第 12 項）。`shown` 是進度印的
+ * 編號，上一次送出的批次是 null（ADR-0132）。
+ */
 export async function waitFor(
   run: BatchHost,
   onWait: BatchOptions['onBatchWait'],
-  row: BatchRow,
+  shown: number | null,
   remoteId: string,
 ): Promise<RemoteBatch | Finding> {
   let waited = 0;
@@ -190,7 +199,7 @@ export async function waitFor(
     if (remote.status === 'ended') return remote;
     await run.sleep(POLL_SECONDS);
     waited += POLL_SECONDS;
-    onWait?.(row.id, Math.round(waited / 60));
+    onWait?.(shown, Math.round(waited / 60));
   }
 }
 
@@ -209,11 +218,18 @@ const FOREIGN: Collected = { next: [], stop: null, foreign: true };
 /**
  * 等結束、收回、套用、刪除。單位還在 `IN_FLIGHT` 的請求才套用，中斷在收回到一半時，
  * 再下載一次結果就接得上（ADR-0107 第 11 項）。`unverified` 是認回來、還沒確認的批次。
+ * `shown` 是進度印的編號，上一次送出的批次是 null（ADR-0132）。
  */
-async function collect(batchRun: BatchRun, row: BatchRow, remoteId: string, unverified: boolean): Promise<Collected> {
+async function collect(
+  batchRun: BatchRun,
+  row: BatchRow,
+  remoteId: string,
+  unverified: boolean,
+  shown: number | null,
+): Promise<Collected> {
   const { run } = batchRun;
   const { store, plan } = run;
-  const ended = await waitFor(run, batchRun.options.onBatchWait, row, remoteId);
+  const ended = await waitFor(run, batchRun.options.onBatchWait, shown, remoteId);
   if ('level' in ended) return { ...stopAt(ended), foreign: false };
   if (ended.archivedAt !== null) {
     if (unverified) return FOREIGN;
@@ -343,7 +359,7 @@ async function settleOutstanding(batchRun: BatchRun): Promise<Step> {
       remoteId = found;
     }
     if (remoteId === null) throw new RangeError(`batch ${row.id} has no remote id`);
-    const collected = await collect(batchRun, row, remoteId, unverified);
+    const collected = await collect(batchRun, row, remoteId, unverified, null);
     if (collected.foreign) {
       // 不是這本書的：不採用，也不刪除，再找下一個候選。
       rejected.add(remoteId);
@@ -369,7 +385,7 @@ function gate(run: Run, prepared: readonly { readonly work: Work; readonly sized
 }
 
 /** 依序檢查預算與個資閘門、寫意圖紀錄、送出、等結束、收回（ADR-0107 第 6 到 8 項）。 */
-async function sendBatch(batchRun: BatchRun, works: readonly Work[]): Promise<Step> {
+async function sendBatch(batchRun: BatchRun, works: readonly Work[], batchesLeft: number): Promise<Step> {
   const { run, options } = batchRun;
   const { store } = run;
   const prepared = works.flatMap((work) => prepareWork(run, work) ?? []);
@@ -435,8 +451,10 @@ async function sendBatch(batchRun: BatchRun, works: readonly Work[]): Promise<St
     remote.expiresAt,
     row.id,
   );
-  options.onBatchSent?.(row.id, prepared.length);
-  const collected = await collect(batchRun, { ...row, state: 'submitted', remote_id: remote.id }, remote.id, false);
+  batchRun.numbered += 1;
+  options.onBatchSent?.(batchRun.numbered, prepared.length, batchRun.numbered - 1 + batchesLeft);
+  const submitted = { ...row, state: 'submitted' as const, remote_id: remote.id };
+  const collected = await collect(batchRun, submitted, remote.id, false, batchRun.numbered);
   return { next: collected.next, stop: collected.stop };
 }
 
@@ -454,10 +472,13 @@ async function drainBatches(batchRun: BatchRun, carried: readonly Work[]): Promi
   for (;;) {
     const exclude = new Set(carry.flatMap(({ request }) => request.units.map(({ unit_id }) => unit_id)));
     const queued = queuedWork(run, exclude).map(({ request }) => request);
-    const [first = []] = planBatches(queued, run.plan.chapterOf, undefined, charsOf(carry));
+    // 預計的批數每一輪照當時的佇列重算：重送讓批數變多時跟著變大（ADR-0132）。
+    const planned = planBatches(queued, run.plan.chapterOf, undefined, charsOf(carry));
+    const [first = []] = planned;
     const works = [...carry, ...first.map((request) => ({ request, model: run.plan.model }))];
     if (works.length === 0) return null;
-    const { next, stop } = await sendBatch(batchRun, works);
+    // 佇列空了、只剩重送的請求時，`planBatches` 回空陣列，這一批照樣要算。
+    const { next, stop } = await sendBatch(batchRun, works, Math.max(planned.length, 1));
     reportProgress(run);
     if (stop !== null) return stop;
     carry = next;
@@ -473,7 +494,7 @@ export function translateInBatches(options: BatchOptions): Promise<PlanOutcome> 
 export function translateInBatchesLocked(options: BatchOptions): Promise<PlanOutcome> {
   const setup = { mode: 'batch', confirm: true, refusePending: false } as const;
   return withRun(options, setup, async (run, findings) => {
-    const batchRun = { run, options };
+    const batchRun: BatchRun = { run, options, numbered: 0 };
     recover(run);
     const settled = await settleOutstanding(batchRun);
     if (settled.stop !== null) return report(run, settled.stop, findings);
@@ -493,7 +514,7 @@ export function collectBatches(options: BatchOptions): Promise<PlanOutcome> {
     withRun(options, setup, async (run, findings) => {
       recover(run);
       if (outstandingBatches(run.store) === 0) run.notes.push(finding('batch.none', 'info'));
-      const settled = await settleOutstanding({ run, options });
+      const settled = await settleOutstanding({ run, options, numbered: 0 });
       return report(run, settled.stop, findings);
     }),
   );

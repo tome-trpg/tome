@@ -42,7 +42,37 @@ describe('tome estimate (ADR-0103)', () => {
     expect(output.data['low_usd']).toBeGreaterThan(0);
     expect(output.data['high_usd']).toBeGreaterThan(output.data['low_usd'] as number);
     const done = output.findings.find((item) => item.code === 'estimate.done');
-    expect(done?.params).toMatchObject({ model: MODEL, units: '3', requests: '1', retention: '29' });
+    expect(done?.params).toMatchObject({ model: MODEL, units: '3', requests: '1' });
+    expect(output.findings.find((item) => item.code === 'estimate.retention')?.params).toEqual({ retention: '29' });
+    expect(codes(output)).not.toContain('estimate.retention_realtime');
+  });
+
+  // 供應商設定檔只登記批次的保留天數，即時模式不寫天數（ADR-0132）。
+  it('gives no retention in days for realtime, only that the provider policy decides', async () => {
+    const lib = await library();
+    const { output } = await estimate(lib, '--realtime');
+    expect(codes(output)).toContain('estimate.retention_realtime');
+    expect(codes(output)).not.toContain('estimate.retention');
+    expect(output.findings.find((item) => item.code === 'estimate.retention_realtime')?.params).toEqual({});
+    const { io, stdout } = lib.session();
+    await run(['estimate', 'book', '--realtime'], io);
+    expect(stdout()).toContain('以供應商的政策為準');
+    expect(stdout()).not.toContain('保留 29 天');
+  });
+
+  it('says nothing about retention when there is nothing to send', async () => {
+    const lib = await library();
+    await estimate(lib);
+    const { openBookStore } = await import('../../src/core/store.ts');
+    const store = openBookStore(lib.home, 'book');
+    store.run("UPDATE unit SET state = 'DONE'");
+    store.close();
+    for (const mode of [[], ['--realtime']]) {
+      const found = codes((await estimate(lib, ...mode)).output);
+      expect(found).toContain('estimate.nothing');
+      expect(found).not.toContain('estimate.retention');
+      expect(found).not.toContain('estimate.retention_realtime');
+    }
   });
 
   it('counts the units it sends and, apart, the units kept as they are (ADR-0111)', async () => {
