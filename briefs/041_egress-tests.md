@@ -73,8 +73,12 @@ protectedFiles:
   `1530941` 的測試下 39 個存活、81 與 82 號逾時，跟 run 42583693624 相同；這個回合的測試下殺掉 35 個，存活的 6 個就是 ADR-0131 第 3 項的清單，每個殺掉的都是為它補的那個測試失敗。
 
   B 露出來的 17 個用 run 43069907632 的報告：補測試前都存活，跟 CI 相同；補測試後殺掉 11 個，存活的 6 個是 ADR-0131 第 3 項的 133、137、187、199、247、252，每個殺掉的都是為它補的那個測試失敗。
-- [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
+
+  這個 PR 每次推送（`db24f92`、`3755eab`、`4f30e86`）的 `specs`、`test` 都是 attempt 1 通過；`4f30e86` 是 run 43127039452（specs）、43127039692（test），Windows 的單元測試那一步 258 秒，沒有逾時診斷的輸出。
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+
+  `4f30e86` 的 `CodeQL` 是 success、0 個 annotation；三個 Analyze 各一個 annotation，都是原本就有的 ubuntu-latest 說明。
 - [x] `src/**` 與 `.github/**` 沒有改動
 - [x] 新的開發相依只有 `@opentelemetry/api` 1.10.0，`npm run licenses` 通過
 
@@ -82,11 +86,15 @@ protectedFiles:
 
 ## Acceptance Criteria
 
-- [ ] 對外出口沒偵測到的 39 個變異的分類、補測試前後的分數寫成 ADR-0131，白皮書的 ADR 索引加一列
+- [x] 對外出口沒偵測到的 39 個變異的分類、補測試前後的分數寫成 ADR-0131，白皮書的 ADR 索引加一列
+
+  ADR-0131 第 1 到 3 項（加上 B 露出來的 17 個，合計 55 個），補測試前後的分數在第 7、8 項；白皮書 §9 的索引已有 ADR-0131 一列。
 - [x] 逾時設定 A、B 各兩次的 CI 數字，與 `ignoreStatic` 用同一批報告算的分數，寫進 ADR-0131
 - [x] 維護者對逾時設定的決定寫進 ADR-0131；改設定時 `amends: [ADR-0110]`
 
   留 B，ADR-0131 第 8、9 項；ADR-0110 Open Questions 的逾時那一項打勾，指到 ADR-0131 第 9 項。
 - [x] B 露出來的對外出口 17 個：殺得掉的 11 個補測試並在本機確認，6 個逐一寫理由進 ADR-0131 第 3 項；遮蔽還原 12 個與驗證 8 個寫進 Open Questions
 - [x] Windows 卡住的分析與診斷的用法寫進 ADR-0131
-- [ ] 對外出口在 CI 的分數在 95 以上
+- [x] 對外出口在 CI 的分數在 95 以上
+
+  `4f30e86` 的 run 43127039506（設定 B，推送觸發，attempt 1）是 95.70：殺掉 239、逾時 6、存活 11、沒涵蓋 0，存活的就是 ADR-0131 第 3 項的 11 個。
