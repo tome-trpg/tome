@@ -83,14 +83,14 @@ ADR-0130 第 10、21 項把它們跟白皮書、README 停在 M2 的文字排進
 8. 修改 ADR-0117 第 3 項與 ADR-0110：本機不再跑變異測試，單一變異的小工具也不跑。回合要確認變異時：
    * 六個關鍵模組（ADR-0063）在回合分支上 dispatch `mutation.yml`。
    * 其他改過的行用第 9 項的 workflow。
-9. 新增 `.github/workflows/mutation-lines.yml`（workflow 名稱 `mutation-lines`；名字是提案，待維護者確認）：
+9. 新增 `.github/workflows/mutation-lines.yml`（workflow 名稱 `mutation-lines`，輸入 `mutate`；維護者在 2026-11-12 照提案選定）：
    * 只能用 `workflow_dispatch` 觸發，輸入 `mutate` 是要變異的範圍，照 Stryker 的 mutate 寫法，例如 `src/core/report.ts:84-96`，好幾個用逗號分隔。不加 `pull_request` 或 `push` 觸發，`mutation.yml` 不改。
    * 輸入先放進環境變數再用，不直接嵌進指令；只收 `src/` 底下的 `.ts` 檔，可以加行號，不合格式就失敗、不跑。
    * 沿用 `stryker.config.mjs` 的設定（ADR-0131 的逾時、並行數 4），用 `--mutate` 帶範圍。只跑指定的範圍時分數沒有意義，所以不套用 break 門檻：Stryker 的命令列沒有覆寫門檻的選項，改 `stryker.config.mjs` 又會讓 `mutation.yml` 在 PR 的每次推送都跑六個模組，所以在 runner 上產生一個只存在於那次執行的設定檔，從 `stryker.config.mjs` 匯入，只把 `thresholds.break` 換成 `null`。
    * `timeout-minutes` 跟 `mutation.yml` 一樣是 130；JSON 與 HTML 報告上傳成 artifact `mutation-lines`，保留 30 天。
    * 動作照 `mutation.yml` 釘在同樣的 commit。`tests/tools/mutation.test.ts` 確認觸發方式、時限、沿用的設定、輸入的用法與格式檢查。
-10. brief 042 只對這一個新的 workflow 檔放寬，其他 `.github/**` 照樣受保護（維護者 2026-11-12 的裁示）。本機那一輪單一變異照裁示停掉，結果不採用；這個回合改過的行改用第 9 項的 workflow 跑，結果見第 11 項。
-11. （待新 workflow 跑完後補上。）
+10. brief 042 只對這一個新的 workflow 檔放寬，其他 `.github/**` 照樣受保護（維護者 2026-11-12 的裁示）。本機那一輪單一變異照裁示停掉，結果不採用；它找到的存活變異已經補了測試。
+11. **042 改過的行在合併後才跑**：`workflow_dispatch` 要 workflow 先在預設分支上才觸發得到，新 workflow 合進 main 之前，沒辦法在 042 的分支上 dispatch。維護者在 2026-11-12 選定：042 連同新 workflow 照常合併，合併後在 main 上 dispatch `mutation-lines`，跑 042 改過的行；存活的在回合 043 開頭只用測試補，結果寫進 043 的 ADR。
 
 ## 驗證
 
@@ -132,4 +132,4 @@ ADR-0130 第 10、21 項把它們跟白皮書、README 停在 M2 的文字排進
 ## Open Questions
 
 - [ ] 即時模式的資料保留期要不要查證、登記在供應商設定檔，跟 049 重新查證價目表時一起看（第 1 項）。
-- [ ] 新 workflow 的檔名與名稱 `mutation-lines` 待維護者確認（第 9 項）。
+- [ ] 042 改過的行用 `mutation-lines` 跑的結果，合併後在 main 上跑，存活的在 043 開頭補測試，寫進 043 的 ADR（第 11 項）。

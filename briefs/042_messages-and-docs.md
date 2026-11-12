@@ -60,7 +60,7 @@ protectedFiles:
 
 細節由維護者在 2026-11-12 全部照建議選定（共用筆記 `brief-042-questions.md` 的 7 項），寫成 ADR-0132。
 
-同一天維護者另外裁示：變異測試全部搬到 GitHub runner，本機不再跑。這個回合因此新增一個只能手動觸發的 workflow，輸入是要變異的檔案與行號，沿用 `stryker.config.mjs` 的設定、不套用 break 門檻；用它跑這個回合改過的行，存活的補測試或寫明是等價變異。brief 只對這一個新的 workflow 檔放寬，其他 `.github/**` 照樣受保護。
+同一天維護者另外裁示：變異測試全部搬到 GitHub runner，本機不再跑。這個回合因此新增一個只能手動觸發的 workflow，輸入是要變異的檔案與行號，沿用 `stryker.config.mjs` 的設定、不套用 break 門檻。brief 只對這一個新的 workflow 檔放寬，其他 `.github/**` 照樣受保護。042 改過的行在合併後才跑，原因是 `workflow_dispatch` 要 workflow 先在預設分支上；存活的在 043 開頭只用測試補。
 
 ## Negative Scope
 
@@ -92,6 +92,8 @@ protectedFiles:
 
   把新的測試放到 `86e753a`（改程式之前）的複本上跑，29 個失敗。「沒有要送的就不印保留期」是護欄：舊程式本來就不印，本機變異把那一行改壞時它會失敗。補強的測試（等級、去重的規則、上限 0 等）是本機變異那一輪找到的存活變異，見共用筆記 `brief-042-details.md` 第 11 項。
 - [ ] 新的 workflow 在 GitHub runner 上跑過這個回合改過的行，存活的補上測試或說明是等價變異
+
+  **Delegated** 到合併之後與回合 043：`workflow_dispatch` 要 workflow 先在預設分支上才觸發得到，新 workflow 合進 main 之前，沒辦法在 042 的分支上 dispatch。維護者在 2026-11-12 選定 042 照常合併，合併後在 main 上 dispatch `mutation-lines` 跑 042 改過的行，存活的在 043 開頭只用測試補，結果寫進 043 的 ADR（ADR-0132 第 11 項）。
 - [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
 - [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
 - [x] 訊息、進度、`--json` 與紀錄都不含書本文字
@@ -114,4 +116,4 @@ protectedFiles:
 - [x] CHANGELOG「尚未發布」的「變更」一節記下使用者看得到的變更
 - [x] 新增只能手動觸發的變異 workflow：輸入是檔案與行號，沿用 `stryker.config.mjs`、不套用 break 門檻、`timeout-minutes` 130、JSON 報告上傳成 artifact；決定寫進 ADR-0132（`amends` ADR-0110、ADR-0117）
 
-  `.github/workflows/mutation-lines.yml`，名字是提案，待維護者確認。
+  `.github/workflows/mutation-lines.yml`，workflow 名稱 `mutation-lines`，輸入 `mutate`，維護者在 2026-11-12 照提案選定。
