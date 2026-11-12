@@ -198,8 +198,10 @@ describe('tome translate in batches (ADR-0107)', () => {
       }
     });
     const { host } = await fake(GOOD, { polls: 1 });
-    const { exit, progress } = await translate(lib, host);
+    const { exit, output, progress } = await translate(lib, host);
     expect(exit).toBe(0);
+    // 剛送出的批次不是認回來的，不說找回上次中斷前的批次。
+    expect(codes(output)).not.toContain('batch.recovered');
     expect(progress).toContain('已送出第 1 批（預計共 1 批），含 1 個請求。');
     expect(progress).toContain('第 1 批處理中，已等待 1 分鐘。');
     expect(progress).not.toContain('第 4 批');

@@ -46,7 +46,7 @@ function failed(findings: readonly Finding[]): boolean {
  * 價目表過期（兩次估價都印）。代碼、等級、參數都相同的只留最後一次。分章層級不論參數只留最後一次：
  * `--chapter-level` 在解析之後才寫進 `book.yaml`，解析那一步印的可能是舊的層級（ADR-0132）。
  */
-function once(findings: readonly Finding[]): Finding[] {
+export function once(findings: readonly Finding[]): Finding[] {
   const keyOf = ({ code, level, params }: Finding): string =>
     code === 'chapters.levels' ? code : JSON.stringify([code, level, Object.entries(params).sort(([a], [b]) => a.localeCompare(b))]);
   const last = new Map(findings.map((item, index) => [keyOf(item), index]));

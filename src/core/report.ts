@@ -448,7 +448,8 @@ export function renderReport(report: BookReport, texts: ReportTexts, place: (blo
           low: money(item.low_usd),
           high: money(item.high_usd),
           spent: money(item.spent_usd),
-          compare: fill(texts.estimates.compare[comparison], { percent: String(percent ?? '') }),
+          // 沒有百分比的寫法（不到 1%、尚無花費、`-`）不用 `{percent}`。
+          compare: fill(texts.estimates.compare[comparison], { percent: String(percent) }),
         }),
       );
     }

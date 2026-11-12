@@ -126,6 +126,7 @@ describe('tome scan-terms without --confirm (ADR-0118)', () => {
     expect(exit).toBe(0);
     expect(spy).not.toHaveBeenCalled();
     expect(codes(output)).toEqual(['scan.estimate', 'estimate.retention', 'scan.not_confirmed']);
+    expect(output.findings.slice(0, 2).map(({ level }) => level)).toEqual(['info', 'info']);
     expect(output.findings[1]?.params).toEqual({ retention: '29' });
     expect(output.data).toMatchObject({ candidates: 3, terms: 3, summary: true, requests: 2, confirmed: false });
     expect(entities(lib.home).map(({ source, status, occurrences }) => [source, status, occurrences])).toEqual([
@@ -142,6 +143,7 @@ describe('tome scan-terms without --confirm (ADR-0118)', () => {
     const lib = await book();
     const { output } = await scan(lib, undefined, '--realtime');
     expect(codes(output)).toEqual(['scan.estimate', 'estimate.retention_realtime', 'scan.not_confirmed']);
+    expect(output.findings.slice(0, 2).map(({ level }) => level)).toEqual(['info', 'info']);
   });
 
   it('asks for scanner_model, as TOME has no default model', async () => {
@@ -242,6 +244,7 @@ describe('tome scan-terms --confirm (ADR-0118)', () => {
     const sent = provider.requests.length;
     const { output } = await scan(lib, host, '--realtime', '--confirm');
     expect(codes(output)).toEqual(['scan.nothing', 'estimate.budget']);
+    expect(output.findings[0]?.level).toBe('info');
     expect(provider.requests).toHaveLength(sent);
   });
 
@@ -340,8 +343,10 @@ describe('tome scan-terms in batches (ADR-0118)', () => {
       ),
     );
     const { host } = await fake(GOOD, { polls: 1 });
-    const { exit, progress } = await confirmed(lib, host);
+    const { exit, output, progress } = await confirmed(lib, host);
     expect(exit).toBe(0);
+    // 剛送出的批次不是認回來的，不說找回上次中斷前的批次。
+    expect(codes(output)).not.toContain('batch.recovered');
     expect(progress).toContain('已送出第 1 批（預計共 1 批），含 2 個請求。');
     expect(progress).toContain('第 1 批處理中，已等待 1 分鐘。');
   });

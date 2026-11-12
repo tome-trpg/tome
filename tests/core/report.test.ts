@@ -400,6 +400,9 @@ describe('compareEstimate (ADR-0132)', () => {
     ['no spending yet', item(1, 2, 0), { comparison: 'none', percent: null }],
     ['an estimate with no width, met exactly', item(1, 1, 1), { comparison: 'unknown', percent: null }],
     ['an estimate with no width, gone over', item(1, 1, 1.5), { comparison: 'over', percent: 50 }],
+    ['a spending under by half, rounding the percent to 50', item(1, 2, 0.5), { comparison: 'under', percent: 50 }],
+    // 上限是 0 時不拿它去除：不說超出無限大，照區間寬度 0 處理。
+    ['an estimate of nothing that was spent on anyway', item(0, 0, 0.5), { comparison: 'unknown', percent: null }],
   ])('tells %s', (_name, estimate, expected) => {
     expect(compareEstimate(estimate)).toEqual(expected);
   });

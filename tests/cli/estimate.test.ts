@@ -42,8 +42,8 @@ describe('tome estimate (ADR-0103)', () => {
     expect(output.data['low_usd']).toBeGreaterThan(0);
     expect(output.data['high_usd']).toBeGreaterThan(output.data['low_usd'] as number);
     const done = output.findings.find((item) => item.code === 'estimate.done');
-    expect(done?.params).toMatchObject({ model: MODEL, units: '3', requests: '1' });
-    expect(output.findings.find((item) => item.code === 'estimate.retention')?.params).toEqual({ retention: '29' });
+    expect(done).toMatchObject({ level: 'info', params: { model: MODEL, units: '3', requests: '1' } });
+    expect(output.findings.find((item) => item.code === 'estimate.retention')).toMatchObject({ level: 'info', params: { retention: '29' } });
     expect(codes(output)).not.toContain('estimate.retention_realtime');
   });
 
@@ -53,7 +53,7 @@ describe('tome estimate (ADR-0103)', () => {
     const { output } = await estimate(lib, '--realtime');
     expect(codes(output)).toContain('estimate.retention_realtime');
     expect(codes(output)).not.toContain('estimate.retention');
-    expect(output.findings.find((item) => item.code === 'estimate.retention_realtime')?.params).toEqual({});
+    expect(output.findings.find((item) => item.code === 'estimate.retention_realtime')).toMatchObject({ level: 'info', params: {} });
     const { io, stdout } = lib.session();
     await run(['estimate', 'book', '--realtime'], io);
     expect(stdout()).toContain('以供應商的政策為準');
@@ -68,8 +68,9 @@ describe('tome estimate (ADR-0103)', () => {
     store.run("UPDATE unit SET state = 'DONE'");
     store.close();
     for (const mode of [[], ['--realtime']]) {
-      const found = codes((await estimate(lib, ...mode)).output);
-      expect(found).toContain('estimate.nothing');
+      const { output } = await estimate(lib, ...mode);
+      const found = codes(output);
+      expect(output.findings.find((item) => item.code === 'estimate.nothing')?.level).toBe('info');
       expect(found).not.toContain('estimate.retention');
       expect(found).not.toContain('estimate.retention_realtime');
     }

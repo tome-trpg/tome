@@ -130,7 +130,11 @@ describe('tome report (ADR-0123)', () => {
   it('says how far the spending went over the upper bound', async () => {
     const lib = await spentAgainst('translate', 0.8194, 1.3315, 1.8383);
     const { output, text } = await tome(lib, 'report', 'book');
-    expect(output.findings[1]).toMatchObject({ code: 'report.estimate_over', params: { low: '0.82', high: '1.33', spent: '1.84', percent: '38' } });
+    expect(output.findings[1]).toMatchObject({
+      code: 'report.estimate_over',
+      level: 'info',
+      params: { low: '0.82', high: '1.33', spent: '1.84', percent: '38' },
+    });
     expect(text).toContain('超出上限 38%');
     expect(output.findings[1]?.message).not.toContain('199');
     expect((output.data['estimates'] as { position: number | null }[]).at(-1)?.position).toBe(199);
@@ -138,10 +142,27 @@ describe('tome report (ADR-0123)', () => {
 
   it('says how far the spending stayed under the lower bound, and when it is less than 1%', async () => {
     const under = await tome(await spentAgainst('scan', 0.1786, 0.2902, 0.1713), 'report', 'book');
-    expect(under.output.findings[1]).toMatchObject({ code: 'report.estimate_under', params: { percent: '4' } });
+    expect(under.output.findings[1]).toMatchObject({ code: 'report.estimate_under', level: 'info', params: { percent: '4' } });
     expect(under.text).toContain('低於下限 4%');
     const barely = await tome(await spentAgainst('scan', 0.0438, 0.0712, 0.0437), 'report', 'book');
-    expect(barely.output.findings[1]?.code).toBe('report.estimate_under_small');
+    expect(barely.output.findings[1]).toMatchObject({ code: 'report.estimate_under_small', level: 'info', params: { spent: '0.04' } });
     expect(barely.text).toContain('低於下限不到 1%');
+  });
+
+  it('says it went over by less than 1% when it barely did', async () => {
+    const { output, text } = await tome(await spentAgainst('translate', 1, 2, 2.01), 'report', 'book');
+    expect(output.findings[1]).toMatchObject({ code: 'report.estimate_over_small', level: 'info', params: { low: '1.00', high: '2.00', spent: '2.01' } });
+    expect(text).toContain('超出上限不到 1%');
+  });
+
+  it('says where inside the range the spending landed', async () => {
+    const { output, text } = await tome(await spentAgainst('translate', 0.3315, 0.5386, 0.5061), 'report', 'book');
+    expect(output.findings[1]).toMatchObject({ code: 'report.estimate', level: 'info', params: { spent: '0.51', position: '84' } });
+    expect(text).toContain('在估價區間內（84% 處）');
+  });
+
+  it('writes a dash where the estimate has no width and the spending met it', async () => {
+    const { output } = await tome(await spentAgainst('translate', 0.2, 0.2, 0.2), 'report', 'book');
+    expect(output.findings[1]).toMatchObject({ code: 'report.estimate', level: 'info', params: { low: '0.20', high: '0.20', position: '-' } });
   });
 });
