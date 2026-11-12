@@ -312,11 +312,11 @@ describe('a trial whose batch has not come back (ADR-0135)', () => {
     const waiting = await tome(lib, undefined, 'trial', 'book');
     expect(waiting.exit).toBe(0);
     expect(codes(waiting.output)).toContain('trial.in_flight');
-    expect(waiting.output.findings.find(({ code }) => code === 'trial.in_flight')?.params).toEqual({
-      book: 'book',
-      count: '5',
-      flags: '--confirm',
+    expect(waiting.output.findings.find(({ code }) => code === 'trial.in_flight')).toMatchObject({
+      level: 'warn',
+      params: { book: 'book', count: '5', flags: '--confirm' },
     });
+    expect(waiting.output.data).toMatchObject({ book: 'book', mode: 'batch', calibrated: false, in_flight: 5 });
     expect(codes(waiting.output)).not.toContain('trial.done');
     expect(calibrations(lib.home)).toBe(0);
     expect(count(lib.home, 'SELECT COUNT(*) AS count FROM trial_unit')).toBe(5);
