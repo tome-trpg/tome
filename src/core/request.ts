@@ -482,7 +482,7 @@ export function sizeRequest(request: PlannedRequest, options: SizeOptions): Size
 export function cacheOf(calibration: CalibrationRow | null, model: ProviderModel, mode: RequestMode): CacheSetting | null {
   if (calibration === null || calibration.cache_ttl === null || calibration.cache_hit_rate === null) return null;
   const ttl = calibration.cache_ttl;
-  return calibration.cache_hit_rate >= breakEven(model, mode, ttl) ? { ttl, hitRate: calibration.cache_hit_rate } : null;
+  return calibration.cache_hit_rate > breakEven(model, mode, ttl) ? { ttl, hitRate: calibration.cache_hit_rate } : null;
 }
 
 /** 估價怎麼校準的，`tome estimate` 印出來：用了幾個請求、命中率、損益兩平點，只有數字。 */

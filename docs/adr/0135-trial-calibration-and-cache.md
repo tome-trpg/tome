@@ -66,7 +66,7 @@ ADR-0130 第 21 項把回合 045 排成 `tome trial`、`--trial`、試翻後停�
 
 10. 修改 ADR-0036 第 4 項：**斷點只有一個**，在靜態前綴的結尾：開快取時 `system` 是一塊帶 `cache_control` 的文字，`user` 每個請求都不同，放在斷點之後。
 11. **試翻一律開快取**，才量得到命中率：批次用 1 小時，即時用 5 分鐘。命中率 ＝ 快取讀取的 token ÷（讀取 ＋ 寫入）。試翻的估價當成整個前綴都寫入，是上限。
-12. **主翻譯**：試翻量到的命中率高於損益兩平點（依模型、模式與 TTL 的價格算），這本書的主翻譯才開快取，TTL 跟試翻相同；估價照命中率算前綴的價錢，`tome estimate` 說 `estimate.cache_on` 或 `estimate.cache_off`。沒有試翻就不開，請求跟這個回合之前一樣。
+12. **主翻譯**：試翻量到的命中率高於損益兩平點（依模型、模式與 TTL 的價格算），這本書的主翻譯才開快取，TTL 跟試翻相同；剛好等於時開不開一樣貴，不開。估價照命中率算前綴的價錢，`tome estimate` 說 `estimate.cache_on` 或 `estimate.cache_off`。沒有試翻就不開，請求跟這個回合之前一樣。
 13. **這個回合不預熱**：批次裡不能送 `max_tokens: 0` 的請求；文件建議的「先送一個、等它完成再送整批」也先不做，先量。後果見 Open Questions。
 14. 帳本照實際的 TTL 計算寫入的價錢：回應的 `usage.cache_creation.ephemeral_1h_input_tokens` 是 1 小時的寫入，其餘照 5 分鐘。
 
@@ -97,6 +97,8 @@ ADR-0130 第 21 項把回合 045 排成 `tome trial`、`--trial`、試翻後停�
 <!-- @assert-count target="src/core/book.ts" symbol="trial" expected="0" comments="include" reason="第 4 項：--trial 不存進 book.yaml" -->
 <!-- @assert-count target="src/core/request.ts" symbol="cache_control: { type: 'ephemeral', ttl: cache.ttl }" expected="1" reason="第 10 項：斷點只有一個" -->
 <!-- @assert-count target="src/core/request.ts" symbol="...(calibration === null ? [] : [calibration])," expected="1" reason="第 8 項：有校準時才進指紋" -->
+<!-- @assert-count target="src/core/request.ts" symbol="calibration.cache_hit_rate > breakEven(model, mode, ttl)" expected="1" reason="第 12 項：命中率高於損益兩平點才開，等於不開" -->
+<!-- @assert-count target="src/core/trial.ts" symbol="rate > breakEven(plan.model, plan.mode, ttl)" expected="1" reason="第 12 項：試翻說的開不開跟主翻譯相同" -->
 <!-- @assert-count target="src/core/estimate.ts" symbol="prefix: prefixChars / prefix_chars_per_token," expected="1" reason="第 9 項：ADR-0134 第 1 項的前綴" -->
 <!-- @assert-count target="src/core/estimate.ts" symbol="rest: userChars / chars_per_token + unit_input_tokens * units," expected="1" reason="第 9 項：ADR-0134 第 1 項的 user 與單位的標籤" -->
 <!-- @assert-count target="src/core/ledger.ts" symbol="writes['1h'] * prices.cacheWrite['1h']" expected="1" reason="第 14 項：1 小時的寫入照自己的價錢" -->

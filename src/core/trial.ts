@@ -208,7 +208,7 @@ function finish(store: Store, plan: BookPlan, slug: string, notes: readonly Find
       ? []
       : [
           finding(
-            rate >= breakEven(plan.model, plan.mode, ttl) ? 'trial.cache_on' : 'trial.cache_off',
+            rate > breakEven(plan.model, plan.mode, ttl) ? 'trial.cache_on' : 'trial.cache_off',
             'info',
             cacheParams(rate, plan.model, plan.mode, ttl),
           ),
