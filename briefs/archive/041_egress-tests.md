@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-11
 type: chore
 wave: 45
@@ -34,7 +34,15 @@ protectedFiles:
   - schemas/**
   - src/**
   - systems/**
+integrity: sha256-a66996701b38e4399c56d5775d4fdac568a4adb6cc1e6a007384e60d6ba6aac8
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-12.**
+> Merged in pull request [#80](https://github.com/tome-trpg/tome/pull/80).
+> Recorded at commit `55845ec`: 15 files changed, +700 −22.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 041 — 對外出口的變異測試與 Windows 卡住的調查
 
