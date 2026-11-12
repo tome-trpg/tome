@@ -296,6 +296,12 @@ describe('tome run (ADR-0127)', () => {
     expect(estimate.exit).toBe(1);
     expect(codes(estimate.output)).toContain('book.bad_pattern');
     expect(estimate.output.data).toMatchObject({ stopped_at: 'estimate', next: null });
+    // 加了 `--trial`，試翻的估價先停下，不往下估價（ADR-0135）。
+    const trial = await tome(lib, undefined, 'run', 'book', '--trial');
+    expect(trial.exit).toBe(1);
+    expect(codes(trial.output)).toContain('book.bad_pattern');
+    expect(trial.output.data).toMatchObject({ stopped_at: 'trial', next: null });
+    expect((trial.output.data['stages'] as { stage: string }[]).map(({ stage }) => stage)).toEqual(['extract', 'scan', 'review', 'trial']);
   });
 
   it('parses a book that was never parsed, telling how it goes, and asks for the book', async () => {

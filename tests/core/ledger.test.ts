@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { costOf, recordUsage, spentUsd, type Usage } from '../../src/core/ledger.ts';
+import { costOf, recordEstimate, recordUsage, spentUsd, type Usage } from '../../src/core/ledger.ts';
 import { findModel, loadProvider } from '../../src/core/provider.ts';
 import { openBookStore, type Store } from '../../src/core/store.ts';
 import { tempDir } from '../helpers.ts';
@@ -39,6 +39,8 @@ describe('costOf', () => {
   it('counts cache tokens toward the long prompt limit', () => {
     const usage = { input_tokens: 60_000, output_tokens: 0, cache_read_tokens: 60_000, cache_write_tokens: 0 };
     expect(costOf(usage, haiku, 'realtime')).toBeCloseTo((0.5 * 60_000 + 0.05 * 60_000) / 1_000_000);
+    const written = { input_tokens: 60_000, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 60_000 };
+    expect(costOf(written, haiku, 'realtime')).toBeCloseTo((0.5 * 60_000 + 0.625 * 60_000) / 1_000_000);
   });
 
   // 試翻的批次用 1 小時的快取，寫入的價錢是 5 分鐘的 1.6 倍（ADR-0135）。
@@ -211,5 +213,16 @@ describe('recordUsage (ADR-0081 item 12)', () => {
     database.close();
     expect(rows).toHaveLength(2);
     expect(spent).toBeCloseTo((2 * 900 + 10 * 300) / 1_000_000);
+  });
+});
+
+describe('recordEstimate (ADR-0135)', () => {
+  // Pass 0 的估價沒有中間值，也沒有校準，交付報告不拿它算 Q-6。
+  it('keeps an estimate with no middle as not calibrated', () => {
+    const database = store();
+    recordEstimate(database, { stage: 'scan', mode: 'batch', model: opus.id, requests: 1, low_usd: 0.1, high_usd: 0.2 });
+    const rows = database.all('SELECT stage, middle_usd, calibrated FROM estimate');
+    database.close();
+    expect(rows).toEqual([{ stage: 'scan', middle_usd: null, calibrated: 0 }]);
   });
 });

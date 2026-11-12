@@ -6,6 +6,7 @@ import type { DocumentBlock, IrDocument } from '../../src/core/ir.ts';
 import {
   collectReport,
   compareEstimate,
+  q6Text,
   renderReport,
   reportCounts,
   reportedBlocks,
@@ -442,6 +443,62 @@ describe('compareEstimate (ADR-0132)', () => {
     ['an estimate of nothing that was spent on anyway', item(0, 0, 0.5), { comparison: 'unknown', percent: null }],
   ])('tells %s', (_name, estimate, expected) => {
     expect(compareEstimate(estimate)).toEqual(expected);
+  });
+});
+
+// Q-6：實際的翻譯花費 ÷ 校準後估價的中間值 − 1，只算校準過、已經有花費的翻譯估價（ADR-0135）。
+describe('Q-6 (ADR-0135)', () => {
+  /** 一個確認過的估價，之後在 p1 花了 `spent`；試翻的估價配試翻的帳。 */
+  function measured(stage: string, calibrated: 0 | 1, middle: number | null, spent: number): EstimateItem | undefined {
+    const db = store();
+    addUnit(db, 'p1', 0, 'The Warden waits at the ford.', 'DONE', '守衛在渡口等待。');
+    db.run(
+      `INSERT INTO estimate (stage, mode, model, requests, low_usd, high_usd, created_at, middle_usd, calibrated)
+       VALUES (?, 'batch', 'm', 1, 0.2, 0.6, '2026-11-09T00:50:00.000Z', ?, ?)`,
+      stage,
+      middle,
+      calibrated,
+    );
+    db.run(
+      `INSERT INTO ledger (request_id, unit_id, model, mode, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, created_at, trial)
+       VALUES ('r', 'p1', 'm', 'batch', 0, 0, 0, 0, ?, '2026-11-09T01:00:00.000Z', ?)`,
+      spent,
+      stage === 'trial' ? 1 : 0,
+    );
+    return collectReport(db, DOCUMENT, [], null).estimates[0];
+  }
+
+  it('measures a calibrated translation estimate against what was spent after it', () => {
+    expect(measured('translate', 1, 0.5, 0.4)?.q6).toBeCloseTo(-0.2, 12);
+    expect(measured('translate', 1, 0.5, 0.6)?.q6).toBeCloseTo(0.2, 12);
+  });
+
+  it.each([
+    ['an estimate not calibrated', 'translate', 0, 0.5, 0.4],
+    ['the estimate of a trial', 'trial', 1, 0.5, 0.4],
+    ['an estimate confirmed before migration 15', 'translate', 1, null, 0.4],
+    ['an estimate with a middle of nothing', 'translate', 1, 0, 0.4],
+    ['an estimate nothing was spent on yet', 'translate', 1, 0.5, 0],
+  ] as const)('does not measure %s', (_name, stage, calibrated, middle, spent) => {
+    const item = measured(stage, calibrated, middle, spent);
+    expect(item?.spent_usd).toBe(spent);
+    expect(item?.q6).toBeNull();
+  });
+
+  it('sets the estimate of a stage it does not know against the translation', () => {
+    expect(measured('unknown', 0, 0.5, 0.4)?.spent_usd).toBe(0.4);
+  });
+});
+
+describe('q6Text (ADR-0135)', () => {
+  it.each([
+    [0.1234, '+12.3'],
+    [0.2, '+20.0'],
+    [-0.05, '-5.0'],
+    [0, '0.0'],
+    [0.00049, '0.0'],
+  ])('writes %d as %s percent', (q6, text) => {
+    expect(q6Text(q6)).toBe(text);
   });
 });
 
