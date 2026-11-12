@@ -4,6 +4,7 @@ date: 2026-11-12
 type: feature
 wave: 46
 affectedFiles:
+  - .github/workflows/mutation-lines.yml
   - CHANGELOG.md
   - README.en.md
   - README.md
@@ -20,7 +21,13 @@ affectedFiles:
   - src/core/scan.ts
   - tests/**
 protectedFiles:
-  - .github/**
+  - .github/ISSUE_TEMPLATE/**
+  - .github/dependabot.yml
+  - .github/pull_request_template.md
+  - .github/workflows/engine.yml
+  - .github/workflows/mutation.yml
+  - .github/workflows/specs.yml
+  - .github/workflows/test.yml
   - .spec-brief.json
   - .spec-graph.json
   - .spec-guard.json
@@ -53,13 +60,17 @@ protectedFiles:
 
 細節由維護者在 2026-11-12 全部照建議選定（共用筆記 `brief-042-questions.md` 的 7 項），寫成 ADR-0132。
 
+同一天維護者另外裁示：變異測試全部搬到 GitHub runner，本機不再跑。這個回合因此新增一個只能手動觸發的 workflow，輸入是要變異的檔案與行號，沿用 `stryker.config.mjs` 的設定、不套用 break 門檻；用它跑這個回合改過的行，存活的補測試或寫明是等價變異。brief 只對這一個新的 workflow 檔放寬，其他 `.github/**` 照樣受保護。
+
 ## Negative Scope
 
 - 不改估價器、預算檢查、分批的方式與重送；不改 `--json` 既有欄位的意思（`data.estimates[].position`、`data.batches` 照舊）。
 - 不在供應商設定檔或 schema 加即時模式的保留天數；不改 `provider.listed` 的說法。
 - 不處理 (c)、(g)（交給審定介面），不碰估價器的缺口（044）與 `tome trial`（045）。
 - README 不改結構，安裝與發佈的段落留給 049。
-- 不加遷移、不加表；不改提示、語言設定檔、規則包、schema 與變異測試的設定。
+- 不加遷移、不加表；不改提示、語言設定檔、規則包、schema 與 `stryker.config.mjs`。
+- 新的 workflow 只能用 `workflow_dispatch` 觸發，不加 `pull_request` 或 `push`；不改 `mutation.yml` 與其他 `.github/**`（維護者 2026-11-12 的裁示）。
+- 本機不跑變異測試，連單一變異的小工具也不跑（同一個裁示）。
 - 測試只用合成的文字；不寫入維護者的工作區，不對真的 API 發請求。
 
 ## Not Empowered
@@ -76,7 +87,7 @@ protectedFiles:
 
 - [ ] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
 - [ ] 新的測試先在舊行為上失敗過，護欄測試故意改壞程式確認會失敗
-- [ ] 本機單一變異的小工具對改過的函式跑過一輪，存活的補上測試或說明是等價變異
+- [ ] 新的 workflow 在 GitHub runner 上跑過這個回合改過的行，存活的補上測試或說明是等價變異
 - [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
 - [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
 - [ ] 訊息、進度、`--json` 與紀錄都不含書本文字
@@ -91,3 +102,4 @@ protectedFiles:
 - [ ] 白皮書 474、563、719、898、970、1069 行附近停在 M2 的文字照事實改寫，(a)(b)(e)(f) 寫進對應的「已實作」段落
 - [ ] `README.md` 與 `README.en.md` 的狀態與開發進度表照 M3 的事實修正，結構不動
 - [ ] CHANGELOG「尚未發布」的「變更」一節記下使用者看得到的變更
+- [ ] 新增只能手動觸發的變異 workflow：輸入是檔案與行號，沿用 `stryker.config.mjs`、不套用 break 門檻、`timeout-minutes` 130、JSON 報告上傳成 artifact；決定寫進 ADR-0132（`amends` ADR-0110、ADR-0117）
