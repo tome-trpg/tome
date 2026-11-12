@@ -161,8 +161,15 @@ describe('tome report (ADR-0123)', () => {
     expect(text).toContain('在估價區間內（84% 處）');
   });
 
-  it('writes a dash where the estimate has no width and the spending met it', async () => {
-    const { output } = await tome(await spentAgainst('translate', 0.2, 0.2, 0.2), 'report', 'book');
-    expect(output.findings[1]).toMatchObject({ code: 'report.estimate', level: 'info', params: { low: '0.20', high: '0.20', position: '-' } });
+  // 區間寬度是 0 時說不出落在哪裡，不印「在估價區間內（-% 處）」（ADR-0133）。
+  it('names no place in the range where the estimate has no width and the spending met it', async () => {
+    const { output, text } = await tome(await spentAgainst('translate', 0.2, 0.2, 0.2), 'report', 'book');
+    expect(output.findings[1]).toMatchObject({
+      code: 'report.estimate_unknown',
+      level: 'info',
+      params: { low: '0.20', high: '0.20', spent: '0.20' },
+    });
+    expect(Object.keys(output.findings[1]?.params ?? {})).toEqual(['low', 'high', 'spent']);
+    expect(text).not.toContain('% 處');
   });
 });

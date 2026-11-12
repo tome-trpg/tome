@@ -124,6 +124,13 @@ describe('the memory key with entity cards (ADR-0120)', () => {
     expect(key([card(one)])).not.toBe(key([term('warden', '守望者')]));
   });
 
+  // 鍵只算請求裡真的命中的卡：被長卡包住的短卡不進鍵，它的屬性改了也不影響（ADR-0133）。
+  it('leaves out a card that only sits inside a longer card the text hits', () => {
+    const longer = term('The warden', '那位守望者');
+    expect(key([longer, card({ pronoun: '她' })])).toBe(key([longer, card({ pronoun: '祂' })]));
+    expect(key([longer, card({ pronoun: '她' })])).toBe(key([longer]));
+  });
+
   it('keeps each attribute in its own place, so a pronoun is not read as a gender', () => {
     expect(key([card({ gender: '她' })])).not.toBe(key([card({ pronoun: '她' })]));
     expect(key([card({ pronoun: 'formal' })])).not.toBe(key([card({ register: 'formal' })]));

@@ -4,7 +4,7 @@ import { TomeError } from './errors.ts';
 import { finding, type Finding } from './findings.ts';
 import { formatSegments } from './format.ts';
 import { loadTargetLanguage, scriptViolations, type TargetLanguage, type Translationese } from './language.ts';
-import { findTerm, pairedJson, restoreSegments, type PairedOffset, type Placeholder } from './mask.ts';
+import { chooseRanges, findTerm, pairedJson, restoreSegments, type PairedOffset, type Placeholder } from './mask.ts';
 import { loadPhraseCheck, type PhraseCheck } from './opencc.ts';
 import {
   findPack,
@@ -154,11 +154,15 @@ export function hitTerms(
   unit: Pick<VerifiableUnit, 'source' | 'role'>,
   terms: readonly LocalizedTerm[],
 ): LocalizedTerm[] {
-  return terms.filter(({ text, term }) => {
-    if (term.keep_source === true) return false;
-    if (term.match?.roles !== undefined && !term.match.roles.includes(unit.role)) return false;
-    return findTerm(unit.source, text, term.match).length > 0;
-  });
+  // 一處原文只算一張卡，跟遮蔽同一條規則（`chooseRanges`）：長的卡包住短的時，短的那一處不算，
+  // 驗證才不會要求短詞的譯名也出現（ADR-0133）。`keep_source` 的卡也參加，被它包住的詞模型看不到，
+  // 但它自己不回傳：它走遮蔽，不查譯名。
+  const eligible = terms.filter(({ term }) => term.match?.roles === undefined || term.match.roles.includes(unit.role));
+  const ranges = eligible.flatMap(({ text, term }, index) =>
+    findTerm(unit.source, text, term.match).map(([start, end]) => ({ start, end, index })),
+  );
+  const chosen = new Set(chooseRanges(ranges).map(({ index }) => index));
+  return eligible.filter(({ term }, index) => chosen.has(index) && term.keep_source !== true);
 }
 
 function scriptProblems(translation: string, hits: readonly LocalizedTerm[], language: TargetLanguage): Problem[] {

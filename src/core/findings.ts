@@ -158,6 +158,7 @@ export const FINDING_CODES = [
   'report.estimate_over_small',
   'report.estimate_under',
   'report.estimate_under_small',
+  'report.estimate_unknown',
   'report.issues',
   'run.done',
   'run.stopped',

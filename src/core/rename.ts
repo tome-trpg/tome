@@ -94,11 +94,17 @@ export async function applyRenames({ home, book, store, pack, before }: RenameOp
   const { renamed, reworded } = changesOf(before, after);
   if (renamed.length === 0 && reworded.length === 0) return null;
   const units = store.all<UnitRow>('SELECT unit_id, role, source, masked, placeholders, state, attempts, human FROM unit ORDER BY seq');
+  const packTerms = termsFor(pack, book.config.source_lang);
+  const oldTerms = bookTerms(packTerms, before);
+  const terms = bookTerms(packTerms, after);
+  // 命中用整本書的詞條一起比：短卡只出現在長卡裡時不算命中，那些單位照長卡翻，沒有短卡的譯名可換（ADR-0133）。
+  const hits = new Map(units.map((unit) => [unit.unit_id, new Set(hitTerms(unit, terms).map(({ text }) => text))]));
+  const hit = (unit: UnitRow, term: LocalizedTerm): boolean => hits.get(unit.unit_id)?.has(term.text) === true;
   const inFlight = new Set<string>();
   // 人工譯文不替換、不重設（ADR-0081 第 6 項、ADR-0125）。
-  const touched = (terms: readonly LocalizedTerm[]): UnitRow[] =>
+  const touched = (changed: readonly LocalizedTerm[]): UnitRow[] =>
     units.filter((unit) => {
-      if (terms.length === 0 || hitTerms(unit, terms).length === 0) return false;
+      if (!changed.some((term) => hit(unit, term))) return false;
       if (unit.state === 'IN_FLIGHT') inFlight.add(unit.unit_id);
       return TRANSLATED.has(unit.state) && unit.human === 0;
     });
@@ -111,9 +117,6 @@ export async function applyRenames({ home, book, store, pack, before }: RenameOp
   const swap = touched(renamed.map(({ term }) => term)).filter(({ unit_id }) => !done.has(unit_id));
   if (swap.length === 0) return { replaced: 0, resend: 0, reset: redo.length, in_flight: inFlight.size };
 
-  const packTerms = termsFor(pack, book.config.source_lang);
-  const oldTerms = bookTerms(packTerms, before);
-  const terms = bookTerms(packTerms, after);
   const targetLang = workspaceTargetLang(home);
   const { profile: language } = loadTargetLanguage(targetLang);
   const context: VerifyContext = { language, terms, phraseCheck: await loadPhraseCheck(language) };
@@ -135,7 +138,7 @@ export async function applyRenames({ home, book, store, pack, before }: RenameOp
       let fragment = reply.text;
       let count = 0;
       for (const { term, before: old } of renamed) {
-        if (hitTerms(unit, [term]).length === 0) continue;
+        if (!hit(unit, term)) continue;
         const result = replaceTarget(fragment, old, term.term.target, longer);
         fragment = result.fragment;
         count += result.count;

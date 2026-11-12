@@ -332,6 +332,7 @@
     "report.estimate_over_small": "最近一次確認的估價為 ${low}～${high} 美元，之後實際花費 ${spent} 美元，超出上限不到 1%。",
     "report.estimate_under": "最近一次確認的估價為 ${low}～${high} 美元，之後實際花費 ${spent} 美元，低於下限 {percent}%。",
     "report.estimate_under_small": "最近一次確認的估價為 ${low}～${high} 美元，之後實際花費 ${spent} 美元，低於下限不到 1%。",
+    "report.estimate_unknown": "最近一次確認的估價為 ${low}～${high} 美元，之後實際花費 ${spent} 美元。",
     "report.issues": "未翻譯的單位 {untranslated} 個、頁面 {pages} 頁、圖片 {figures} 張，不可譯標記 {flags} 個；只報告的檢查：疑似中國大陸用語 {term_suspect} 個、疑似機翻腔 {translationese} 個、譯文過長 {too_long} 個、多出數字 {number_extra} 個、代名詞與實體卡不符 {pronoun_mismatch} 個；人工譯文的檢查 {human_checks} 個；一致性：同一原文多種譯名 {variants} 個、鎖定譯名未用上 {unused} 個、內含舊譯名的人工譯文 {human_old_names} 處；待審的實體卡 {pending_cards} 張；tome sync 無法回收、尚待處理的修改 {sync_unrecovered} 處。內容寫在 tome assemble 輸出的交付報告。",
     "run.done": "tome run 已跑完 {book}，vault 已更新。",
     "run.stopped": "tome run 已停下，等待確認後再繼續：請執行 {command}，完成後再執行 tome run {book}。",
