@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-12
 type: feature
 wave: 48
@@ -30,7 +30,15 @@ protectedFiles:
   - src/core/budget.ts
   - stryker.config.mjs
   - systems/**
+integrity: sha256-4f35a0236fd11af68389acf0fa8d585da1c4ea1c593e23b6f3dee698ca98a785
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-12.**
+> Merged in pull request [#83](https://github.com/tome-trpg/tome/pull/83).
+> Recorded at commit `8767bea`: 15 files changed, +546 −34.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 044 — 估價器的已知缺口
 
