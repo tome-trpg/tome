@@ -40,7 +40,7 @@ TOME 的設計目標是解決這些問題，並讓譯文可以直接用於實際
 | 查看模型與價格 | `tome provider list` | 已實作：不連網，不需要 API 金鑰，清單不代表推薦 |
 | 確認金鑰與模型資料 | `tome provider test` | 已實作：只查詢模型資料，不消耗 token |
 | 登記書籍、探測 PDF | `tome add`、`tome probe` | 已實作，並可依規則包的資料建議適用的規則包 |
-| 管理規則包 | `tome system new`、`list`、`lint`、`test` | 已實作，內建 `generic` 規則包 |
+| 管理規則包 | `tome system new`、`list`、`lint`、`test` | 已實作，內建 `generic` 與 `d100-orc` 規則包；`d100-orc` 依 Basic Roleplaying 的 ORC 內容，目前只涵蓋生物章節的數值塊與詞條 |
 | 管理解析引擎 | `tome engine add`、`list`、`remove` | 已實作 |
 | 解析頁面 | `tome extract` | 已實作：將原生文字頁交給解析引擎，組裝成文件，並檢查字元是否遺失 |
 | 擷取專有名詞 | `tome scan-terms` | 已實作：在本機挑出專有名詞，交由模型提議譯名，送出前先估價並確認。提議的品質尚未驗證 |

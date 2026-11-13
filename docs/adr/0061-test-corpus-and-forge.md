@@ -17,6 +17,7 @@ PC-1 不准商業書進 repo，日文直書也沒有公開評測。`pdfkit` 能�
 2. 公開素材下載後驗證雜湊，不進 repo。
 3. 本機商業書只在本機測試，結果不公開。
 4. 每個素材 MUST 在來源清單登記授權與雜湊值，未登記的讓 CI 失敗。
+   2026-11-13 由 ADR-0136 第 10 項修改：repo 外的公開素材登記在 `tests/fixtures/SOURCES.yaml` 的 `external` 一段，寫網址、檔名、授權、位元組數、SHA-256 與取得日期；CI 只查欄位，雜湊用 `tools/verify-public.ts` 在本機驗證。
 5. 用 `pdfkit` 與 `pdf-lib` 鍛造，驗證基準用生成時的標準答案。
 
 ## 後果
