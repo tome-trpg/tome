@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-14
 type: defect
 wave: 51
@@ -31,7 +31,15 @@ protectedFiles:
   - src/**
   - systems/**
   - tests/fixtures/SOURCES.yaml
+integrity: sha256-f5e603d92f89108c7aff20a9cd24b4b67ca56b59cf6401a8ae5785f743f82108
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-13.**
+> Merged in pull request [#86](https://github.com/tome-trpg/tome/pull/86).
+> Recorded at commit `82d640d`: 5 files changed, +171 −5.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 051 — docling 環境的安全更新
 
