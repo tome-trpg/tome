@@ -1,0 +1,78 @@
+# H-15 的量測（docs/adr/0136-d100-orc-pack.md）：數值塊有多少在本機翻好、不送 LLM。
+# 下載 Chaosium 的 Basic Roleplaying ORC Content Document、照 tests/fixtures/SOURCES.yaml 驗證雜湊，
+# 用 Docling 解析整份、套 d100-orc，只上傳數字。文件本身與解析結果都不進 repo，也不進 artifact。
+# 只能手動觸發；公開 repo 的 CI 不放任何金鑰，這裡也不呼叫 LLM。
+name: h15
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      # 釘在 commit，旁邊註明標籤：標籤被移動就是進入這條流程的路。
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.13.5'
+          enable-cache: false
+
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Build
+        run: npm run build
+
+      # 檔名與網址跟 SOURCES.yaml 的 brp-orc-content 相同；大小或雜湊不對就停。
+      - name: Download the ORC Content Document and check it
+        env:
+          PUBLIC: ${{ runner.temp }}/public
+        run: |
+          mkdir -p "$PUBLIC"
+          curl -sSfL --retry 3 -o "$PUBLIC/BasicRoleplaying-ORC-Content-Document.pdf" \
+            https://www.chaosium.com/content/orclicense/BasicRoleplaying-ORC-Content-Document.pdf
+          node tools/verify-public.ts "$PUBLIC" brp-orc-content
+
+      - name: Parse it with Docling and d100-orc
+        env:
+          TOME_HOME: ${{ runner.temp }}/tome
+          PUBLIC: ${{ runner.temp }}/public
+        run: |
+          node dist/cli/main.js init
+          node dist/cli/main.js engine add docling
+          printf 'translator_model: claude-sonnet-5-5\n' >> "$TOME_HOME/tome.yaml"
+          node dist/cli/main.js add "$PUBLIC/BasicRoleplaying-ORC-Content-Document.pdf" --as brp --system d100-orc --json > /dev/null
+          node dist/cli/main.js extract brp --json > /dev/null
+
+      # 估價不連網。只留 --json 的 data（數量與金額），不留訊息。第 11 章是 Creatures（第 262 到 303 頁）。
+      - name: Count the stat blocks and estimate, numbers only
+        env:
+          TOME_HOME: ${{ runner.temp }}/tome
+        run: |
+          mkdir -p h15
+          data() { node -e "process.stdout.write(JSON.stringify(JSON.parse(require('fs').readFileSync(0, 'utf8')).data, null, 2) + '\n')"; }
+          node dist/cli/main.js estimate brp --json | data > h15/estimate-whole.json
+          node dist/cli/main.js estimate brp --chapters 11 --json | data > h15/estimate-creatures.json
+          node tools/h15.ts "$TOME_HOME" brp 262 303 > h15/h15.json
+          cat h15/h15.json h15/estimate-creatures.json
+
+      - name: Upload the numbers
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: h15
+          path: h15/
+          retention-days: 30
