@@ -1,6 +1,7 @@
 import type { ErrorCode, Params } from '../core/errors.ts';
 import type { FindingCode, FindingLevel } from '../core/findings.ts';
 import catalog from './messages/zh-TW.json' with { type: 'json' };
+import type { PageTexts } from './review/page.ts';
 
 function fill(template: string, params: Params): string {
   return template.replace(/\{(\w+)\}/g, (whole, name: string) => params[name] ?? whole);
@@ -12,6 +13,9 @@ export const workspaceTemplate = catalog.template.workspace;
 /** 審定檔的說明與段落標題（ADR-0119）。 */
 /** vault 的固定文字（ADR-0113 第 17 項、ADR-0122）。 */
 export const vaultTexts = catalog.template.vault;
+
+/** 審定網頁上的文字，網頁的程式不放中文（ADR-0138）。 */
+export const reviewPageTexts: PageTexts = catalog.review_page;
 
 export const glossaryReviewTexts = {
   header: catalog.template.glossary_review.header,

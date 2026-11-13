@@ -359,15 +359,20 @@ describe('tome glossary review (ADR-0119)', () => {
     expect(second.output.data).toMatchObject({ new_terms: 0 });
   });
 
-  /** 工作區裡的規則包，`place` 的審定權重是 `weight`，書改用它。 */
-  function childPack(lib: Library, weight: number): void {
+  /** 工作區裡繼承 generic 的規則包，類別照 `entities`，書改用它。 */
+  function childEntities(lib: Library, entities: string): void {
     const dir = join(lib.home, 'systems', 'child');
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'pack.yaml'), 'schema: tome-pack/1\nid: child\nversion: 0.1.0\nlicense: UNLICENSED\nsource_langs: [en]\n');
-    writeFileSync(join(dir, 'entities.yaml'), `classes:\n  place:\n    review_weight: ${weight}\n`);
+    writeFileSync(join(dir, 'entities.yaml'), entities);
     const bookYaml = join(lib.home, 'books', 'book', 'book.yaml');
     const text = readFileSync(bookYaml, 'utf8');
     if (!text.includes('system: child')) writeFileSync(bookYaml, `${text}system: child\n`);
+  }
+
+  /** `place` 的審定權重是 `weight`。 */
+  function childPack(lib: Library, weight: number): void {
+    childEntities(lib, `classes:\n  place:\n    review_weight: ${weight}\n`);
   }
 
   const FERRY: readonly Card[] = [{ source: 'Old Ferry', target: '老渡口', status: 'proposed', occurrences: 1, class: 'place' }];
@@ -377,6 +382,56 @@ describe('tome glossary review (ADR-0119)', () => {
     childPack(lib, 5);
     const { output } = await review(lib);
     expect(output.data).toMatchObject({ auto: 0, entities: { review: 1 } });
+  });
+
+  // ADR-0130 第 6 項、ADR-0138：`gender: none` 與跟類別預設相同的代名詞不算要人審。
+  it('locks on its own a card whose gender is none or whose pronoun is the default of its class', async () => {
+    const lib = await book([
+      { source: 'Mire Hound', target: '沼地獵犬', status: 'proposed', class: 'creature', gender: 'none', pronoun: '牠' },
+      { source: 'Brass Lantern', target: '黃銅提燈', status: 'proposed', class: 'item', pronoun: '它' },
+      { source: 'Old Ferry', target: '老渡口', status: 'proposed', class: 'place', gender: 'none' },
+      { source: 'Sky Father', target: '天父', status: 'proposed', class: 'deity', gender: 'none', pronoun: '祂' },
+    ]);
+    const { output } = await review(lib);
+    expect(output.data).toMatchObject({ auto: 4, entities: { review: 0 } });
+    for (const source of ['Mire Hound', 'Brass Lantern', 'Old Ferry', 'Sky Father']) {
+      expect(cards(lib.home)[source]).toMatchObject({ status: 'locked', decided_by: 'auto' });
+    }
+  });
+
+  it('still asks a person about a gender, a pronoun that differs from the default, and a class with none', async () => {
+    const lib = await book([
+      { source: 'Grey Warden', target: '灰色守望者', status: 'proposed', class: 'person', pronoun: '她' },
+      { source: 'Tide Hound', target: '潮汐獵犬', status: 'proposed', class: 'creature', pronoun: '它' },
+      { source: 'Salt Wyrm', target: '鹽龍', status: 'proposed', class: 'creature', gender: 'female', pronoun: '牠' },
+      { source: 'Harrow Gate', target: '哈洛門', status: 'proposed', pronoun: '它' },
+      { source: 'Old Ferry', target: '老渡口', status: 'proposed', class: 'place', pronoun: '它' },
+    ]);
+    const { output } = await review(lib);
+    expect(output.data).toMatchObject({ auto: 0, entities: { review: 5 } });
+  });
+
+  it('leaves the cards already locked or rejected as they were', async () => {
+    const lib = await book([
+      { source: 'Mire Hound', target: '沼地獵犬', status: 'rejected', class: 'creature', pronoun: '牠' },
+      { source: 'Brass Lantern', target: '黃銅提燈', status: 'locked', class: 'item', pronoun: '它' },
+    ]);
+    const { output } = await review(lib);
+    expect(output.data).toMatchObject({ auto: 0 });
+    expect(cards(lib.home)['Mire Hound']).toMatchObject({ status: 'rejected', decided_by: null });
+    expect(cards(lib.home)['Brass Lantern']).toMatchObject({ status: 'locked', decided_by: null });
+  });
+
+  it('looks up the default pronoun along the chain of packs, the child first', async () => {
+    const lib = await book([
+      { source: 'Mire Hound', target: '沼地獵犬', status: 'proposed', class: 'creature', pronoun: '牠' },
+      { source: 'Tide Hound', target: '潮汐獵犬', status: 'proposed', class: 'creature', pronoun: '它' },
+    ]);
+    childEntities(lib, 'classes:\n  creature:\n    default_pronoun: 它\n');
+    const { output } = await review(lib);
+    expect(output.data).toMatchObject({ auto: 1 });
+    expect(cards(lib.home)['Tide Hound']).toMatchObject({ status: 'locked', decided_by: 'auto' });
+    expect(cards(lib.home)['Mire Hound']).toMatchObject({ status: 'proposed' });
   });
 
   it('does not lock on its own a card a person tried to change and got wrong', async () => {

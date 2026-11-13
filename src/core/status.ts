@@ -1,15 +1,17 @@
-import { readBook, type Book } from './book.ts';
+import { readBook, stageFingerprint, type Book } from './book.ts';
 import { entityCounts } from './entities.ts';
 import { chapterCount, chapterMap, checkedLevel, levelOf, parseChapters } from './chapters.ts';
 import { TomeError } from './errors.ts';
-import { readDocument } from './extract.ts';
+import { DOCUMENT_STAGE, readDocument } from './extract.ts';
 import { finding, type Finding } from './findings.ts';
 import { spentUsd } from './ledger.ts';
 import { needsLlm, type Placeholder } from './mask.ts';
 import { usd } from './provider.ts';
-import type { PlanOutcome } from './request.ts';
+import { ESTIMATE_STAGE, type PlanOutcome } from './request.ts';
+import { SCAN_ESTIMATE_STAGE } from './scan.ts';
 import { UNIT_STATES, type UnitState } from './state.ts';
-import { openBookStore } from './store.ts';
+import { openBookStore, type Store } from './store.ts';
+import { outstandingBatches } from './translate.ts';
 
 // `tome status`（ADR-0099 第 2 項、ADR-0107 第 18 項）。只讀 `book.db` 與 `book.yaml`，設了範圍時
 // 也讀 `document.json` 判斷章節（ADR-0114）。不連網，不拿書的鎖，`tome translate` 在等批次時也能用。
@@ -198,6 +200,79 @@ function scopedUnits(rows: readonly UnitRow[], inScope: ((blockId: string) => bo
   }));
 }
 
+/** `tome status` 看得到的進度，下一步照它算（ADR-0138）。 */
+export interface Progress {
+  /** 解析乾淨地做完過。 */
+  readonly extracted: boolean;
+  /** Pass 0 估價過，沒有還沒送的候選詞，也沒有 Pass 0 的批次沒收回。 */
+  readonly scanned: boolean;
+  /** 待人審的實體卡。 */
+  readonly review: number;
+  /** 有翻譯單位，也確認過翻譯的估價。確認的是不是現在這份估價，要重新估價才知道，這裡不算。 */
+  readonly estimated: boolean;
+  /** 翻譯的批次還沒收回的。 */
+  readonly outstanding: number;
+  /** 範圍內還要送的單位：還沒送、收到還沒驗證、送出去沒有下文的。 */
+  readonly left: number;
+  /** 範圍內沒翻成的單位：`--retry-failed` 會重送的那些。 */
+  readonly unfinished: number;
+  /** 最近一次確認的估價是即時模式。 */
+  readonly realtime: boolean;
+}
+
+export type NextStepName = 'extract' | 'scan' | 'review' | 'estimate' | 'collect' | 'translate' | 'retry' | 'assemble';
+
+export interface NextStep {
+  readonly step: NextStepName;
+  readonly command: string;
+}
+
+/**
+ * 下一步，順序跟 `tome run` 的關卡相同（ADR-0127、ADR-0130 第 16 項、ADR-0138）。沒翻成的單位只是提醒，不擋輸出。
+ * 模式跟著最近一次確認的估價；批次是預設，不必寫。
+ */
+export function nextStep(book: string, progress: Progress): NextStep {
+  const mode = progress.realtime ? ' --realtime' : '';
+  if (!progress.extracted) return { step: 'extract', command: `tome extract ${book}` };
+  if (!progress.scanned) return { step: 'scan', command: `tome scan-terms ${book} --confirm${mode}` };
+  if (progress.review > 0) return { step: 'review', command: `tome glossary review ${book} --web` };
+  if (!progress.estimated) return { step: 'estimate', command: `tome estimate ${book} --confirm${mode}` };
+  if (progress.outstanding > 0) return { step: 'collect', command: `tome batch collect ${book}` };
+  if (progress.left > 0) return { step: 'translate', command: `tome translate ${book}${mode}` };
+  if (progress.unfinished > 0) return { step: 'retry', command: `tome translate ${book}${mode} --retry-failed` };
+  return { step: 'assemble', command: `tome assemble ${book}` };
+}
+
+function count(store: Store, sql: string): number {
+  return store.get<{ count: number }>(sql)?.count ?? 0;
+}
+
+function progressOf(store: Store, buckets: Readonly<Record<string, number>>, total: number): Progress {
+  const outstanding = outstandingBatches(store, 'translate');
+  const scanBatches = outstandingBatches(store, 'scan');
+  const last = store.get<{ mode: string }>('SELECT mode FROM estimate ORDER BY id DESC LIMIT 1');
+  return {
+    extracted: stageFingerprint(store, DOCUMENT_STAGE) !== null,
+    scanned:
+      stageFingerprint(store, SCAN_ESTIMATE_STAGE) !== null &&
+      count(store, "SELECT COUNT(*) AS count FROM entity WHERE status = 'candidate'") === 0 &&
+      scanBatches === 0,
+    review: count(store, "SELECT COUNT(*) AS count FROM entity WHERE status IN ('proposed', 'failed')"),
+    estimated: total > 0 && stageFingerprint(store, ESTIMATE_STAGE) !== null,
+    outstanding,
+    left: (buckets['left'] ?? 0) + (buckets['in_flight'] ?? 0),
+    unfinished: (buckets['blocked'] ?? 0) + (buckets['failed'] ?? 0) + (buckets['refused'] ?? 0),
+    realtime: last?.mode === 'realtime' && outstanding + scanBatches === 0,
+  };
+}
+
+/** 下一步的那一行。輸出之後看交付報告；有沒翻成的，說可以重送，也可以直接輸出。 */
+function nextFinding(book: string, next: NextStep, unfinished: number): Finding {
+  if (next.step === 'assemble') return finding('status.next_assemble', 'info', { book });
+  if (next.step === 'retry') return finding('status.next_failed', 'info', { book, count: String(unfinished), command: next.command });
+  return finding('status.next', 'info', { command: next.command });
+}
+
 export function bookStatus(home: string, slug: string, offsetOf: ZoneOffset = localOffset): PlanOutcome {
   const book = readBook(home, slug);
   const store = openBookStore(home, slug);
@@ -238,7 +313,11 @@ export function bookStatus(home: string, slug: string, offsetOf: ZoneOffset = lo
     const cards = entityCounts(store);
     const entities = cards === null ? [] : [finding('status.entities', 'info', asText({ ...cards }))];
     if (cards !== null) Object.assign(data, { entities: cards });
-    if (total === 0) return { data, findings: [finding('status.no_units', 'info', { book: slug }), ...entities, ...batches] };
+    const progress = progressOf(store, buckets, total);
+    const next = nextStep(slug, progress);
+    Object.assign(data, { next });
+    const nextLine = nextFinding(slug, next, progress.unfinished);
+    if (total === 0) return { data, findings: [finding('status.no_units', 'info', { book: slug }), ...entities, ...batches, nextLine] };
     const params = asText({ total: scoped.total, kept: scoped.kept, ...buckets });
     const money =
       budget === null
@@ -254,6 +333,7 @@ export function bookStatus(home: string, slug: string, offsetOf: ZoneOffset = lo
         ...entities,
         money,
         ...batches,
+        nextLine,
       ],
     };
   } finally {

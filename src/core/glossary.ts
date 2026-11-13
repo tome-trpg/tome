@@ -344,40 +344,56 @@ function applyDecisions(store: Store, entries: readonly Entry[], rules: Rules): 
   return { locked, rejected, problems, kept, orphans, diverged };
 }
 
-/** 類別的審定權重，繼承鏈由子到父，子包的優先，沒設是 1（ADR-0119 第 5 項）。 */
-function weights(pack: ResolvedPack): (kind: string | null) => number {
-  const found = new Map<string, number>();
+/** 類別在規則包裡的設定：審定權重與預設代名詞。 */
+export interface ReviewPolicy {
+  /** 沒設是 1（ADR-0119 第 5 項）。 */
+  readonly weightOf: (kind: string | null) => number;
+  /** 沒設或沒有類別是 null（ADR-0130 第 6 項）。 */
+  readonly pronounOf: (kind: string | null) => string | null;
+}
+
+/** 繼承鏈由子到父，子包的優先，兩個設定各自找（ADR-0119 第 5 項、ADR-0138）。 */
+export function policyOf(pack: Pick<ResolvedPack, 'chain'>): ReviewPolicy {
+  const weights = new Map<string, number>();
+  const pronouns = new Map<string, string>();
   for (const { content } of pack.chain) {
     for (const [name, definition] of Object.entries(content.classes)) {
-      const weight = (definition as { review_weight?: number }).review_weight;
-      if (!found.has(name) && weight !== undefined) found.set(name, weight);
+      const { review_weight: weight, default_pronoun: pronoun } = definition as { review_weight?: number; default_pronoun?: string };
+      if (!weights.has(name) && weight !== undefined) weights.set(name, weight);
+      if (!pronouns.has(name) && pronoun !== undefined) pronouns.set(name, pronoun);
     }
   }
-  return (kind) => (kind === null ? 1 : (found.get(kind) ?? 1));
+  return {
+    weightOf: (kind) => (kind === null ? 1 : (weights.get(kind) ?? 1)),
+    pronounOf: (kind) => (kind === null ? null : (pronouns.get(kind) ?? null)),
+  };
 }
 
 /**
  * 要人審的條件（ADR-0119 第 5 項）：出現次數乘權重達 5、有性別或代名詞的提議、`keep_source`、來自
- * `<new-term>`。其餘的提議自動鎖定。
+ * `<new-term>`。`gender: none` 與跟類別預設相同的代名詞不算（ADR-0130 第 6 項）。其餘的提議自動鎖定。
  */
-export function needsHuman(row: Pick<EntityRow, 'origin' | 'gender' | 'pronoun' | 'keep_source' | 'occurrences' | 'class'>, weightOf: (kind: string | null) => number): boolean {
+export function needsHuman(
+  row: Pick<EntityRow, 'origin' | 'gender' | 'pronoun' | 'keep_source' | 'occurrences' | 'class'>,
+  policy: ReviewPolicy,
+): boolean {
   return (
     row.origin === 'new_term' ||
-    row.gender !== null ||
-    row.pronoun !== null ||
+    (row.gender !== null && row.gender !== 'none') ||
+    (row.pronoun !== null && row.pronoun !== policy.pronounOf(row.class)) ||
     row.keep_source === 1 ||
-    row.occurrences * weightOf(row.class) >= REVIEW_THRESHOLD
+    row.occurrences * policy.weightOf(row.class) >= REVIEW_THRESHOLD
   );
 }
 
 /** 人這次改過但沒套用成功的卡不自動鎖定，等人修正。 */
-function autoLock(store: Store, weightOf: (kind: string | null) => number, touched: ReadonlyMap<number, Entry>): number {
+function autoLock(store: Store, policy: ReviewPolicy, touched: ReadonlyMap<number, Entry>): number {
   const rows = store.all<EntityRow>("SELECT * FROM entity WHERE status = 'proposed'");
   const now = new Date().toISOString();
   let count = 0;
   store.transaction(() => {
     for (const row of rows) {
-      if (needsHuman(row, weightOf) || row.target === null || touched.has(row.id)) continue;
+      if (needsHuman(row, policy) || row.target === null || touched.has(row.id)) continue;
       store.run("UPDATE entity SET status = 'locked', decided_by = 'auto', decided_at = ?, updated_at = ? WHERE id = ?", now, now, row.id);
       count += 1;
     }
@@ -456,7 +472,7 @@ function entryOf(row: EntityRow, section: Section, seen: ReadonlyMap<string, Sig
 }
 
 /** 要人審的排前面：影響大的先審。 */
-function sections(store: Store, weightOf: (kind: string | null) => number): Record<Section, EntityRow[]> {
+function sections(store: Store, { weightOf }: ReviewPolicy): Record<Section, EntityRow[]> {
   const all = store.all<EntityRow>('SELECT * FROM entity ORDER BY id');
   const impact = (row: EntityRow): number => row.occurrences * weightOf(row.class);
   return {
@@ -526,13 +542,184 @@ export interface ReviewOptions {
   readonly texts: ReviewTexts;
 }
 
-async function reviewLocked({ home, slug, texts }: ReviewOptions): Promise<PlanOutcome> {
+/** 審定檔的三段，網頁的三個分頁照它（ADR-0138）。 */
+export type ReviewSection = Section;
+export const REVIEW_SECTIONS: readonly ReviewSection[] = SECTIONS;
+
+/** 網頁上的一張卡（ADR-0138）。有書本文字，只走本機的連線，不進訊息、`--json` 與紀錄。 */
+export interface ReviewCard {
+  readonly id: number;
+  readonly source: string;
+  readonly target: string | null;
+  readonly class: string | null;
+  readonly gender: string | null;
+  readonly pronoun: string | null;
+  readonly register: string | null;
+  readonly keep_source: boolean;
+  readonly case_sensitive: boolean;
+  readonly whole_word: boolean;
+  readonly roles: readonly string[];
+  readonly count: number;
+  readonly origin: string;
+  readonly decided_by: string | null;
+  readonly seen_in: readonly string[];
+}
+
+/** 欄位能選的值，跟驗證用的是同一份（ADR-0119 第 13 項）。 */
+export interface ReviewChoices {
+  readonly classes: readonly string[];
+  readonly genders: readonly string[];
+  readonly pronouns: readonly string[];
+  readonly roles: readonly string[];
+}
+
+/** 不合規定時回第一個有問題的欄位名；找不到卡、或卡不在三段裡時是 `id`。 */
+export type ReviewDecision =
+  | { readonly ok: true; readonly renamed: RenameCounts | null }
+  | { readonly ok: false; readonly field: string };
+
+/** 網頁開著時，卡片的讀寫都經過這裡，跟審定檔用同一套驗證與 S-16（ADR-0138）。 */
+export interface ReviewSession {
+  readonly choices: ReviewChoices;
+  cards(): Readonly<Record<ReviewSection, readonly ReviewCard[]>>;
+  /** 鎖定，`decided_by` 記 `human`。 */
+  lock(id: number, input: Readonly<Record<string, unknown>>): Promise<ReviewDecision>;
+  reject(id: number): Promise<ReviewDecision>;
+}
+
+export interface WebReviewOptions extends ReviewOptions {
+  /** 網頁開著的這段時間，回傳之後照 `book.db` 重寫審定檔。 */
+  readonly serve: (session: ReviewSession) => Promise<void>;
+}
+
+function cardOf(row: EntityRow, seen: ReadonlyMap<string, Sighting>): ReviewCard {
+  const match = matchOf(row);
+  return {
+    id: row.id,
+    source: row.source,
+    target: row.target,
+    class: row.class,
+    gender: row.gender,
+    pronoun: row.pronoun,
+    register: row.register,
+    keep_source: row.keep_source === 1,
+    case_sensitive: match.case_sensitive,
+    whole_word: match.whole_word,
+    roles: match.roles ?? [],
+    count: row.occurrences,
+    origin: row.origin,
+    decided_by: row.decided_by,
+    seen_in: seen.get(row.source)?.contexts ?? [],
+  };
+}
+
+/** 三段裡的卡才能在網頁上決定；已拒絕、還沒跑 Pass 0 的不在這裡。 */
+const DECIDABLE: ReadonlySet<string> = new Set(['proposed', 'failed', 'locked', 'skipped']);
+
+function addRenamed(total: RenameCounts | null, more: RenameCounts | null): RenameCounts | null {
+  if (more === null) return total;
+  if (total === null) return more;
+  return {
+    replaced: total.replaced + more.replaced,
+    resend: total.resend + more.resend,
+    reset: total.reset + more.reset,
+    in_flight: total.in_flight + more.in_flight,
+  };
+}
+
+interface Opened {
+  readonly book: Book;
+  readonly document: IrDocument;
+  readonly pack: ResolvedPack;
+  readonly rules: Rules;
+  readonly policy: ReviewPolicy;
+  readonly store: Store;
+  readonly path: string;
+  readonly applied: Applied;
+  readonly seen: ReadonlyMap<string, Sighting>;
+}
+
+/**
+ * 網頁開著的這段時間（ADR-0138）。每次鎖定或拒絕直接寫進 `book.db`，鎖定已鎖定卡的新譯名時當下做 S-16；
+ * 結束時照 `book.db` 重寫審定檔。審定檔在這段時間被人改過時不覆寫，請人再跑一次 `tome glossary review`。
+ */
+async function serveWeb(opened: Opened, options: WebReviewOptions, written: string): Promise<{ readonly data: Record<string, unknown>; readonly findings: Finding[] }> {
+  const { book, pack, rules, policy, store, path, applied, seen } = opened;
+  const decided = new Set<number>();
+  let locked = 0;
+  let rejected = 0;
+  let renamed: RenameCounts | null = null;
+  const decide = async (id: number, change: (row: EntityRow) => ReviewDecision): Promise<ReviewDecision> => {
+    const row = Number.isInteger(id) ? entityById(store, id) : undefined;
+    if (row === undefined || !DECIDABLE.has(row.status)) return { ok: false, field: 'id' };
+    const before = entityCards(store);
+    const result = change(row);
+    if (!result.ok) return result;
+    decided.add(row.id);
+    const done = await applyRenames({ home: options.home, book, store, pack, before });
+    renamed = addRenamed(renamed, done);
+    return { ok: true, renamed: done };
+  };
+  const session: ReviewSession = {
+    choices: {
+      classes: [...rules.classes].sort(),
+      genders: [...GENDERS],
+      pronouns: [...rules.pronouns],
+      roles: [...rules.roles].sort(),
+    },
+    cards: () => {
+      const groups = sections(store, policy);
+      return Object.fromEntries(SECTIONS.map((section) => [section, groups[section].map((row) => cardOf(row, seen))])) as Record<
+        ReviewSection,
+        ReviewCard[]
+      >;
+    },
+    lock: (id, input) =>
+      decide(id, (row) => {
+        const checked = checkCard(input, rules);
+        if (!checked.ok) return checked;
+        lock(store, row, checked.card, 'human');
+        locked += 1;
+        return { ok: true, renamed: null };
+      }),
+    reject: (id) =>
+      decide(id, (row) => {
+        reject(store, row);
+        rejected += 1;
+        return { ok: true, renamed: null };
+      }),
+  };
+  await options.serve(session);
+  // 人在網頁上決定過的卡，審定檔裡照人填的樣子留著的那一列不再留：網頁的決定比較晚。
+  const kept = new Map([...applied.kept].filter(([id]) => !decided.has(id)));
+  const unchanged = !existsSync(path) || readFileSync(path, 'utf8') === written;
+  if (unchanged) writeReview(store, path, sections(store, policy), seen, options.texts, { ...applied, kept });
+  const totals = countEntities(store);
+  const params = {
+    book: options.slug,
+    path,
+    locked: String(locked),
+    rejected: String(rejected),
+    review: String(totals.review),
+  };
+  return {
+    data: { web: { locked, rejected, rewritten: unchanged, ...(renamed === null ? {} : { renamed }) }, entities: totals },
+    findings: [
+      finding('glossary.web_done', 'info', params),
+      ...renamedFindings(options.slug, renamed),
+      ...(unchanged ? [] : [finding('glossary.web_file_changed', 'warn', { book: options.slug, path })]),
+    ],
+  };
+}
+
+async function reviewLocked(options: ReviewOptions, web?: WebReviewOptions): Promise<PlanOutcome> {
+  const { home, slug, texts } = options;
   const book = readBook(home, slug);
   const document = readDocument(home, slug);
   const { pack, findings } = loadBookPack(home, book);
   if (pack === null) return { data: { book: slug }, findings };
   const rules = rulesOf(pack, home);
-  const weightOf = weights(pack);
+  const policy = policyOf(pack);
   const path = join(bookDir(home, slug), REVIEW_FILE);
   const store = openBookStore(home, slug);
   try {
@@ -540,17 +727,19 @@ async function reviewLocked({ home, slug, texts }: ReviewOptions): Promise<PlanO
     const before = entityCards(store);
     if (existsSync(path)) {
       const entries = readDecisions(path);
-      // 檔案讀不懂時什麼都不改，也不覆蓋，改到一半的內容才不會不見。
+      // 檔案讀不懂時什麼都不改，也不覆蓋，改到一半的內容才不會不見。網頁也不開。
       if (entries === null) return { data: { book: slug, path }, findings: [finding('glossary.file_invalid', 'fail', { path })] };
       applied = applyDecisions(store, entries, rules);
     }
     // 改了已鎖定的卡，當下做 S-16（ADR-0120）。
     const renamed = await applyRenames({ home, book, store, pack, before });
     const added = collectNewTerms(store, document, book);
-    const auto = autoLock(store, weightOf, applied.kept);
-    const groups = sections(store, weightOf);
+    const auto = autoLock(store, policy, applied.kept);
+    const groups = sections(store, policy);
     const { profile } = loadSourceLanguage(book.config.source_lang);
-    const seen = sightings(document, profile, [...groups.review, ...groups.skipped].map(({ source }) => source));
+    // 網頁連已鎖定的卡也顯示上下文，開著的時候不再重算。
+    const shown = web === undefined ? [...groups.review, ...groups.skipped] : SECTIONS.flatMap((section) => groups[section]);
+    const seen = sightings(document, profile, shown.map(({ source }) => source));
     writeReview(store, path, groups, seen, texts, applied);
     const totals = countEntities(store);
     const params = {
@@ -571,20 +760,22 @@ async function reviewLocked({ home, slug, texts }: ReviewOptions): Promise<PlanO
     const diverged = applied.diverged.length === 0
       ? []
       : [finding('glossary.diverged', 'warn', { count: String(applied.diverged.length), entries: listed(applied.diverged.map(String)) })];
-    return {
-      data: {
-        book: slug,
-        path,
-        applied: { locked: applied.locked, rejected: applied.rejected },
-        new_terms: added,
-        auto,
-        entities: totals,
-        problems: applied.problems.length,
-        diverged: applied.diverged.length,
-        ...(renamed === null ? {} : { renamed }),
-      },
-      findings: [finding('glossary.reviewed', 'info', params), ...renamedFindings(slug, renamed), ...problems, ...diverged, ...findings],
+    const data = {
+      book: slug,
+      path,
+      applied: { locked: applied.locked, rejected: applied.rejected },
+      new_terms: added,
+      auto,
+      entities: totals,
+      problems: applied.problems.length,
+      diverged: applied.diverged.length,
+      ...(renamed === null ? {} : { renamed }),
     };
+    const started = [finding('glossary.reviewed', 'info', params), ...renamedFindings(slug, renamed), ...problems, ...diverged, ...findings];
+    if (web === undefined) return { data, findings: started };
+    const written = readFileSync(path, 'utf8');
+    const ended = await serveWeb({ book, document, pack, rules, policy, store, path, applied, seen }, web, written);
+    return { data: { ...data, ...ended.data }, findings: [...started, ...ended.findings] };
   } finally {
     store.close();
   }
@@ -593,6 +784,13 @@ async function reviewLocked({ home, slug, texts }: ReviewOptions): Promise<PlanO
 /** `tome glossary review`。一本書同時只跑一個流程（ADR-0054）。 */
 export function reviewGlossary(options: ReviewOptions): Promise<PlanOutcome> {
   return withBookLock(options.home, options.slug, () => reviewLocked(options));
+}
+
+/**
+ * `tome glossary review --web`：先照審定檔套用、寫出，再開網頁；網頁開著的整段時間拿著書的鎖（ADR-0054、ADR-0138）。
+ */
+export function reviewOnWeb(options: WebReviewOptions): Promise<PlanOutcome> {
+  return withBookLock(options.home, options.slug, () => reviewLocked(options, options));
 }
 
 const CSV_COLUMNS: ReadonlySet<string> = new Set([

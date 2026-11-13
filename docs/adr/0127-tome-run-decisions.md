@@ -21,6 +21,7 @@ ADR-0055 定了 `tome run` 一路跑到下一個人工關卡，各階段指令�
 1. **`tome run <書>`** 從已經 `tome add` 過的書開始，依序：解析（`tome extract`）→ Pass 0 的估價 → **關卡一：審定**（還有 `proposed` 或 `failed` 的卡就停，請跑 `tome glossary review`）→ **關卡二：確認估價**（沒有確認、或確認的估價跟目前的不同就停，請跑 `tome estimate --confirm`）→ 翻譯（含驗證與重送）→ 輸出 vault（`tome assemble`）。不做 `tome add`、試翻、`tome sync`、`tome status` 的下一步（問題第 1 項）。
 2. **Pass 0 停下來確認**（維護者選的，問題第 2 項）：Pass 0 有要送的（`scan.not_confirmed`），顯示估價就停，請使用者跑 `tome scan-terms <書> --confirm`；沒有要送的（`scan.nothing`）直接往下。`tome run` 不送 Pass 0。**修改 ADR-0055 第 3 項**：兩個關卡之外，Pass 0 的花費也要停下來確認，這一次只是確認花費，不是人工審定（G-3、ADR-0118）。
 3. **停下時結束碼 0**（維護者選的，問題第 3 項）：加一個 `warn` 的 `run.stopped`，說下一步要跑哪個指令（`tome scan-terms <書> --confirm`、`tome glossary review <書>`、`tome estimate <書> --confirm`，用即時模式時加 `--realtime`）；`--json` 的 `data` 寫 `stopped_at`（`scan`、`review`、`estimate`）與 `next`。整條跑完是 `run.done`（`info`）。定案 ADR-0113 第 23 項的結束碼。
+   2026-11-14 由 ADR-0138 第 4、12 項修改：`run.stopped` 多一個參數 `rerun`，是接著要跑的 `tome run`，帶上這次的 `--trial` 與 `--realtime`，`--json` 的 `data` 也多一個 `rerun`；審定的關卡建議 `tome glossary review <書> --web`。
 4. **032 不做試翻**（問題第 4 項）：不收 `--trial`（回「不認得的選項」）；`tome trial`、`--trial` 與「試翻後要不要停」（ADR-0055 第 4 項）照路線圖在 M4。定案 ADR-0113 第 23 項的 `--trial`。
 
    2026-11-12 由 ADR-0135 第 4 項修改：`tome run` 收 `--trial`，過了審定就顯示試翻的估價並停下，請使用者跑 `tome trial --confirm`。這一項的斷言移到 ADR-0135。
