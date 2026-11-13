@@ -1,5 +1,10 @@
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readBook } from '../../src/core/book.ts';
 import type { DocumentBlock, IrDocument } from '../../src/core/ir.ts';
+import { saveCalibration } from '../../src/core/ledger.ts';
 import { loadTargetLanguage } from '../../src/core/language.ts';
 import { maskText } from '../../src/core/mask.ts';
 import { findPack, resolvePack, type LocalizedTerm, type ResolvedPack } from '../../src/core/pack.ts';
@@ -16,6 +21,7 @@ import {
   maxTokens,
   PAIRED_OUTPUT_TOKENS,
   planBatches,
+  planBook,
   planRequests,
   REQUEST_CHARS,
   REQUEST_UNITS,
@@ -27,9 +33,11 @@ import {
   type Feedback,
   type PlannedRequest,
 } from '../../src/core/request.ts';
+import { openBookStore } from '../../src/core/store.ts';
 import { parseUnits } from '../../src/core/tags.ts';
 import type { TranslationUnit } from '../../src/core/units.ts';
 import { tempDir } from '../helpers.ts';
+import { library, MODEL } from '../helpers/library.ts';
 
 // 文字都是這裡編的。
 
@@ -803,5 +811,77 @@ describe('chapters (ADR-0103)', () => {
 
   it.each(['', '0', '6', '3-1', 'a', '1-', '1,,2', '1-2-3'])('refuses %j', (spec) => {
     expect(() => parseChapters(spec, 5)).toThrow(expect.objectContaining({ code: 'chapters.invalid' }));
+  });
+});
+
+// 估價的內容指紋釘成固定值（ADR-0103、ADR-0115、ADR-0120、ADR-0135）。使用者確認過的估價存的就是這個值：
+// 它一改，每本書已確認的估價都會失效，要重新確認，CHANGELOG 要寫。沒有章節層級、鎖定的卡、校準時
+// 不加進去，舊的確認才不會失效，這組值釘的就是這個承諾。提示、規則包或供應商設定檔改了，它本來就會
+// 跟著變，照 prompt.test.ts 的做法更新，並在 CHANGELOG 說估價要重新確認。
+describe('the fingerprint of the translation estimate', () => {
+  /** 合成的段落，段落編號、內容與出處都固定，兩個平台算出來相同。 */
+  function block(id: string, source: string): Record<string, unknown> {
+    return {
+      id,
+      content_hash: createHash('sha256').update(source).digest('hex'),
+      role: 'paragraph',
+      flow: 'main',
+      spans: [{ page: 0, bbox: [0, 0, 10, 10] }],
+      text: source,
+      raw: source,
+      lang: 'en',
+      writing_mode: 'horizontal-tb',
+      provenance: { engine: 'fake', version: '1', config_hash: 'b'.repeat(64) },
+    };
+  }
+
+  async function fingerprint(extras: { readonly level?: boolean; readonly card?: boolean; readonly calibration?: boolean } = {}): Promise<string> {
+    const lib = await library();
+    const path = join(lib.home, 'books', 'book', 'ir', 'document.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    const blocks = [
+      block('p0000-aaaaa1', 'The Grey Warden keeps the Salt Marsh, and she counts the tide stones every single night.'),
+      block('p0000-aaaaa2', 'It rains on the marsh all winter long, and the ferry waits for the tide to turn again.'),
+    ];
+    writeFileSync(path, JSON.stringify({ ...document, blocks, sections: [{ title: 'One', block_id: 'p0000-aaaaa1', children: [] }] }));
+    if (extras.level === true) {
+      const yaml = join(lib.home, 'books', 'book', 'book.yaml');
+      writeFileSync(yaml, `${readFileSync(yaml, 'utf8')}chapter_level: 1\n`);
+    }
+    const store = openBookStore(lib.home, 'book');
+    try {
+      if (extras.card === true) {
+        store.run(
+          `INSERT INTO entity (source, target, class, gender, pronoun, keep_source, status, origin, sources, occurrences, created_at, updated_at)
+           VALUES ('Grey Warden', '灰色守望者', 'person', 'female', '她', 0, 'locked', 'pass0', '[]', 2, 't', 't')`,
+        );
+      }
+      if (extras.calibration === true) {
+        saveCalibration(store, {
+          model: MODEL,
+          mode: 'realtime',
+          input_factor: 1.25,
+          output_factor: 0.75,
+          requests: 5,
+          resend_ratio: 0.2,
+          cache_ttl: '5m',
+          cache_hit_rate: 0.5,
+          created_at: '2026-11-13T00:00:00.000Z',
+        });
+      }
+      const { plan } = await planBook(lib.home, readBook(lib.home, 'book'), store, 'realtime');
+      if (plan === null) throw new Error('the book has no plan');
+      return plan.fingerprint;
+    } finally {
+      store.close();
+    }
+  }
+
+  it('leaves out the chapter level, the locked cards and the calibration when there are none', async () => {
+    expect(await fingerprint()).toBe('8e05819b4519f74a11c6b864ac20e5de4cd59c70f1f95e569e5032a051ef6fea');
+  });
+
+  it('takes in the chapter level, the locked cards and the calibration when there are', async () => {
+    expect(await fingerprint({ level: true, card: true, calibration: true })).toBe('42258800c9a20fc6b97b5af1c827665deab3116d6101ecce7d82a927d04448b2');
   });
 });
