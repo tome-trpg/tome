@@ -1,0 +1,51 @@
+# tome system test 的測試案例（ADR-0136）。數值塊照 Creatures 一章的格式，名字與數字都是自己編的。
+cases:
+  # 屬性的縮寫保留原文、遮蔽起來，整列沒有要翻的字，原樣保留，不送 LLM，也不算欄位化。
+  - id: characteristic_header
+    text: STR CON SIZ INT POW DEX CHA
+    matches:
+      stat_line: [STR CON SIZ INT POW DEX CHA]
+    role: stat_block
+  - id: move_and_hit_points
+    text: 'Move: 8 Hit Points 14'
+    matches:
+      stat_line: ['Move:']
+    role: stat_block
+    fielded: 移動：8　生命值14
+  - id: skills
+    text: 'Skills: Climb 40%, Dodge 35%, Hide 50%, Listen 45%, Spot 30%.'
+    role: stat_block
+    fielded: 技能：攀爬40%，閃避35%，躲藏50%，聆聽45%，察覺30%.
+  - id: skill_specialties
+    text: 'Skills: Language (Own) 70%, Ride (Horse) 40%, Sense 35%.'
+    role: stat_block
+    fielded: 技能：語言（母語） 70%，騎乘（馬） 40%，感知35%.
+  - id: attack_with_damage_modifier
+    text: • Bite 45%, 1D8+dm (bleeding)
+    matches:
+      dice: [1D8]
+    role: stat_block
+    fielded: • 咬45%，1D8+dm（流血）
+  - id: attack_without_damage
+    text: • Grapple 30%, special
+    role: stat_block
+    fielded: • 擒抱30%，特殊
+  # 護甲後面的說明、沒收的專長：還有字要翻，送 LLM。
+  - id: armor_with_a_note
+    text: 'Damage Modifier: +1D4 Armor 2-point hide (may wear armor)'
+    role: stat_block
+    fielded: null
+  - id: unknown_specialty
+    text: 'Skills: Drive (Hovercraft) 40%, Spot 50%.'
+    role: stat_block
+    fielded: null
+  - id: powers_are_prose
+    text: 'Powers: It sees in the dark and fears running water.'
+    matches:
+      stat_line: []
+    role: null
+  - id: a_sentence_is_not_a_stat_block
+    text: The heron waits in the reeds until the tide turns at dusk.
+    matches:
+      stat_line: []
+    role: null

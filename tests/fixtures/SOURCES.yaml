@@ -106,3 +106,24 @@ assets:
     source: written for this repository
     license: Apache-2.0
     sha256: f8bf31d55b47df263669311defdf6e3d1a3f17dfded6e3d794a7a267a6b017a0
+
+# 不在 repo 裡的公開素材（ADR-0061 第 2 項、ADR-0136）。檔案本身不進 repo，下載後用
+# `node tools/verify-public.ts <資料夾>` 驗證位元組數與 SHA-256；工具不連網。
+external:
+  # Basic Roleplaying ORC Content Document。d100-orc 規則包與完成條件那一章（Creatures）的來源。
+  - id: brp-orc-content
+    url: https://www.chaosium.com/content/orclicense/BasicRoleplaying-ORC-Content-Document.pdf
+    file: BasicRoleplaying-ORC-Content-Document.pdf
+    license: ORC
+    bytes: 3843799
+    sha256: d38af1fc2c27326b0ee8e42af0579684220ccf30809b195275d9daf29cedbb28
+    retrieved: '2026-11-13'
+  # 向美國著作權局註冊的 ORC License 定稿（TX 9-307-067），systems/d100-orc/LICENSE 照它抄。
+  # Azora Law 在 AxE（ORC_AxE_FINAL.pdf 第 3 頁）裡把授權條文獻給公有領域（ADR-0136 第 2 項）。
+  - id: orc-license
+    url: https://downloads.paizo.com/ORC_LicenseFINAL.pdf
+    file: ORC_LicenseFINAL.pdf
+    license: Public-Domain
+    bytes: 248604
+    sha256: 3fffe0fe69781b7115bccbfa0f51489e0a073c211772f5ebcd84d34f88f19b29
+    retrieved: '2026-11-13'

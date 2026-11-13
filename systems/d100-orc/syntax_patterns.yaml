@@ -1,0 +1,9 @@
+# d100-orc 的偵測模式（授權與署名見 NOTICE、ADR-0136）。判成數值塊的區塊有其中一種：
+#   屬性的標頭列（STR CON SIZ …，三個以上）；
+#   Move:、Damage Modifier:、Attacks:、Skills: 開頭的欄位；
+#   攻擊行「名稱 數字%, 傷害」，例如「Bite 50%, 1D10」或「Grapple 25%, special」。
+# Powers:、Weaknesses:、Spells: 是敘述，不判。數量都有上限，不寫無上限的巢狀重複。
+patterns:
+  - id: stat_line
+    use: detect
+    regex: '\b(?:STR|CON|SIZ|INT|POW|DEX|CHA)(?:[ \t]+(?:STR|CON|SIZ|INT|POW|DEX|CHA)){2,6}\b|\b(?:Move|Damage Modifier|Attacks|Skills)[ \t]*:|(?<![\p{L}\p{N}])\p{Lu}[\p{L} ()’\-]{0,40}?[ \t]\d{1,3}%,[ \t]*(?:\d|special\b)'

@@ -76,6 +76,8 @@
 - `tome run --trial`：審定之後先顯示試翻的估價並停下，請執行 `tome trial --confirm`；已經校準過就直接往下。`--trial` 不會寫進 `book.yaml`。
 - 提示快取：試翻的請求一律使用提示快取（批次存活 1 小時、即時 5 分鐘）並量測命中率。命中率高於划算的門檻時，翻譯才使用提示快取，估價也照命中率計算；沒有試翻的書不使用提示快取。
 - `tome report` 對依試翻校準的翻譯估價，顯示實際花費與估價中間值相差的百分比（Q-6），`--json` 的每一筆估價新增 `middle_usd`、`calibrated`、`q6`。
+- 內建規則包 `d100-orc`，依 Chaosium 的 Basic Roleplaying ORC Content Document 第 11 章 Creatures 寫成，照 ORC 授權發佈，`LICENSE` 是向美國著作權局註冊的授權全文，`NOTICE` 寫明出處與署名，並說明不是官方產品。含 299 個詞條（譯名由 TOME 的貢獻者自擬，未參考任何官方中文版），屬性與衍生數值的縮寫保留原文；能辨認數值塊，整塊都有譯名時在本機翻好，不送 LLM。用法：`tome add <pdf> --system d100-orc`。
+- 測試素材清單新增不在儲存庫中的公開素材，記錄網址、授權、大小、SHA-256 與取得日期；`node tools/verify-public.ts <資料夾>` 可在本機驗證下載的檔案，不連網。
 
 ### 變更
 

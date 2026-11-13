@@ -778,6 +778,8 @@ source_langs: [en]
 
 「Basic Roleplaying」是 Chaosium 的商標，ORC 不授權商標，所以 ID 與套件中繼資料用中性名稱，來源在 `NOTICE` 裡依 ORC 的署名要求寫明。GUMSHOE SRD 准許在授權作品中使用該商標，但 Logo 不行，Trail of Cthulhu 等具名產品也不能放進衍生內容。所有內建包 MUST NOT 暗示官方背書（[佐證 §3.8](research/2026-10-31-landscape.md#38-開放授權規則包的義務)）。
 
+**已實作**（ADR-0136）：`systems/d100-orc/`（`tests/core/d100-orc-pack.test.ts`），依 Chaosium 的 Basic Roleplaying ORC Content Document 第 11 章 Creatures，`extends: generic`。`stat_block` 偵測屬性的標頭列、`Move:` 這類欄位與攻擊行，宣告 186 個欄位；`Powers:` 這類敘述不判，表格照舊不判角色。詞條 299 個，譯名由 TOME 的貢獻者自擬、維護者審過，屬性與衍生數值的縮寫保留原文；在散文裡常指別的東西的詞（例如 `Tail`、`Sense`）只在數值塊比對，`resistance roll` 譯「抗衡檢定」，「對抗檢定」留給 opposed roll。`style` 照抄 `generic`，人設沿用 `generic`，六組範例的雜湊釘在 `tests/core/prompt.test.ts`。`LICENSE` 是向美國著作權局註冊的 ORC License 定稿全文（Chaosium 網頁上的是註冊前的暫定版），`NOTICE` 照 Chaosium 的寫法，署名「TOME contributors」。CI 跟 `generic` 一樣跑 `tome system lint --public` 與 `tome system test`。其他章的角色與詞條還沒做。
+
 公開規則包的雙語範例與譯名只用開放內容與合成文字，譯名自己定，不抄任何官方中文版的詞表（PC-1）。
 
 **`tome system init`**（0.1.0 之後）從使用者自己的書產生本機規則包：
@@ -792,7 +794,7 @@ source_langs: [en]
 
 **數值塊欄位化**：`roles.yaml` 可以宣告數值塊有哪些欄位。標籤用術語翻，數字直接保留；整塊都對得上就不送 LLM（H-15）。
 
-**已實作**（ADR-0121）：`fields` 是標籤的清單，每一項是「語言 → 標籤」，譯名從詞條來，書可以用實體卡或匯入蓋掉。段落區塊判到有 `fields` 的角色時，扣掉有譯名的標籤與鎖定的實體卡後一個字母都不剩，就在本機換成譯名、走跟模型回覆同一條驗證與排版，不送 LLM；兩個欄位之間的空白換成全形空白。每次估價與翻譯都重算，另外算數，不算「原樣保留」。`tome system test` 的案例可以寫預期的 `fielded`，`tome system lint` 提醒沒有譯名的標籤。只用合成的測試規則包 `stat-fixture` 驗證過，真書的涵蓋率**沒有量測**，等 M4 的 `d100-orc`。
+**已實作**（ADR-0121）：`fields` 是標籤的清單，每一項是「語言 → 標籤」，譯名從詞條來，書可以用實體卡或匯入蓋掉。段落區塊判到有 `fields` 的角色時，扣掉有譯名的標籤與鎖定的實體卡後一個字母都不剩，就在本機換成譯名、走跟模型回覆同一條驗證與排版，不送 LLM；兩個欄位之間的空白換成全形空白。每次估價與翻譯都重算，另外算數，不算「原樣保留」。`tome system test` 的案例可以寫預期的 `fielded`，`tome system lint` 提醒沒有譯名的標籤。真書的涵蓋率在 Basic Roleplaying ORC Content Document 上**已量測**一次（ADR-0136）：用 Docling 解析、套 `d100-orc`，Creatures 一章的數值塊單位 333 個裡欄位化 233 個（70.0%），整份 385 個裡 234 個（60.8%）；表格不判角色，照常送 LLM。
 
 **單書覆寫**寫在 `book.yaml`，調整這本書的年代、基調與額外模式，不用為了一本書另開規則包。實體類別可以設預設代名詞，例如神祇用祂，代名詞集合來自目標語言設定檔。
 
@@ -1136,7 +1138,7 @@ CI 跑 Windows 與 Ubuntu。公開 repo 的 CI MUST NOT 放任何 API 金鑰。�
 | 公開素材 | BRP ORC 文件、GUMSHOE SRD、公有領域的 Lovecraft 作品 | 下載後驗證雜湊，不進 repo |
 | 本機私有 | 使用者自己的商業書 | 只在本機，結果不公開 |
 
-repo 裡 MUST NOT 有任何 PDF。每個測試素材 MUST 在來源清單登記授權與雜湊值，未登記的讓 CI 失敗（PC-2）。**已實作**：`tests/fixtures/SOURCES.yaml`（`tests/tools/fixtures.test.ts`）。
+repo 裡 MUST NOT 有任何 PDF。每個測試素材 MUST 在來源清單登記授權與雜湊值，未登記的讓 CI 失敗（PC-2）。**已實作**：`tests/fixtures/SOURCES.yaml`（`tests/tools/fixtures.test.ts`）。repo 外的公開素材登記在同一份檔案的 `external`，寫網址、檔名、授權、位元組數、SHA-256 與取得日期，CI 只查欄位；`node tools/verify-public.ts <資料夾>` 在本機驗證下載的檔案，不連網（`tests/tools/verify-public.test.ts`，ADR-0136）。現在登記 Basic Roleplaying ORC Content Document 與 ORC License 定稿；GUMSHOE SRD 還沒下載。
 
 **合成 PDF 鍛造**（S-11）只用 `pdfkit`，它是開發相依，底層物件用它的低階介面補。`pdf-lib` 五年沒有更新，又帶進白名單外的授權，所以不用（ADR-0084）。案例有雙欄、跨欄邊欄、跨頁表格、首字放大、標題轉外框、背景紋理、頁尾購買者浮水印、連字、斷字、壞掉的 ToUnicode、隱藏文字、書籤、頁碼標籤、連結。直書與假名標音在日文階段才加。驗證基準一律用生成時的標準答案。
 
@@ -1303,6 +1305,8 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0133](adr/0133-longest-match-term-hits.md) | 譯名的命中用最長比對 | M4 |
 | [ADR-0134](adr/0134-estimate-gaps.md) | 估價器補上每個單位的標籤、靜態前綴與重送的餘裕 | M4 |
 | [ADR-0135](adr/0135-trial-calibration-and-cache.md) | 試翻、估價校準與提示快取 | M4 |
+| [ADR-0136](adr/0136-d100-orc-pack.md) | d100-orc 規則包 | M4 |
+| [ADR-0137](adr/0137-soupsieve-security-update.md) | Docling 環境的 soupsieve 安全更新 | M4 |
 
 ---
 
@@ -1349,7 +1353,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | H-12 | `tome sync` 能把 vault 的修改可靠對回區塊 | 對錯段落等於把人工譯文寫到別的地方 | 合成修改集：改字、併段、搬動段落，量對應正確率。**合成的修改已量過**（ADR-0125）：性質測試保證回收的文字只來自那個區塊；book1 複本只改字時 230 個全部回收、沒有回收錯的，混入併段、拆段、搬動、刪段、加段各 30 個時三個種子都沒有回收錯的，跟結構改動同檔的改字有 1 到 12 個看不準而不回收。真的使用者修改沒有量過 |
 | H-13 | 關閉思考後，翻譯品質仍足以上桌 | 思考計入輸出費，開著可能明顯超出附錄 A | 同一段素材開關思考各翻一次，盲評並比較 `usage` |
 | H-14 | `@napi-rs/keyring` 在 Windows 憑證管理員可用。**已驗證**：2026-11-01 在參考機器實測 2.1.2，存、取、覆寫、刪都正常，跨行程讀得到，`cmdkey /list` 列得出這筆憑證，刪除後消失；值的上限是 2,560 位元組（UTF-16） | 文件沒提 Windows，不可行就要退回環境變數 | 在參考機器實測存、取、刪：`TOME_TEST_KEYRING=1 npx --no-install vitest run tests/core/secrets.test.ts` |
-| H-15 | 數值塊欄位化能涵蓋多數數值塊 | 涵蓋率低的話，省不到錢，數字風險也還在 | 公開素材與本機語料統計整塊對上的比例。欄位化已實作，只用合成的測試規則包驗證過規則照設計運作，那不是涵蓋率的證據；真書的量測等 M4 的 `d100-orc`（ADR-0121） |
+| H-15 | 數值塊欄位化能涵蓋多數數值塊 | 涵蓋率低的話，省不到錢，數字風險也還在 | 公開素材與本機語料統計整塊對上的比例。欄位化已實作（ADR-0121），`d100-orc` 涵蓋 Basic Roleplaying ORC Content Document 的 Creatures 一章（ADR-0136）。公開文件**已量測**一次：`.github/workflows/h15.yml` 在 GitHub runner 上用 Docling 解析整份（run 43462567244），Creatures 的數值塊單位 70.0% 欄位化（333 個裡 233 個），整份 60.8%（385 個裡 234 個），表格不判角色。本機語料**已量測**：規則書判到 3 個數值塊、欄位化 0 個，公有領域短篇沒有數值塊；兩本都不是 BRP，只當參考 |
 | H-16 | worker 限時足以擋下失控的正則 | 擋不住的話，一個壞規則包就能卡死流程 | 用已知的災難性回溯模式測試，並量正常模式的額外耗時。**已驗證**：2026-11-01 在參考機器重新量過（`tests/core/patterns.test.ts`、`tests/core/patterns-timer.test.ts`）。限時算的是 worker 跑單段文字用掉的 CPU 時間，上限 1 秒，模組載入與等 CPU 的時間都不算。閒置時 `(a+)+$`、`(a|aa)+$`、`(.*)*x`、`.*a.*b` 都在約 1.06 到 1.12 秒內被終止，回報是哪個模式，主執行緒沒有被卡住。正常模式 2,000 段、3 個模式走 worker 約 45 毫秒，直接跑 1.4 毫秒，多出來的幾乎都是啟動 worker。綁在一個邏輯處理器、旁邊 12 個忙碌行程時，正常模式 8 次都沒有被誤停，失控模式要 15 到 18 秒才被終止：牆鐘隨負載拉長，CPU 用量仍是 1 秒。兩個已知限制：每段都慢但不超過 1 秒的模式擋不下來；Node 24.6 以前沒有 `worker.cpuUsage()`，退回牆鐘 |
 | H-17 | 批次意圖紀錄足以避免當機後重複付費 | 送出後、記下遠端 ID 前當機，可能重送一批 | 注入當機故障，確認續跑時能認回遠端批次 |
 | H-18 | LLM 指令語言會影響譯文品質 | 指令用中文或英文，決定提示與快取前綴怎麼寫 | 併入盲評（ADR-0065） |
@@ -1457,6 +1461,7 @@ M4 已實作的項目：
 | 譯名的命中用最長比對，驗證、`<glossary>`、`<recent>`、翻譯記憶的鍵、S-16 與交付報告一致 | `src/core/mask.ts`、`src/core/verify.ts`、`src/core/rename.ts`、`src/core/report.ts` | `tests/core/verify.test.ts`、`tests/core/request.test.ts`、`tests/core/memory.test.ts`、`tests/core/report.test.ts`、`tests/cli/entities.test.ts`、ADR-0133 的斷言 |
 | 估價補上每個單位的標籤、靜態前綴的比例與 25% 的重送餘裕，Pass 0 照舊 | `src/core/estimate.ts`、`src/core/request.ts`、`src/core/provider.ts`、`providers/anthropic.yaml`、`schemas/tome-provider-1.schema.json` | `tests/core/estimate.test.ts`、`tests/core/request.test.ts`、`tests/core/provider.test.ts`、ADR-0134 的斷言 |
 | `tome trial`、`tome run --trial`、估價校準、試翻與主翻譯的提示快取、Q-6、遷移第 15 版 | `src/core/trial.ts`、`src/core/estimate.ts`、`src/core/request.ts`、`src/core/translate.ts`、`src/core/batch.ts`、`src/core/ledger.ts`、`src/core/llm.ts`、`src/core/store.ts`、`src/core/report.ts`、`src/core/pipeline.ts`、`src/cli/run.ts` | `tests/cli/trial.test.ts`、`tests/core/trial.test.ts`、`tests/cli/tome-run.test.ts`、`tests/core/estimate.test.ts`、`tests/core/ledger.test.ts`、`tests/core/store.test.ts`、ADR-0135 的斷言 |
+| 內建規則包 `d100-orc`、repo 外公開素材的登記與驗證、H-15 的量測 | `systems/d100-orc/`、`tests/fixtures/SOURCES.yaml`、`tools/verify-public.ts`、`tools/h15.ts`、`.github/workflows/h15.yml`、`.github/workflows/test.yml` | `tests/core/d100-orc-pack.test.ts`、`tests/core/prompt.test.ts`、`tests/tools/fixtures.test.ts`、`tests/tools/verify-public.test.ts`、`tests/tools/h15.test.ts`、ADR-0136 的斷言 |
 
 M3 已實作的項目：
 

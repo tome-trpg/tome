@@ -40,7 +40,7 @@ The following features are design goals. See [Development status](#development-s
 | Models and prices | `tome provider list` | Implemented: no network and no API key needed; the list is not a recommendation |
 | Key and model data check | `tome provider test` | Implemented: queries model data only and spends no tokens |
 | Book registration and PDF probing | `tome add`, `tome probe` | Implemented, and suggests a rule pack from the data that packs declare |
-| Rule pack management | `tome system new`, `list`, `lint`, `test` | Implemented, with the built-in `generic` pack |
+| Rule pack management | `tome system new`, `list`, `lint`, `test` | Implemented, with the built-in `generic` and `d100-orc` packs; `d100-orc` follows the ORC content of Basic Roleplaying and so far covers only the stat blocks and terms of its Creatures chapter |
 | Parsing engine management | `tome engine add`, `list`, `remove` | Implemented |
 | Page parsing | `tome extract` | Implemented: native text pages are handed to a parsing engine, assembled into a document, and checked for lost characters |
 | Proper-noun extraction | `tome scan-terms` | Implemented: picks out proper nouns locally and asks a model to propose translations, with an estimate to confirm before anything is sent. The quality of the proposals is not verified yet |

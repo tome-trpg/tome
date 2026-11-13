@@ -49,6 +49,8 @@ jobs:
           node dist/cli/main.js --version
           node dist/cli/main.js system lint systems/generic --public
           node dist/cli/main.js system test systems/generic
+          node dist/cli/main.js system lint systems/d100-orc --public
+          node dist/cli/main.js system test systems/d100-orc
           node dist/cli/main.js system lint tests/fixtures/packs/sample-pack --public
           node dist/cli/main.js system test tests/fixtures/packs/sample-pack
 

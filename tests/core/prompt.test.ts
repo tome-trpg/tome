@@ -28,6 +28,8 @@ const REVIEWED: readonly (readonly [string, string])[] = [
   ['prompts/summary.md', '67d46ae6d2dd6314b741a30efc5574a499604e809b03619a0a8e3e03e7c04fe7'],
   ['systems/generic/persona_and_tone.md', 'd375cdc1988aee946e55bf32f279764111e54a93cf263f936ce0909f2905fe7f'],
   ['systems/generic/few_shots.md', '2bfd9b1169791b0d0a29276cecd5e30992d25d75617da9e584fe50bb352808f4'],
+  // d100-orc 的六組範例，前三組照抄 generic，維護者在 2026-11-13 照草稿審過（ADR-0136）。
+  ['systems/d100-orc/few_shots.md', '4698b1a5ea33358720ef4e068cd6d4eeef458cfab3152014e0c128f79aa882fc'],
 ];
 
 function generic(home = tempDir()): ResolvedPack {
