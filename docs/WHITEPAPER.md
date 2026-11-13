@@ -1306,6 +1306,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0134](adr/0134-estimate-gaps.md) | 估價器補上每個單位的標籤、靜態前綴與重送的餘裕 | M4 |
 | [ADR-0135](adr/0135-trial-calibration-and-cache.md) | 試翻、估價校準與提示快取 | M4 |
 | [ADR-0136](adr/0136-d100-orc-pack.md) | d100-orc 規則包 | M4 |
+| [ADR-0137](adr/0137-soupsieve-security-update.md) | Docling 環境的 soupsieve 安全更新 | M4 |
 
 ---
 
