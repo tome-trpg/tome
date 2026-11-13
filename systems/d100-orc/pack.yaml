@@ -1,0 +1,6 @@
+schema: tome-pack/1
+id: d100-orc
+version: 0.1.0
+extends: generic
+license: ORC
+source_langs: [en]

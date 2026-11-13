@@ -1,0 +1,317 @@
+# d100-orc 的詞條：Basic Roleplaying ORC Content Document 第 11 章 Creatures 用得到的詞（ADR-0136）。
+# 授權與署名見 NOTICE。譯名是 TOME 的貢獻者自己擬的，沒有參考任何官方中文版（PC-1），維護者在 2026-11-13 審過。
+# 比對預設是大小寫相符、整個詞；只在數值塊比對的寫 roles（角色名稱帶規則包的 ID），散文裡也要比對小寫的寫
+# case_sensitive: false。
+terms:
+  # 屬性。縮寫保留原文，全名照譯。
+  - { source: { en: STR }, target: STR, keep_source: true }
+  - { source: { en: CON }, target: CON, keep_source: true }
+  - { source: { en: SIZ }, target: SIZ, keep_source: true }
+  - { source: { en: INT }, target: INT, keep_source: true }
+  - { source: { en: POW }, target: POW, keep_source: true }
+  - { source: { en: DEX }, target: DEX, keep_source: true }
+  - { source: { en: CHA }, target: CHA, keep_source: true }
+  - { source: { en: Strength }, target: 力量 }
+  - { source: { en: Constitution }, target: 體質 }
+  - { source: { en: Size }, target: 體型 }
+  - { source: { en: Intelligence }, target: 智力 }
+  - { source: { en: Dexterity }, target: 敏捷 }
+  - { source: { en: Charisma }, target: 魅力 }
+  - { source: { en: Characteristics }, target: 屬性 }
+
+  # 欄位、衍生數值與規則用語。
+  - { source: { en: Hit Points }, target: 生命值, match: { case_sensitive: false } }
+  - { source: { en: HP }, target: HP, keep_source: true }
+  - { source: { en: Move }, target: 移動, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: MOV }, target: MOV, keep_source: true }
+  - { source: { en: Movement Rate }, target: 移動速率 }
+  - { source: { en: Damage Modifier }, target: 傷害加值, match: { case_sensitive: false } }
+  - { source: { en: DM }, target: DM, keep_source: true }
+  - { source: { en: dm }, target: dm, keep_source: true, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: Armor }, target: 護甲, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: Attacks }, target: 攻擊, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: Skills }, target: 技能, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: Powers }, target: 異能, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: Weaknesses }, target: 弱點, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: Spells }, target: 法術, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: None }, target: 無, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: pt. }, target: 點, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: Walk }, target: 步行, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: power points }, target: 能量點, match: { case_sensitive: false } }
+  - { source: { en: fatigue points }, target: 疲勞點, match: { case_sensitive: false } }
+  - { source: { en: hit locations }, target: 命中部位, match: { case_sensitive: false } }
+  - { source: { en: major wound }, target: 重傷, match: { case_sensitive: false } }
+  - { source: { en: resistance roll }, target: 抗衡檢定, match: { case_sensitive: false } }
+  - { source: { en: special success }, target: 特殊成功, match: { case_sensitive: false } }
+  - { source: { en: fumble }, target: 大失敗, match: { case_sensitive: false } }
+  - { source: { en: Difficult }, target: 困難 }
+  - { source: { en: Easy }, target: 簡單 }
+  - { source: { en: Effort }, target: 施力 }
+  - { source: { en: Stamina }, target: 耐力 }
+  - { source: { en: Idea }, target: 靈感 }
+  - { source: { en: Luck }, target: 幸運 }
+  - { source: { en: Agility }, target: 靈敏 }
+  - { source: { en: Sanity }, target: 理智 }
+  - { source: { en: SAN }, target: SAN, keep_source: true }
+  - { source: { en: strike rank }, target: 出手順位, match: { case_sensitive: false } }
+  - { source: { en: combat round }, target: 戰鬥輪, match: { case_sensitive: false } }
+  - { source: { en: skill rating }, target: 技能值, match: { case_sensitive: false } }
+  - { source: { en: gamemaster }, target: 主持人, match: { case_sensitive: false } }
+  - { source: { en: player character }, target: 玩家角色, match: { case_sensitive: false } }
+  - { source: { en: nonplayer character }, target: 非玩家角色, match: { case_sensitive: false } }
+
+  # 傷害類型與攻擊註記，都只在數值塊比對：散文裡的 fire、special 是一般用字。
+  - { source: { en: impaling }, target: 穿刺, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: crushing }, target: 鈍擊, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: bleeding }, target: 流血, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: slashing }, target: 劈砍, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: knockback }, target: 擊退, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: entangle }, target: 纏繞, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: stuns }, target: 擊暈, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: fire }, target: 火焰, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: electric }, target: 電擊, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: special }, target: 特殊, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: thrown }, target: 投擲, match: { roles: ['d100-orc:stat_block'] } }
+
+  # 技能。Sense 只在數值塊：散文裡多是異能名 Super Sense、Danger Sense。
+  - { source: { en: Appraise }, target: 估價 }
+  - { source: { en: Art }, target: 藝術 }
+  - { source: { en: Artillery }, target: 砲術 }
+  - { source: { en: Bargain }, target: 議價 }
+  - { source: { en: Brawl }, target: 搏擊 }
+  - { source: { en: Climb }, target: 攀爬 }
+  - { source: { en: Command }, target: 指揮 }
+  - { source: { en: Craft }, target: 工藝 }
+  - { source: { en: Demolition }, target: 爆破 }
+  - { source: { en: Disguise }, target: 喬裝 }
+  - { source: { en: Dodge }, target: 閃避 }
+  - { source: { en: Drive }, target: 駕駛 }
+  - { source: { en: Etiquette }, target: 禮儀 }
+  - { source: { en: Fast Talk }, target: 話術 }
+  - { source: { en: Fine Manipulation }, target: 精細操作 }
+  - { source: { en: First Aid }, target: 急救 }
+  - { source: { en: Fly }, target: 飛行 }
+  - { source: { en: Gaming }, target: 賭博 }
+  - { source: { en: Grapple }, target: 擒抱 }
+  - { source: { en: Hide }, target: 躲藏 }
+  - { source: { en: Insight }, target: 洞察 }
+  - { source: { en: Jump }, target: 跳躍 }
+  - { source: { en: Knowledge }, target: 知識 }
+  - { source: { en: Language }, target: 語言 }
+  - { source: { en: Listen }, target: 聆聽 }
+  - { source: { en: Literacy }, target: 讀寫 }
+  - { source: { en: Martial Arts }, target: 武術 }
+  - { source: { en: Medicine }, target: 醫學 }
+  - { source: { en: Move Quietly }, target: 輕聲移動 }
+  - { source: { en: Navigate }, target: 導航 }
+  - { source: { en: Perform }, target: 表演 }
+  - { source: { en: Persuade }, target: 說服 }
+  - { source: { en: Pilot }, target: 操縱 }
+  - { source: { en: Repair }, target: 修理 }
+  - { source: { en: Research }, target: 研究 }
+  - { source: { en: Ride }, target: 騎乘 }
+  - { source: { en: Science }, target: 科學 }
+  - { source: { en: Search }, target: 搜尋 }
+  - { source: { en: Sense }, target: 感知, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: Sleight of Hand }, target: 巧手 }
+  - { source: { en: Spot }, target: 察覺 }
+  - { source: { en: Status }, target: 地位 }
+  - { source: { en: Stealth }, target: 潛行 }
+  - { source: { en: Strategy }, target: 戰略 }
+  - { source: { en: Swim }, target: 游泳 }
+  - { source: { en: Teach }, target: 教學 }
+  - { source: { en: Technical Skill }, target: 技術 }
+  - { source: { en: Throw }, target: 投擲 }
+  - { source: { en: Track }, target: 追蹤 }
+  # 出現兩次以上的專長，整個收成一個詞條；長的詞條蓋過短的（ADR-0133）。
+  - { source: { en: Language (Own) }, target: 語言（母語） }
+  - { source: { en: Language (Local) }, target: 語言（當地） }
+  - { source: { en: Language (Human) }, target: 語言（人類） }
+  - { source: { en: Language (summoner’s) }, target: 語言（召喚者的） }
+  - { source: { en: Language (English) }, target: 語言（英語） }
+  - { source: { en: Language (Other) }, target: 語言（其他） }
+  - { source: { en: 'Knowledge (Region: Local)' }, target: 知識（地區：本地） }
+  - { source: { en: Knowledge (Law) }, target: 知識（法律） }
+  - { source: { en: Knowledge (History) }, target: 知識（歷史） }
+  - { source: { en: Ride (Horse) }, target: 騎乘（馬） }
+  - { source: { en: Repair (Mechanical) }, target: 修理（機械） }
+  - { source: { en: Repair (Electronic) }, target: 修理（電子） }
+  - { source: { en: Repair (Quantum) }, target: 修理（量子） }
+  - { source: { en: Drive (Car) }, target: 駕駛（汽車） }
+  - { source: { en: Drive (Truck) }, target: 駕駛（卡車） }
+  - { source: { en: Drive (Van) }, target: 駕駛（廂型車） }
+  - { source: { en: Pilot (Helicopter) }, target: 操縱（直升機） }
+  - { source: { en: Technical Skill (Use Computer) }, target: 技術（電腦操作） }
+  # 長詞擋住技能名：章名與題材，不是技能。
+  - { source: { en: Spot Rules }, target: 情境規則 }
+  - { source: { en: Science Fiction }, target: 科幻 }
+
+  # 攻擊與武器。Tail、Shield、Hammer、Drowning 只在數值塊：散文裡是命中部位、異能名、法術名與規則名。
+  - { source: { en: Bite }, target: 咬 }
+  - { source: { en: Claw }, target: 爪擊 }
+  - { source: { en: Claws }, target: 雙爪 }
+  - { source: { en: Kick }, target: 踢 }
+  - { source: { en: Fist }, target: 拳 }
+  - { source: { en: Head Butt }, target: 頭槌 }
+  - { source: { en: Horn }, target: 角撞 }
+  - { source: { en: Tail }, target: 尾擊, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: Tail Lash }, target: 甩尾 }
+  - { source: { en: Trample }, target: 踐踏 }
+  - { source: { en: Stomp }, target: 踩踏 }
+  - { source: { en: Engulf }, target: 吞沒 }
+  - { source: { en: Howl }, target: 嚎叫 }
+  - { source: { en: Flame Breath }, target: 噴火 }
+  - { source: { en: Breathe Flame }, target: 噴火 }
+  - { source: { en: Rear and Plunge }, target: 揚蹄踐踏 }
+  - { source: { en: Drowning }, target: 溺斃, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: Dagger }, target: 匕首 }
+  - { source: { en: Knife }, target: 小刀 }
+  - { source: { en: Combat Knife }, target: 戰鬥刀 }
+  - { source: { en: Butcher Knife }, target: 剁肉刀 }
+  - { source: { en: Throwing Knife }, target: 飛刀 }
+  - { source: { en: Switchblade }, target: 彈簧刀 }
+  - { source: { en: Straight Razor }, target: 剃刀 }
+  - { source: { en: Short Sword }, target: 短劍 }
+  - { source: { en: Short sword }, target: 短劍 }
+  - { source: { en: Broadsword }, target: 闊劍 }
+  - { source: { en: Broad Sword }, target: 闊劍 }
+  - { source: { en: Flaming Broad Sword }, target: 烈焰闊劍 }
+  - { source: { en: Long Sword }, target: 長劍 }
+  - { source: { en: Bastard Sword }, target: 手半劍 }
+  - { source: { en: Scimitar }, target: 彎刀 }
+  - { source: { en: Cutlass }, target: 水手刀 }
+  - { source: { en: Saber }, target: 軍刀 }
+  - { source: { en: Katana }, target: 武士刀 }
+  - { source: { en: Machete }, target: 開山刀 }
+  - { source: { en: Energy Sword }, target: 能量劍 }
+  - { source: { en: Great Axe }, target: 巨斧 }
+  - { source: { en: Battleaxe }, target: 戰斧 }
+  - { source: { en: Hand Axe }, target: 手斧 }
+  - { source: { en: Wood Axe }, target: 伐木斧 }
+  - { source: { en: Club }, target: 棍棒 }
+  - { source: { en: Light Club }, target: 輕棍 }
+  - { source: { en: Large Club }, target: 大棍 }
+  - { source: { en: Tree Trunk Club }, target: 樹幹棍 }
+  - { source: { en: Baton }, target: 警棍 }
+  - { source: { en: Baseball Bat }, target: 球棒 }
+  - { source: { en: Light Mace }, target: 輕錘矛 }
+  - { source: { en: Hammer }, target: 鎚, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: Morningstar Flail }, target: 晨星連枷 }
+  - { source: { en: Whip }, target: 鞭 }
+  - { source: { en: Lance }, target: 騎槍 }
+  - { source: { en: Short Spear }, target: 短矛 }
+  - { source: { en: Pitchfork }, target: 乾草叉 }
+  - { source: { en: Chainsaw }, target: 鏈鋸 }
+  - { source: { en: Power Tools }, target: 電動工具 }
+  - { source: { en: Armored Gauntlet }, target: 鐵手套 }
+  - { source: { en: Pepper Spray }, target: 胡椒噴霧 }
+  - { source: { en: Taser }, target: 電擊槍 }
+  - { source: { en: Shield }, target: 盾牌, match: { roles: ['d100-orc:stat_block'] } }
+  - { source: { en: Buckler }, target: 小圓盾 }
+  - { source: { en: Round Shield }, target: 圓盾 }
+  - { source: { en: Large Round Shield }, target: 大圓盾 }
+  - { source: { en: Target Shield }, target: 靶盾 }
+  - { source: { en: Kite Shield }, target: 鳶形盾 }
+  - { source: { en: Full Shield }, target: 大盾 }
+  - { source: { en: Spiked Shield }, target: 尖刺盾 }
+  - { source: { en: Sling }, target: 投石索 }
+  - { source: { en: Rock }, target: 石塊 }
+  - { source: { en: Thrown Rock }, target: 投石 }
+  - { source: { en: Self Bow }, target: 單木弓 }
+  - { source: { en: Composite Bow }, target: 複合弓 }
+  - { source: { en: Long Bow }, target: 長弓 }
+  - { source: { en: Longbow }, target: 長弓 }
+  - { source: { en: Heavy Crossbow }, target: 重弩 }
+  - { source: { en: Blowgun }, target: 吹箭筒 }
+  - { source: { en: Flintlock Pistol }, target: 燧發手槍 }
+  - { source: { en: Musket }, target: 滑膛槍 }
+  - { source: { en: Light Pistol }, target: 輕型手槍 }
+  - { source: { en: Medium Pistol }, target: 中型手槍 }
+  - { source: { en: Heavy Pistol }, target: 重型手槍 }
+  - { source: { en: Medium Revolver }, target: 中型左輪 }
+  - { source: { en: Stun Pistol }, target: 電擊手槍 }
+  - { source: { en: Shotgun }, target: 霰彈槍 }
+  - { source: { en: Automatic Shotgun }, target: 自動霰彈槍 }
+  - { source: { en: Sporting Rifle }, target: 運動步槍 }
+  - { source: { en: Sniper Rifle }, target: 狙擊步槍 }
+  - { source: { en: Assault Rifle }, target: 突擊步槍 }
+  - { source: { en: Machine Gun }, target: 機槍 }
+  - { source: { en: Grenade (Explosive) }, target: 手榴彈（爆炸） }
+  - { source: { en: Disintegrator Rifle }, target: 分解步槍 }
+  - { source: { en: Plasma Rifle }, target: 電漿步槍 }
+  - { source: { en: Energy Cannon }, target: 能量砲 }
+  - { source: { en: Heat Projector }, target: 熱能投射器 }
+  - { source: { en: Missile Pod }, target: 飛彈莢艙 }
+
+  # 生物與條目名。Giant、Sorcerer、Psychic 不收：它們也是形容詞或法術名的一部分。
+  - { source: { en: Creatures }, target: 生物 }
+  - { source: { en: Natural Animals }, target: 自然動物 }
+  - { source: { en: Fantasy Creatures }, target: 奇幻生物 }
+  - { source: { en: Summoned Creatures }, target: 召喚生物 }
+  - { source: { en: Science Fiction Creatures }, target: 科幻生物 }
+  - { source: { en: Nonplayer Character Digest }, target: 非玩家角色一覽 }
+  - { source: { en: Alligator }, target: 短吻鱷 }
+  - { source: { en: Crocodile }, target: 鱷魚 }
+  - { source: { en: Bear }, target: 熊 }
+  - { source: { en: Brontosaur }, target: 雷龍 }
+  - { source: { en: Dog }, target: 狗 }
+  - { source: { en: Elephant }, target: 大象 }
+  - { source: { en: Gorilla }, target: 大猩猩 }
+  - { source: { en: Hawk }, target: 鷹 }
+  - { source: { en: Horse }, target: 馬 }
+  - { source: { en: Insect Swarm }, target: 蟲群 }
+  - { source: { en: Lion }, target: 獅子 }
+  - { source: { en: Rat Pack }, target: 鼠群 }
+  - { source: { en: Shark }, target: 鯊魚 }
+  - { source: { en: Tiger }, target: 老虎 }
+  - { source: { en: Tyrannosaurus Rex }, target: 暴龍 }
+  - { source: { en: Wolf }, target: 狼 }
+  - { source: { en: Centaur }, target: 半人馬 }
+  - { source: { en: Dragon }, target: 龍 }
+  - { source: { en: Dwarf }, target: 矮人 }
+  - { source: { en: Elf }, target: 精靈 }
+  - { source: { en: Ghoul }, target: 食屍鬼 }
+  - { source: { en: Griffin }, target: 獅鷲 }
+  - { source: { en: Halfling }, target: 半身人 }
+  - { source: { en: Minotaur }, target: 牛頭人 }
+  - { source: { en: Mummy }, target: 木乃伊 }
+  - { source: { en: Orc }, target: 半獸人 }
+  - { source: { en: Skeleton }, target: 骷髏 }
+  - { source: { en: Troll }, target: 巨魔 }
+  - { source: { en: Unicorn }, target: 獨角獸 }
+  - { source: { en: Werewolf }, target: 狼人 }
+  - { source: { en: Hybrid Form }, target: 半獸形態 }
+  - { source: { en: Wolf Form }, target: 狼形態 }
+  - { source: { en: Zombie }, target: 殭屍 }
+  - { source: { en: Vampire }, target: 吸血鬼 }
+  - { source: { en: Ghost }, target: 鬼魂 }
+  - { source: { en: Angel }, target: 天使 }
+  - { source: { en: Demon }, target: 惡魔 }
+  - { source: { en: Elemental }, target: 元素靈 }
+  - { source: { en: Air Elemental }, target: 風元素靈 }
+  - { source: { en: Earth Elemental }, target: 土元素靈 }
+  - { source: { en: Fire Elemental }, target: 火元素靈 }
+  - { source: { en: Water Elemental }, target: 水元素靈 }
+  - { source: { en: Blob }, target: 凝膠怪 }
+  - { source: { en: Robot }, target: 機器人 }
+  - { source: { en: Cyborg }, target: 生化人 }
+  - { source: { en: Mutant }, target: 變種人 }
+  - { source: { en: Cave Dweller }, target: 穴居人 }
+  - { source: { en: Criminal Mastermind }, target: 犯罪首腦 }
+  - { source: { en: Demigod }, target: 半神 }
+  - { source: { en: Detective }, target: 偵探 }
+  - { source: { en: Galactic Knight }, target: 銀河騎士 }
+  - { source: { en: Gunslinger }, target: 槍手 }
+  - { source: { en: Knight }, target: 騎士 }
+  - { source: { en: Maniac }, target: 瘋子 }
+  - { source: { en: Ninja }, target: 忍者 }
+  - { source: { en: Pirate }, target: 海盜 }
+  - { source: { en: Police Officer }, target: 警察 }
+  - { source: { en: Priest }, target: 祭司 }
+  - { source: { en: Soldier }, target: 士兵 }
+  - { source: { en: Spy }, target: 間諜 }
+  - { source: { en: Superhero }, target: 超級英雄 }
+  - { source: { en: Supervillain }, target: 超級反派 }
+  - { source: { en: Thug }, target: 打手 }
+  - { source: { en: Tribal Warrior }, target: 部落戰士 }
+  - { source: { en: Viking }, target: 維京人 }

@@ -1,0 +1,198 @@
+# d100-orc 的數值塊（授權與署名見 NOTICE）。偵測與欄位只涵蓋 Creatures 一章用得到的（ADR-0136）。
+# 同名的角色由子包整個取代，所以 style 要自己寫：照抄 generic 那一句，維護者在 2026-11-13 確認（ADR-0136）。
+# 欄位是 glossary.yaml 裡數值塊會出現、有譯名的標籤；縮寫保留原文的詞條會遮蔽起來，不列在這裡（ADR-0121）。
+# Powers、Weaknesses、Spells 的段落是敘述，不判成數值塊；標籤照樣列著，跟數值塊接在同一個區塊時用得到。
+roles:
+  stat_block:
+    detect: [stat_line]
+    style: 保留所有數字與欄位順序，只翻譯標籤。
+    fields:
+      # 欄位與註記
+      - { en: Hit Points }
+      - { en: Move }
+      - { en: Movement Rate }
+      - { en: Damage Modifier }
+      - { en: Armor }
+      - { en: Attacks }
+      - { en: Skills }
+      - { en: Powers }
+      - { en: Weaknesses }
+      - { en: Spells }
+      - { en: None }
+      - { en: pt. }
+      - { en: Walk }
+      - { en: impaling }
+      - { en: crushing }
+      - { en: bleeding }
+      - { en: slashing }
+      - { en: knockback }
+      - { en: entangle }
+      - { en: stuns }
+      - { en: fire }
+      - { en: electric }
+      - { en: special }
+      - { en: thrown }
+      # 技能
+      - { en: Appraise }
+      - { en: Art }
+      - { en: Artillery }
+      - { en: Bargain }
+      - { en: Brawl }
+      - { en: Climb }
+      - { en: Command }
+      - { en: Craft }
+      - { en: Demolition }
+      - { en: Disguise }
+      - { en: Dodge }
+      - { en: Drive }
+      - { en: Etiquette }
+      - { en: Fast Talk }
+      - { en: Fine Manipulation }
+      - { en: First Aid }
+      - { en: Fly }
+      - { en: Gaming }
+      - { en: Grapple }
+      - { en: Hide }
+      - { en: Insight }
+      - { en: Jump }
+      - { en: Knowledge }
+      - { en: Language }
+      - { en: Listen }
+      - { en: Literacy }
+      - { en: Martial Arts }
+      - { en: Medicine }
+      - { en: Move Quietly }
+      - { en: Navigate }
+      - { en: Perform }
+      - { en: Persuade }
+      - { en: Pilot }
+      - { en: Repair }
+      - { en: Research }
+      - { en: Ride }
+      - { en: Science }
+      - { en: Search }
+      - { en: Sense }
+      - { en: Sleight of Hand }
+      - { en: Spot }
+      - { en: Status }
+      - { en: Stealth }
+      - { en: Strategy }
+      - { en: Swim }
+      - { en: Teach }
+      - { en: Technical Skill }
+      - { en: Throw }
+      - { en: Track }
+      - { en: Language (Own) }
+      - { en: Language (Local) }
+      - { en: Language (Human) }
+      - { en: "Language (summoner’s)" }
+      - { en: Language (English) }
+      - { en: Language (Other) }
+      - { en: "Knowledge (Region: Local)" }
+      - { en: Knowledge (Law) }
+      - { en: Knowledge (History) }
+      - { en: Ride (Horse) }
+      - { en: Repair (Mechanical) }
+      - { en: Repair (Electronic) }
+      - { en: Repair (Quantum) }
+      - { en: Drive (Car) }
+      - { en: Drive (Truck) }
+      - { en: Drive (Van) }
+      - { en: Pilot (Helicopter) }
+      - { en: Technical Skill (Use Computer) }
+      # 攻擊與武器
+      - { en: Bite }
+      - { en: Claw }
+      - { en: Claws }
+      - { en: Kick }
+      - { en: Fist }
+      - { en: Head Butt }
+      - { en: Horn }
+      - { en: Tail }
+      - { en: Tail Lash }
+      - { en: Trample }
+      - { en: Stomp }
+      - { en: Engulf }
+      - { en: Howl }
+      - { en: Flame Breath }
+      - { en: Breathe Flame }
+      - { en: Rear and Plunge }
+      - { en: Drowning }
+      - { en: Dagger }
+      - { en: Knife }
+      - { en: Combat Knife }
+      - { en: Butcher Knife }
+      - { en: Throwing Knife }
+      - { en: Switchblade }
+      - { en: Straight Razor }
+      - { en: Short Sword }
+      - { en: Short sword }
+      - { en: Broadsword }
+      - { en: Broad Sword }
+      - { en: Flaming Broad Sword }
+      - { en: Long Sword }
+      - { en: Bastard Sword }
+      - { en: Scimitar }
+      - { en: Cutlass }
+      - { en: Saber }
+      - { en: Katana }
+      - { en: Machete }
+      - { en: Energy Sword }
+      - { en: Great Axe }
+      - { en: Battleaxe }
+      - { en: Hand Axe }
+      - { en: Wood Axe }
+      - { en: Club }
+      - { en: Light Club }
+      - { en: Large Club }
+      - { en: Tree Trunk Club }
+      - { en: Baton }
+      - { en: Baseball Bat }
+      - { en: Light Mace }
+      - { en: Hammer }
+      - { en: Morningstar Flail }
+      - { en: Whip }
+      - { en: Lance }
+      - { en: Short Spear }
+      - { en: Pitchfork }
+      - { en: Chainsaw }
+      - { en: Power Tools }
+      - { en: Armored Gauntlet }
+      - { en: Pepper Spray }
+      - { en: Taser }
+      - { en: Shield }
+      - { en: Buckler }
+      - { en: Round Shield }
+      - { en: Large Round Shield }
+      - { en: Target Shield }
+      - { en: Kite Shield }
+      - { en: Full Shield }
+      - { en: Spiked Shield }
+      - { en: Sling }
+      - { en: Rock }
+      - { en: Thrown Rock }
+      - { en: Self Bow }
+      - { en: Composite Bow }
+      - { en: Long Bow }
+      - { en: Longbow }
+      - { en: Heavy Crossbow }
+      - { en: Blowgun }
+      - { en: Flintlock Pistol }
+      - { en: Musket }
+      - { en: Light Pistol }
+      - { en: Medium Pistol }
+      - { en: Heavy Pistol }
+      - { en: Medium Revolver }
+      - { en: Stun Pistol }
+      - { en: Shotgun }
+      - { en: Automatic Shotgun }
+      - { en: Sporting Rifle }
+      - { en: Sniper Rifle }
+      - { en: Assault Rifle }
+      - { en: Machine Gun }
+      - { en: Grenade (Explosive) }
+      - { en: Disintegrator Rifle }
+      - { en: Plasma Rifle }
+      - { en: Energy Cannon }
+      - { en: Heat Projector }
+      - { en: Missile Pod }

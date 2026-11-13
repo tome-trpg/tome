@@ -48,15 +48,17 @@ describe('tome system new', () => {
 });
 
 describe('tome system list', () => {
-  it('lists the built-in pack, then what the workspace adds', async () => {
+  it('lists the built-in packs, then what the workspace adds', async () => {
     const env = await workspace();
     const builtin = capture({ env });
     expect(await run(['system', 'list'], builtin.io)).toBe(0);
     expect(builtin.stdout()).toContain('generic 0.1.0（來源：builtin）');
+    expect(builtin.stdout()).toContain('d100-orc 0.1.0（來源：builtin）');
     await run(['system', 'new', 'my-pack'], capture({ env }).io);
     const listed = capture({ env });
     expect(await run(['system', 'list', '--json'], listed.io)).toBe(0);
     expect(envelope(listed.stdout()).data['packs']).toEqual([
+      { id: 'd100-orc', version: '0.1.0', source: 'builtin' },
       { id: 'generic', version: '0.1.0', source: 'builtin' },
       { id: 'my-pack', version: '0.1.0', source: 'workspace' },
     ]);
