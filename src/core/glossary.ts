@@ -363,9 +363,10 @@ export function policyOf(pack: Pick<ResolvedPack, 'chain'>): ReviewPolicy {
       if (!pronouns.has(name) && pronoun !== undefined) pronouns.set(name, pronoun);
     }
   }
+  // 類別名不會是空字串（schema），沒有類別的卡用它查，查不到就是預設值。
   return {
-    weightOf: (kind) => (kind === null ? 1 : (weights.get(kind) ?? 1)),
-    pronounOf: (kind) => (kind === null ? null : (pronouns.get(kind) ?? null)),
+    weightOf: (kind) => weights.get(kind ?? '') ?? 1,
+    pronounOf: (kind) => pronouns.get(kind ?? '') ?? null,
   };
 }
 
@@ -616,7 +617,8 @@ function cardOf(row: EntityRow, seen: ReadonlyMap<string, Sighting>): ReviewCard
 /** 三段裡的卡才能在網頁上決定；已拒絕、還沒跑 Pass 0 的不在這裡。 */
 const DECIDABLE: ReadonlySet<string> = new Set(['proposed', 'failed', 'locked', 'skipped']);
 
-function addRenamed(total: RenameCounts | null, more: RenameCounts | null): RenameCounts | null {
+/** 網頁上每次決定的 S-16 加起來，結束時印一次。都沒有改動時是 null。 */
+export function addRenamed(total: RenameCounts | null, more: RenameCounts | null): RenameCounts | null {
   if (more === null) return total;
   if (total === null) return more;
   return {

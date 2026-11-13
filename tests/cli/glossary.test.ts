@@ -391,10 +391,12 @@ describe('tome glossary review (ADR-0119)', () => {
       { source: 'Brass Lantern', target: '黃銅提燈', status: 'proposed', class: 'item', pronoun: '它' },
       { source: 'Old Ferry', target: '老渡口', status: 'proposed', class: 'place', gender: 'none' },
       { source: 'Sky Father', target: '天父', status: 'proposed', class: 'deity', gender: 'none', pronoun: '祂' },
+      // 類別有預設代名詞、卡上沒填的，也不用人審。
+      { source: 'Bog Rat', target: '沼鼠', status: 'proposed', class: 'creature' },
     ]);
     const { output } = await review(lib);
-    expect(output.data).toMatchObject({ auto: 4, entities: { review: 0 } });
-    for (const source of ['Mire Hound', 'Brass Lantern', 'Old Ferry', 'Sky Father']) {
+    expect(output.data).toMatchObject({ auto: 5, entities: { review: 0 } });
+    for (const source of ['Mire Hound', 'Brass Lantern', 'Old Ferry', 'Sky Father', 'Bog Rat']) {
       expect(cards(lib.home)[source]).toMatchObject({ status: 'locked', decided_by: 'auto' });
     }
   });
@@ -406,9 +408,11 @@ describe('tome glossary review (ADR-0119)', () => {
       { source: 'Salt Wyrm', target: '鹽龍', status: 'proposed', class: 'creature', gender: 'female', pronoun: '牠' },
       { source: 'Harrow Gate', target: '哈洛門', status: 'proposed', pronoun: '它' },
       { source: 'Old Ferry', target: '老渡口', status: 'proposed', class: 'place', pronoun: '它' },
+      // 沒有譯名的提議不自動鎖定，影響再小都一樣。
+      { source: 'Quiet Bay', status: 'proposed', class: 'place' },
     ]);
     const { output } = await review(lib);
-    expect(output.data).toMatchObject({ auto: 0, entities: { review: 5 } });
+    expect(output.data).toMatchObject({ auto: 0, entities: { review: 6 } });
   });
 
   it('leaves the cards already locked or rejected as they were', async () => {

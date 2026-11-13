@@ -100,6 +100,66 @@ describe('tome status names the next step (ADR-0138)', () => {
     expect(nextOf((await status(lib)).output)).toEqual({ step: 'estimate', command: 'tome estimate book --confirm' });
   });
 
+  it('says each line of the next step as info', async () => {
+    const lib = await library({ extract: false });
+    const first = await status(lib);
+    expect(first.output.findings[0]).toMatchObject({ code: 'status.no_units', level: 'info' });
+    expect(first.output.findings.at(-1)).toMatchObject({ code: 'status.next', level: 'info' });
+    const done = await library();
+    stage(done.home, 'scan-estimate');
+    await run(['estimate', 'book'], done.session().io);
+    stage(done.home, 'estimate');
+    withStore(done.home, (store) => store.run("UPDATE unit SET state = 'DONE'"));
+    expect((await status(done)).output.findings.at(-1)).toMatchObject({ code: 'status.next_assemble', level: 'info' });
+    withStore(done.home, (store) => store.run("UPDATE unit SET state = 'REFUSED' WHERE unit_id = (SELECT MIN(unit_id) FROM unit)"));
+    expect((await status(done)).output.findings.at(-1)).toMatchObject({ code: 'status.next_failed', level: 'info', params: { count: '1' } });
+  });
+
+  it('waits for the Pass 0 batches, and wants units before taking an estimate as confirmed', async () => {
+    const lib = await library();
+    stage(lib.home, 'scan-estimate');
+    stage(lib.home, 'estimate');
+    // 記過確認，可是還沒有翻譯單位：照樣要估價。
+    expect(nextOf((await status(lib)).output)).toMatchObject({ step: 'estimate' });
+    withStore(lib.home, (store) =>
+      store.run("INSERT INTO batch (nonce, state, requests, high_usd, created_at, stage) VALUES ('s1', 'submitted', 1, 0.1, 't', 'scan')"),
+    );
+    expect(nextOf((await status(lib)).output)).toEqual({ step: 'scan', command: 'tome scan-terms book --confirm' });
+  });
+
+  it('sends what was left in flight again, and counts blocked and refused units as not translated', async () => {
+    const lib = await library();
+    stage(lib.home, 'scan-estimate');
+    await run(['estimate', 'book'], lib.session().io);
+    stage(lib.home, 'estimate');
+    const only = (state: string): void =>
+      withStore(lib.home, (store) => {
+        store.run("UPDATE unit SET state = 'DONE'");
+        store.run('UPDATE unit SET state = ? WHERE unit_id = (SELECT MIN(unit_id) FROM unit)', state);
+      });
+    only('IN_FLIGHT');
+    expect(nextOf((await status(lib)).output)).toMatchObject({ step: 'translate' });
+    only('STALE');
+    expect(nextOf((await status(lib)).output)).toMatchObject({ step: 'translate' });
+    for (const state of ['BLOCKED', 'REFUSED', 'FAILED_QA']) {
+      only(state);
+      const { output } = await status(lib);
+      expect(nextOf(output)).toMatchObject({ step: 'retry' });
+      expect(output.findings.at(-1)?.params).toMatchObject({ count: '1' });
+    }
+  });
+
+  it('leaves --realtime off while any batch is outstanding', async () => {
+    const lib = await library();
+    stage(lib.home, 'scan-estimate');
+    withStore(lib.home, (store) => {
+      store.run("INSERT INTO estimate (stage, mode, model, requests, low_usd, high_usd, created_at) VALUES ('scan', 'realtime', 'm', 1, 0, 0, 't')");
+      store.run("INSERT INTO batch (nonce, state, requests, high_usd, created_at, stage) VALUES ('s1', 'submitted', 1, 0.1, 't', 'scan')");
+      store.run("INSERT INTO batch (nonce, state, requests, high_usd, created_at, stage) VALUES ('t1', 'submitted', 1, 0.1, 't', 'translate')");
+    });
+    expect(nextOf((await status(lib)).output)).toEqual({ step: 'scan', command: 'tome scan-terms book --confirm' });
+  });
+
   it('takes no lock, so it answers while another command holds the book', async () => {
     const lib = await library();
     const { writeFileSync } = await import('node:fs');

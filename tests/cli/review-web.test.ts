@@ -1,12 +1,16 @@
 import { createHash } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { request, type IncomingHttpHeaders } from 'node:http';
+import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { reviewPageTexts } from '../../src/cli/messages.ts';
 import type { Envelope } from '../../src/cli/output.ts';
+import { fill } from '../../src/cli/review/page.ts';
 import { browserCommand } from '../../src/cli/review/web.ts';
-import { run, type Io } from '../../src/cli/run.ts';
+import { run, untilInterrupted, type Io } from '../../src/cli/run.ts';
 import type { ToolRunner } from '../../src/core/process.ts';
 import { openBookStore, type Store } from '../../src/core/store.ts';
 import { library, MODEL, type Library } from '../helpers/library.ts';
@@ -179,6 +183,7 @@ describe('tome glossary review --web (ADR-0138)', () => {
       expect(page.headers['cache-control']).toBe('no-store');
       expect(page.headers['content-security-policy']).toMatch(/^default-src 'self'/);
       expect(page.headers['access-control-allow-origin']).toBeUndefined();
+      expect(page.headers['x-content-type-options']).toBe('nosniff');
       // no-referrer 會讓瀏覽器在表單的 Origin 送 null，自己的表單就被擋下（在瀏覽器裡實際點過才找到）。
       expect(page.headers['referrer-policy']).toBe('same-origin');
       expect(page.body).toContain('Salt Marsh');
@@ -191,8 +196,9 @@ describe('tome glossary review --web (ADR-0138)', () => {
       expect((await call(`http://127.0.0.1:${port}/${token.slice(1)}x/`)).status).toBe(404);
       for (const host of [`localhost:${port}`, 'attacker.example', `127.0.0.1:${Number(port) + 1}`]) {
         const refused = await call(web.url, { headers: { host } });
-        expect(refused.status).toBe(421);
-        expect(refused.body).not.toContain('Salt Marsh');
+        expect(refused).toMatchObject({ status: 421, body: reviewPageTexts.rejected });
+        expect(refused.headers['content-type']).toBe('text/plain; charset=utf-8');
+        expect(refused.headers['cache-control']).toBe('no-store');
       }
       expect((await call(web.url, { method: 'PUT' })).status).toBe(405);
     } finally {
@@ -206,6 +212,8 @@ describe('tome glossary review --web (ADR-0138)', () => {
     try {
       const style = await call(new URL('app.css', web.url).toString());
       expect(style).toMatchObject({ status: 200, headers: { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'no-store' } });
+      expect(style.body).toContain('[aria-invalid="true"]');
+      expect(style.body).toContain('prefers-color-scheme: dark');
       const script = await call(new URL('app.js', web.url).toString());
       expect(script.headers['content-type']).toBe('text/javascript; charset=utf-8');
       expect(script.body).toContain('requestSubmit');
@@ -227,12 +235,53 @@ describe('tome glossary review --web (ADR-0138)', () => {
       expect((await web.post(`cards/${id}/lock`, fields, { ...form, origin: 'http://attacker.example' })).status).toBe(403);
       expect((await web.post(`cards/${id}/lock`, fields, { ...form, origin: `http://localhost:${new URL(web.url).port}` })).status).toBe(403);
       expect((await web.post(`cards/${id}/lock`, fields, { origin: web.origin, 'content-type': 'application/json' })).status).toBe(415);
+      expect((await web.post(`cards/${id}/lock`, fields, { origin: web.origin })).status).toBe(415);
       expect((await web.post(`cards/${id}/lock`, { target: 'x'.repeat(70_000) })).status).toBe(413);
-      expect((await web.post(`cards/${id}/promote`, fields)).status).toBe(404);
+      // 路徑要整段對上，編號可以很多位數；對不上的是 404 的純文字，找不到卡的是 404 的頁面。
+      for (const path of [`cards/${id}/promote`, `xcards/${id}/lock`, `cards/${id}/lockx`, `cards/${id}x/lock`]) {
+        expect(await web.post(path, fields)).toMatchObject({ status: 404, body: reviewPageTexts.rejected });
+      }
+      const missing = await web.post('cards/123456789/lock', fields);
+      expect(missing.status).toBe(404);
+      expect(missing.body).toContain(reviewPageTexts.error['id']);
       expect(card(lib.home, 'Salt Marsh')).toMatchObject({ target: '鹽沼', status: 'proposed' });
     } finally {
       await web.stop();
     }
+  });
+
+  it('reads the form type the way browsers write it, and takes a body of exactly 64 KiB', async () => {
+    const lib = await book();
+    const web = await openWeb(lib);
+    try {
+      const fields = { tab: 'review', q: '' };
+      for (const type of ['Application/X-WWW-Form-Urlencoded', 'application/x-www-form-urlencoded ; charset=UTF-8']) {
+        expect((await web.post('view', fields, { origin: web.origin, 'content-type': type })).status).toBe(303);
+      }
+      const limit = 64 * 1024;
+      const exact = await web.post('view', { q: 'x'.repeat(limit - 'q='.length) });
+      expect(exact.status).toBe(303);
+      expect((await web.post('view', { q: 'x'.repeat(limit - 'q='.length + 1) })).status).toBe(413);
+    } finally {
+      await web.stop();
+    }
+  });
+
+  it('listens on the loopback address only, and stops listening at the end', async () => {
+    const lib = await book();
+    const web = await openWeb(lib);
+    const port = new URL(web.url).port;
+    const outside = Object.values(networkInterfaces())
+      .flat()
+      .find((address) => address !== undefined && address.family === 'IPv4' && !address.internal);
+    try {
+      // 別的網路介面連不到；這台機器沒有別的介面時，只確認本機連得到。
+      if (outside !== undefined) await expect(call(`http://${outside.address}:${port}/`)).rejects.toThrow();
+      expect((await call(web.url)).status).toBe(200);
+    } finally {
+      await web.stop();
+    }
+    await expect(call(web.url)).rejects.toThrow();
   });
 
   it('locks a card as human with the checks of the review file, and moves on to the next card', async () => {
@@ -241,22 +290,28 @@ describe('tome glossary review --web (ADR-0138)', () => {
     const marsh = idOf(lib.home, 'Salt Marsh');
     try {
       const locked = await web.post(`cards/${marsh}/lock`, lockForm({ target: ' 鹽澤 ', class: 'place', roles: ['paragraph'] }));
-      expect(locked.status).toBe(303);
+      expect(locked).toMatchObject({ status: 303, body: '' });
+      expect(locked.headers['content-type']).toBe('text/plain; charset=utf-8');
       const location = new URL(locked.headers.location ?? '', web.url);
       expect(location.pathname).toBe(new URL(web.url).pathname);
       expect(Object.fromEntries(location.searchParams)).toEqual({ tab: 'review', done: 'lock', id: String(marsh), focus: String(idOf(lib.home, 'Harrow Gate')) });
       expect(card(lib.home, 'Salt Marsh')).toMatchObject({ target: '鹽澤', status: 'locked', decided_by: 'human', match: '{"roles":["paragraph"]}' });
 
       const page = await call(location.toString());
-      expect(page.body).toContain(`data-focus`);
       expect(page.body).toMatch(new RegExp(`id="card-${idOf(lib.home, 'Harrow Gate')}" tabindex="0" data-focus`));
-      expect(page.body).toContain(`#${marsh}`);
+      // 沒有改到已鎖定的譯名，提示只有一句。
+      expect(page.body).toContain(`<p class="notice" role="status">${fill(reviewPageTexts.done.lock, { id: String(marsh) })}</p>`);
       expect(articles(page.body)).toBe(2);
 
       // 大小寫與整個詞沒勾，就是不比；沒帶表單標記時照預設值。
       const warden = idOf(lib.home, 'Grey Warden');
-      await web.post(`cards/${warden}/lock`, { form: 'card', target: '灰衣守望者', class: 'person', gender: 'female', pronoun: '她' });
+      await web.post(`cards/${warden}/lock`, { form: 'card', target: '灰衣守望者', class: 'person', gender: 'male', pronoun: '他', keep_source: '1' });
       expect(card(lib.home, 'Grey Warden')).toMatchObject({ match: '{"case_sensitive":false,"whole_word":false}', decided_by: 'human' });
+      expect(withStore(lib.home, (store) => store.get('SELECT gender, pronoun, keep_source FROM entity WHERE id = ?', warden))).toEqual({
+        gender: 'male',
+        pronoun: '他',
+        keep_source: 1,
+      });
       const gate = idOf(lib.home, 'Harrow Gate');
       await web.post(`cards/${gate}/lock`, { target: '哈洛門' });
       expect(card(lib.home, 'Harrow Gate')).toMatchObject({ match: null, status: 'locked' });
@@ -276,11 +331,67 @@ describe('tome glossary review --web (ADR-0138)', () => {
       const location = new URL(rejected.headers.location ?? '', web.url);
       expect(location.searchParams.get('focus')).toBe(String(gate));
       expect(card(lib.home, 'Grey Warden')).toMatchObject({ status: 'rejected', decided_by: 'human' });
+      expect((await call(location.toString())).body).toContain(`role="status">${fill(reviewPageTexts.done.reject, { id: String(warden) })}</p>`);
       // 已拒絕的卡不在三段裡，再送一次是找不到。
       const again = await web.post(`cards/${warden}/lock`, lockForm({ target: '灰衣守望者' }));
       expect(again.status).toBe(404);
-      expect(again.body).toContain('role="status"');
-      expect((await web.post('cards/999999/reject', { tab: 'review' })).status).toBe(404);
+      expect(again.body).toContain(`role="status">${reviewPageTexts.error['id']}</p>`);
+    } finally {
+      await web.stop();
+    }
+  });
+
+  it('decides a card that is not on the tab it came from, and focuses nothing when it was the only one', async () => {
+    const lib = await book();
+    const web = await openWeb(lib);
+    try {
+      // 不是專有名詞的卡也能決定。從別的分頁送來的，聚焦在那個分頁的第一張。
+      const night = await web.post(`cards/${idOf(lib.home, 'Each Night')}/lock`, lockForm({ tab: 'review', target: '每晚' }));
+      expect(new URL(night.headers.location ?? '', web.url).searchParams.get('focus')).toBe(String(idOf(lib.home, 'Salt Marsh')));
+      expect(card(lib.home, 'Each Night')).toMatchObject({ status: 'locked', decided_by: 'human' });
+      await web.post('view', { tab: 'review', q: 'marsh' });
+      const only = await web.post(`cards/${idOf(lib.home, 'Salt Marsh')}/reject`, { tab: 'review' });
+      expect(Object.fromEntries(new URL(only.headers.location ?? '', web.url).searchParams)).toEqual({
+        tab: 'review',
+        done: 'reject',
+        id: String(idOf(lib.home, 'Salt Marsh')),
+      });
+      // 沒有編號的提示照樣填，看不懂的提示不印。
+      expect((await call(`${web.url}?done=reject`)).body).toContain(`role="status">${fill(reviewPageTexts.done.reject, { id: '' })}</p>`);
+      expect((await call(`${web.url}?done=other&id=1`)).body).not.toContain('role="status"');
+    } finally {
+      await web.stop();
+    }
+  });
+
+  it('shows what book.db holds for each card, with the choices the checks allow', async () => {
+    const lib = await book();
+    withStore(lib.home, (store) =>
+      store.run(`UPDATE entity SET keep_source = 1, match = '{"case_sensitive":false,"roles":["heading"]}' WHERE source = 'Salt Marsh'`),
+    );
+    const web = await openWeb(lib);
+    try {
+      const body = (await call(web.url)).body;
+      const marsh = body.slice(body.indexOf(`id="card-${idOf(lib.home, 'Salt Marsh')}"`), body.indexOf(`id="card-${idOf(lib.home, 'Harrow Gate')}"`));
+      expect(marsh).toContain('<input type="checkbox" name="keep_source" value="1" checked>');
+      expect(marsh).toContain('<input type="checkbox" name="case_sensitive" value="1">');
+      expect(marsh).toContain('<input type="checkbox" name="whole_word" value="1" checked>');
+      expect(marsh).toContain('<input type="checkbox" name="roles" value="heading" checked>');
+      expect(marsh).toContain('<input type="checkbox" name="roles" value="paragraph">');
+      const options = (name: string): string[] => {
+        const start = marsh.indexOf(`<select name="${name}"`);
+        const select = marsh.slice(start, marsh.indexOf('</select>', start));
+        return [...select.matchAll(/<option value="([^"]*)"/g)].map((match) => match[1] ?? '');
+      };
+      expect(options('class')).toEqual(['', 'creature', 'deity', 'item', 'organization', 'person', 'place', 'skill', 'spell']);
+      expect(options('gender')).toEqual(['', 'female', 'male', 'none']);
+      expect(options('pronoun')).toEqual(['', ...(parse(readFileSync('languages/target/zh-TW.yaml', 'utf8')) as { pronouns: string[] }).pronouns]);
+      const roles = [...marsh.matchAll(/name="roles" value="([^"]*)"/g)].map((match) => match[1] ?? '');
+      expect(roles).toEqual([...roles].sort());
+      expect(roles).toContain('paragraph');
+      // 已鎖定的卡也看得到出現的句子。
+      const locked = (await call(`${web.url}?tab=locked`)).body;
+      expect(locked).toContain('<li>Travellers meet the Grey Warden at the Old Ferry, near the Salt Marsh.</li>');
     } finally {
       await web.stop();
     }
@@ -291,11 +402,17 @@ describe('tome glossary review --web (ADR-0138)', () => {
     const web = await openWeb(lib);
     const marsh = idOf(lib.home, 'Salt Marsh');
     try {
-      const wrong = await web.post(`cards/${marsh}/lock`, lockForm({ target: '鹽澤', class: 'swamp', register: 'archaic' }));
+      const typed = { form: 'card', tab: 'review', target: '鹽澤', class: 'swamp', register: 'archaic', keep_source: '1', whole_word: '1' };
+      const wrong = await web.post(`cards/${marsh}/lock`, { ...typed, gender: 'male', pronoun: '他' });
       expect(wrong.status).toBe(422);
       expect(wrong.body).toContain('<select name="class" aria-invalid="true"');
       expect(wrong.body).toContain('<option value="swamp" selected>swamp</option>');
       expect(wrong.body).toContain('value="archaic"');
+      expect(wrong.body).toContain('<option value="male" selected>');
+      expect(wrong.body).toContain('<option value="他" selected>');
+      expect(wrong.body).toContain('<input type="checkbox" name="keep_source" value="1" checked>');
+      expect(wrong.body).toContain('<input type="checkbox" name="case_sensitive" value="1">');
+      expect(wrong.body).toContain('<input type="checkbox" name="whole_word" value="1" checked>');
       expect(wrong.body).toContain(`id="error-${marsh}" role="alert"`);
       // 這一頁是在 cards/<id>/lock 送回來的，網址都要從權杖寫起，樣式、腳本與表單才找得到。
       const base = new URL(web.url).pathname;
@@ -316,17 +433,19 @@ describe('tome glossary review --web (ADR-0138)', () => {
     const lib = await book();
     const web = await openWeb(lib);
     const ferry = idOf(lib.home, 'Old Ferry');
-    try {
-      expect(card(lib.home, 'Old Ferry')).toMatchObject({ status: 'locked', decided_by: 'auto' });
-      const changed = await web.post(`cards/${ferry}/lock`, lockForm({ tab: 'locked', target: '舊渡口', class: 'place' }));
-      const location = new URL(changed.headers.location ?? '', web.url);
-      expect(Object.fromEntries(location.searchParams)).toMatchObject({ tab: 'locked', replaced: '0', resend: '0', reset: '0', in_flight: '0' });
-      expect(card(lib.home, 'Old Ferry')).toMatchObject({ target: '舊渡口', previous_target: '老渡口', decided_by: 'human' });
-      const page = await call(location.toString());
-      expect(page.body).toMatch(/role="status">[^<]*#\d+[^<]*tome estimate book/u);
-    } finally {
-      await web.stop();
-    }
+    expect(card(lib.home, 'Old Ferry')).toMatchObject({ status: 'locked', decided_by: 'auto' });
+    const changed = await web.post(`cards/${ferry}/lock`, lockForm({ tab: 'locked', target: '舊渡口', class: 'place' }));
+    const location = new URL(changed.headers.location ?? '', web.url);
+    const counts = { replaced: '0', resend: '0', reset: '0', in_flight: '0' };
+    expect(Object.fromEntries(location.searchParams)).toEqual({ tab: 'locked', done: 'lock', id: String(ferry), ...counts });
+    expect(card(lib.home, 'Old Ferry')).toMatchObject({ target: '舊渡口', previous_target: '老渡口', decided_by: 'human' });
+    const said = `${fill(reviewPageTexts.done.lock, { id: String(ferry) })}${fill(reviewPageTexts.renamed, { book: 'book', ...counts })}`;
+    expect((await call(location.toString())).body).toContain(`role="status">${said}</p>`);
+    await web.post(`cards/${ferry}/lock`, lockForm({ tab: 'locked', target: '老渡頭', class: 'place' }));
+    // 結束時把每次的 S-16 加起來印一次。
+    const { output } = await web.stop();
+    expect(output.data['web']).toEqual({ locked: 2, rejected: 0, rewritten: true, renamed: { replaced: 0, resend: 0, reset: 0, in_flight: 0 } });
+    expect(codes(output)).toEqual(['glossary.reviewed', 'glossary.web_done', 'glossary.renamed']);
   });
 
   it('filters by search, class and proposal, and never puts the search in the address', async () => {
@@ -339,10 +458,18 @@ describe('tome glossary review --web (ADR-0138)', () => {
       expect(articles((await call(web.url)).body)).toBe(1);
       await web.post('view', { tab: 'review', q: '守望', kind: 'person', proposal: 'with' });
       expect(articles((await call(web.url)).body)).toBe(1);
-      await web.post('view', { tab: 'review', q: '', kind: '-', proposal: 'without' });
+      await web.post('view', { tab: 'review', kind: 'place' });
+      expect(articles((await call(web.url)).body)).toBe(1);
+      await web.post('view', { tab: 'review', proposal: 'with' });
+      expect(articles((await call(web.url)).body)).toBe(2);
+      await web.post('view', { tab: 'review', proposal: 'maybe' });
+      expect(articles((await call(web.url)).body)).toBe(3);
+      const kept = await web.post('view', { tab: 'locked', proposal: 'without' });
+      expect(new URL(kept.headers.location ?? '', web.url).search).toBe('?tab=locked');
       const none = (await call(web.url)).body;
       expect(articles(none)).toBe(1);
       expect(none).toContain('Harrow Gate');
+      expect(none).toContain('<option value="without" selected>');
       await web.post('view', { tab: 'review', q: 'nothing', kind: 'place', proposal: 'all' });
       expect(articles((await call(web.url)).body)).toBe(0);
       await web.post('view', { tab: 'review', clear: '1', q: 'nothing' });
@@ -362,8 +489,10 @@ describe('tome glossary review --web (ADR-0138)', () => {
     const { exit, output, text } = await web.stop();
     expect(exit).toBe(0);
     expect(codes(output)).toEqual(['glossary.reviewed', 'glossary.web_done']);
-    expect(output.findings.at(-1)?.params).toMatchObject({ locked: '1', rejected: '1', review: '1' });
-    expect(output.data).toMatchObject({ web: { locked: 1, rejected: 1, rewritten: true }, entities: { review: 1, human: 1, auto: 1 } });
+    expect(output.findings.at(-1)).toMatchObject({ level: 'info', params: { locked: '1', rejected: '1', review: '1' } });
+    expect(output.findings[0]).toMatchObject({ level: 'info' });
+    expect(output.data['web']).toEqual({ locked: 1, rejected: 1, rewritten: true });
+    expect(output.data).toMatchObject({ entities: { review: 1, human: 1, auto: 1 } });
     const file = parse(readFileSync(join(lib.home, 'books', 'book', 'glossary-review.yaml'), 'utf8')) as Record<string, { source: string; decided_by?: string; target?: string }[]>;
     expect(file['review']?.map(({ source }) => source)).toEqual(['Harrow Gate']);
     expect(file['locked']?.find(({ source }) => source === 'Salt Marsh')).toMatchObject({ target: '鹽澤', decided_by: 'human' });
@@ -452,6 +581,7 @@ describe('tome glossary review --web (ADR-0138)', () => {
     await waitFor(() => (opened.calls.length > 0 ? true : undefined));
     expect(opened.calls).toEqual([['rundll32', ['url.dll,FileProtocolHandler', opened.url]]]);
     await opened.stop();
+    expect(opened.stderr()).not.toContain('手動開啟上面的網址');
     const quiet = await openWeb(lib, ['--no-open']);
     await quiet.stop();
     expect(quiet.calls).toEqual([]);
@@ -462,6 +592,30 @@ describe('tome glossary review --web (ADR-0138)', () => {
     const web = await openWeb(lib, [], { tool: async () => null });
     await waitFor(() => (web.stderr().includes('手動開啟上面的網址') ? true : undefined));
     await web.stop();
+  });
+});
+
+describe('the command line', () => {
+  it('asks for the book', async () => {
+    const lib = await book();
+    const { io, stdout } = lib.session();
+    expect(await run(['glossary', 'review', '--web', '--json'], io)).toBe(2);
+    expect(codes(JSON.parse(stdout()) as Envelope)).toEqual(['cli.missing_argument']);
+  });
+
+  it('waits for Ctrl+C by default', async () => {
+    const source = new EventEmitter();
+    let done = false;
+    const waiting = untilInterrupted(source as unknown as NodeJS.Process).then(() => (done = true));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(done).toBe(false);
+    source.emit('SIGTERM');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(done).toBe(false);
+    source.emit('SIGINT');
+    await waiting;
+    expect(done).toBe(true);
+    expect(source.listenerCount('SIGINT')).toBe(0);
   });
 });
 

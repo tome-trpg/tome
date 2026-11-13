@@ -92,8 +92,9 @@ export interface Io {
   readonly interrupted?: () => Promise<void>;
 }
 
-function untilInterrupted(): Promise<void> {
-  return new Promise((resolve) => process.once('SIGINT', () => resolve()));
+/** 等使用者按 Ctrl+C。測試給自己的事件來源。 */
+export function untilInterrupted(source: Pick<NodeJS.Process, 'once'> = process): Promise<void> {
+  return new Promise((resolve) => source.once('SIGINT', () => resolve()));
 }
 
 interface Result {
@@ -565,7 +566,7 @@ const COMMANDS: readonly Command[] = [
             env: io.env,
             tool: io.tool ?? runTool,
             say: (key, params) => io.stderr.write(progressText(key, params)),
-            stopped: io.interrupted ?? untilInterrupted,
+            stopped: io.interrupted ?? (() => untilInterrupted()),
           }),
       });
     },

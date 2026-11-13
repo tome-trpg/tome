@@ -102,11 +102,11 @@ export function fill(template: string, params: Readonly<Record<string, string>>)
   return template.replace(/\{(\w+)\}/g, (whole, name: string) => params[name] ?? whole);
 }
 
-/** 搜尋不分大小寫，比原文與譯名；類別與有沒有提議照篩選。 */
+/** 搜尋不分大小寫，比原文與譯名（沒填搜尋時每張都包含空字串）；類別與有沒有提議照篩選。 */
 export function visible(cards: readonly ReviewCard[], view: ViewState): ReviewCard[] {
   const query = view.q.trim().toLowerCase();
   return cards.filter((card) => {
-    if (query !== '' && !card.source.toLowerCase().includes(query) && !(card.target ?? '').toLowerCase().includes(query)) return false;
+    if (!card.source.toLowerCase().includes(query) && !(card.target ?? '').toLowerCase().includes(query)) return false;
     if (view.kind === NO_CLASS && card.class !== null) return false;
     if (view.kind !== '' && view.kind !== NO_CLASS && card.class !== view.kind) return false;
     if (view.proposal === 'with' && card.target === null) return false;
@@ -158,9 +158,8 @@ function select(name: string, label: string, body: string, context: FieldContext
   return `<label class="field"><span>${escapeHtml(label)}</span><select name="${name}"${marks(name, context)}>${body}</select></label>`;
 }
 
-function checkbox(name: string, label: string, checked: boolean, value = '1', context?: FieldContext): string {
-  const flagged = context === undefined ? '' : marks(name, context);
-  return `<label class="check"><input type="checkbox" name="${name}" value="${escapeHtml(value)}"${attribute('checked', checked)}${flagged}><span>${escapeHtml(label)}</span></label>`;
+function checkbox(name: string, label: string, checked: boolean, value: string, context: FieldContext): string {
+  return `<label class="check"><input type="checkbox" name="${name}" value="${escapeHtml(value)}"${attribute('checked', checked)}${marks(name, context)}><span>${escapeHtml(label)}</span></label>`;
 }
 
 function cardMeta(card: ReviewCard, tab: ReviewSection, texts: PageTexts): string {

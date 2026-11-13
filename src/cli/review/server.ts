@@ -105,10 +105,9 @@ function viewOf(form: URLSearchParams): ViewState {
   };
 }
 
-/** 決定之後聚焦在下一張；最後一張就往前一張。 */
+/** 決定之後聚焦在下一張；最後一張就往前一張。不在這一頁的（`indexOf` 是 -1）就是第一張。 */
 function nextAfter(ids: readonly number[], id: number): number | null {
   const index = ids.indexOf(id);
-  if (index === -1) return ids[0] ?? null;
   return ids[index + 1] ?? ids[index - 1] ?? null;
 }
 
@@ -178,10 +177,10 @@ export async function startReviewServer({ book, session, texts }: ReviewServerOp
     const path = rest.join('/');
     if (request.method === 'GET') {
       if (path === '') {
-        const focus = Number(url.searchParams.get('focus'));
         page(response, 200, {
           tab: sectionOf(url.searchParams.get('tab')),
-          focus: Number.isInteger(focus) && focus > 0 ? focus : null,
+          // 卡的編號都是正整數，看不懂的值（0、NaN）不會對到任何一張。
+          focus: Number(url.searchParams.get('focus')),
           notice: notice(url.searchParams),
           invalid: null,
         });
@@ -218,8 +217,8 @@ export async function startReviewServer({ book, session, texts }: ReviewServerOp
     server.once('error', reject);
     server.listen(0, '127.0.0.1', () => resolve());
   });
-  const address = server.address();
-  port = typeof address === 'object' && address !== null ? address.port : 0;
+  // 聽 TCP 的埠，address() 一定是有 port 的物件。
+  port = (server.address() as { readonly port: number }).port;
   return {
     url: `http://${HOST}:${port}/${token}/`,
     close: () =>
