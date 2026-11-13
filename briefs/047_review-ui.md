@@ -10,10 +10,12 @@ affectedFiles:
   - briefs/**
   - docs/WHITEPAPER.md
   - docs/adr/**
+  - src/cli/messages.ts
   - src/cli/messages/zh-TW.json
   - src/cli/review/**
   - src/cli/run.ts
   - src/core/entities.ts
+  - src/core/extract.ts
   - src/core/findings.ts
   - src/core/glossary.ts
   - src/core/index.ts
