@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import type { Envelope } from '../../src/cli/output.ts';
 import { run } from '../../src/cli/run.ts';
+import { usd } from '../../src/core/provider.ts';
+import { openBookStore } from '../../src/core/store.ts';
 import { addBlock, addSceneBreak, library, MODEL, setWorkspace, type Library } from '../helpers/library.ts';
 
 // 文字都是合成 PDF 的假文字。這一輪不連網，所以每個流程都盯著 fetch。
@@ -92,7 +94,9 @@ describe('tome estimate (ADR-0103)', () => {
     const lib = await library();
     const { io, stdout } = lib.session();
     await run(['estimate', 'book'], io);
-    expect(stdout()).toContain('尚未以實際用量校準');
+    // 沒有試翻過的書，另一行說還沒校準，並提示可以試翻（ADR-0135）。
+    expect(stdout()).toContain('估價尚未以這本書的實際用量校準');
+    expect(stdout()).toContain('tome trial');
     expect(stdout()).toContain('保留 29 天');
     expect(stdout()).not.toContain('warden');
     expect((await estimate(lib)).text).not.toContain('warden');
@@ -103,7 +107,7 @@ describe('tome estimate (ADR-0103)', () => {
     const { exit, output } = await estimate(lib);
     expect(exit).toBe(0);
     expect(output.findings.find((item) => item.code === 'estimate.no_budget')?.level).toBe('warn');
-    expect(codes(output)).toContain('estimate.not_confirmed');
+    expect(output.findings.find((item) => item.code === 'estimate.not_confirmed')?.level).toBe('info');
   });
 
   it('warns about an empty list of personal data (ADR-0099 item 21)', async () => {
@@ -197,13 +201,21 @@ describe('--confirm (ADR-0103)', () => {
     const later = (await estimate(lib)).output;
     expect(later.data['confirmed']).toBe(true);
     expect(codes(later)).not.toContain('estimate.not_confirmed');
+    // 既有的 `book.db` 的確認記在這個名字底下，改了名字就全部失效。
+    const store = openBookStore(lib.home, 'book');
+    const stages = store.all<{ name: string }>('SELECT name FROM stage').map(({ name }) => name);
+    store.close();
+    expect(stages).toContain('estimate');
   });
 
   it('refuses an estimate over the budget, and records nothing', async () => {
     const lib = await library();
     const { exit, output } = await estimate(lib, '--budget', '0.000001', '--confirm');
     expect(exit).toBe(1);
-    expect(output.findings.find((item) => item.code === 'estimate.over_budget')?.level).toBe('fail');
+    expect(output.findings.find((item) => item.code === 'estimate.over_budget')).toMatchObject({
+      level: 'fail',
+      params: { budget: usd(0.000001), spent: usd(0), high: usd(output.data['high_usd'] as number) },
+    });
     expect(output.data['confirmed']).toBe(false);
     expect((await estimate(lib)).output.data['confirmed']).toBe(false);
   });
@@ -342,6 +354,47 @@ describe('--chapters (ADR-0103)', () => {
     expect((await estimate(lib, '--chapters', '2')).output.data['confirmed']).toBe(false);
   });
 
+  /** 第一章是前兩個單位，第二章是第三個。 */
+  function twoChapters(home: string): void {
+    const path = join(home, 'books', 'book', 'ir', 'document.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { blocks: { id: string }[]; sections: unknown[] };
+    document.sections = [
+      { title: 'One', block_id: document.blocks[0]?.id, children: [] },
+      { title: 'Two', block_id: document.blocks[2]?.id, children: [] },
+    ];
+    writeFileSync(path, JSON.stringify(document));
+  }
+
+  // 指紋只算範圍內要送 LLM 的單位：範圍外的文字改了，要送的請求不變（ADR-0054、ADR-0103）。
+  it('stays confirmed when a chapter outside the range changes', async () => {
+    const lib = await library();
+    twoChapters(lib.home);
+    expect((await estimate(lib, '--chapters', '1', '--budget', '100', '--confirm')).output.data['confirmed']).toBe(true);
+    const path = join(lib.home, 'books', 'book', 'ir', 'document.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { blocks: { text: string; raw?: string }[] };
+    const last = document.blocks[2];
+    if (last === undefined) throw new Error('the book is too short');
+    last.text = `${last.text} The ferry waits.`;
+    if (last.raw !== undefined) last.raw = last.text;
+    writeFileSync(path, JSON.stringify(document));
+    expect((await estimate(lib)).output.data['confirmed']).toBe(true);
+    // 範圍內的改了就要重新確認。
+    const first = document.blocks[0];
+    if (first === undefined) throw new Error('the book is too short');
+    first.text = `${first.text} The ferry waits.`;
+    if (first.raw !== undefined) first.raw = first.text;
+    writeFileSync(path, JSON.stringify(document));
+    expect((await estimate(lib)).output.data['confirmed']).toBe(false);
+  });
+
+  // 範圍照使用者寫的字進指紋：寫出範圍就要重新確認，即使涵蓋整本書。
+  it('asks again when a range is named, even one that covers the whole book', async () => {
+    const lib = await library();
+    twoChapters(lib.home);
+    await estimate(lib, '--budget', '100', '--confirm');
+    expect((await estimate(lib, '--chapters', '1-2')).output.data).toMatchObject({ units: 3, confirmed: false });
+  });
+
   it('refuses a range the book does not have, and keeps the old one', async () => {
     const lib = await library();
     await estimate(lib, '--chapters', '1');
@@ -421,6 +474,14 @@ describe('--chapter-level (ADR-0115)', () => {
     const lib = await library();
     nested(lib.home);
     await estimate(lib, '--budget', '100', '--confirm');
+    expect((await estimate(lib)).output.data['confirmed']).toBe(true);
+    expect((await estimate(lib, '--chapter-level', '2')).output.data['confirmed']).toBe(false);
+  });
+
+  it('asks again when one level gives way to another, with no range saved', async () => {
+    const lib = await library();
+    nested(lib.home);
+    await estimate(lib, '--chapter-level', '1', '--budget', '100', '--confirm');
     expect((await estimate(lib)).output.data['confirmed']).toBe(true);
     expect((await estimate(lib, '--chapter-level', '2')).output.data['confirmed']).toBe(false);
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateFixedOutput, estimateRequest, sumEstimates } from '../../src/core/estimate.ts';
+import { breakEven, estimateFixedOutput, estimateRequest, sumEstimates } from '../../src/core/estimate.ts';
 import { findModel, loadProvider, type Provider } from '../../src/core/provider.ts';
 
 const { profile } = loadProvider('anthropic');
@@ -157,6 +157,74 @@ describe('estimateFixedOutput, for Pass 0 (ADR-0118)', () => {
     expect(estimateFixedOutput(tuned({ scan_retry_margin: 0, retry_margin: 0.5 }), sonnet, 3000, 1000, 'batch')).toEqual(base);
     const padded = estimateFixedOutput(tuned({ scan_retry_margin: 0.3 }), sonnet, 3000, 1000, 'batch');
     expect(padded.high_usd).toBeCloseTo(base.high_usd * 1.3, 12);
+  });
+});
+
+// 試翻校準的兩個倍數，與試翻量到的快取命中率（ADR-0135）。
+describe('calibration and the prompt cache (ADR-0135)', () => {
+  // 低與高都是 1、沒有餘裕；前綴每 2 個字元一個 token、`user` 每 3 個，沒有單位的標籤：
+  // 前綴 1000 個 token、其餘輸入 1000 個、輸出 1000 個。
+  const flat = tuned({ low: 1, high: 1, prefix_chars_per_token: 2 });
+  const size = { prefixChars: 2000, userChars: 3000, sourceChars: 3000, units: 0 };
+
+  it('takes neither a calibration nor a cache unless asked', () => {
+    expect(estimateRequest(flat, sonnet, size, 'batch', {})).toEqual(estimateRequest(flat, sonnet, size, 'batch'));
+    expect(estimateRequest(flat, sonnet, size, 'batch', { calibration: null, cache: null })).toEqual(
+      estimateRequest(flat, sonnet, size, 'batch'),
+    );
+  });
+
+  it('multiplies the input and the output by the factors of the trial', () => {
+    const { high_usd } = estimateRequest(flat, sonnet, size, 'batch', { calibration: { input: 1.5, output: 0.5 } });
+    expect(high_usd).toBeCloseTo((2000 * 1.5 * 1 + 1000 * 0.5 * 5) / 1_000_000, 12);
+  });
+
+  it('prices only the prefix at the cache prices, by the hit rate (batch, one hour)', () => {
+    // Sonnet 5.5 的批次：寫入 1 小時 4 × 0.5 = 2，讀取 0.10 × 0.5 = 0.05，輸入 1，輸出 5。
+    const { high_usd } = estimateRequest(flat, sonnet, size, 'batch', { cache: { ttl: '1h', hitRate: 0.8 } });
+    expect(high_usd).toBeCloseTo((1000 * (0.2 * 2 + 0.8 * 0.05) + 1000 * 1 + 1000 * 5) / 1_000_000, 12);
+  });
+
+  it('uses the five minute write price, at the realtime price', () => {
+    // 即時：寫入 5 分鐘 2.5，讀取 0.10，輸入 2，輸出 10。
+    const { high_usd } = estimateRequest(flat, sonnet, size, 'realtime', { cache: { ttl: '5m', hitRate: 0.5 } });
+    expect(high_usd).toBeCloseTo((1000 * (0.5 * 2.5 + 0.5 * 0.1) + 1000 * 2 + 1000 * 10) / 1_000_000, 12);
+  });
+
+  it('writes the whole prefix when nothing hits, as a trial assumes before it is sent', () => {
+    const { high_usd } = estimateRequest(flat, sonnet, size, 'batch', { cache: { ttl: '1h', hitRate: 0 } });
+    expect(high_usd).toBeCloseTo((1000 * 2 + 1000 * 1 + 1000 * 5) / 1_000_000, 12);
+  });
+
+  it('calibrates the prefix with the input before it prices the cache', () => {
+    const both = { calibration: { input: 2, output: 1 }, cache: { ttl: '1h', hitRate: 1 } } as const;
+    const { high_usd } = estimateRequest(flat, sonnet, size, 'batch', both);
+    expect(high_usd).toBeCloseTo((2000 * 0.05 + 2000 * 1 + 1000 * 5) / 1_000_000, 12);
+  });
+
+  it('keeps the margin for resends', () => {
+    const margin = tuned({ low: 1, high: 1, prefix_chars_per_token: 2, retry_margin: 0.25 });
+    const plain = estimateRequest(flat, sonnet, size, 'batch', { cache: { ttl: '1h', hitRate: 1 } });
+    expect(estimateRequest(margin, sonnet, size, 'batch', { cache: { ttl: '1h', hitRate: 1 } }).high_usd).toBeCloseTo(
+      plain.high_usd * 1.25,
+      12,
+    );
+  });
+});
+
+// 損益兩平的命中率 =（寫入價 − 輸入價）÷（寫入價 − 讀取價），批次的折扣也套在快取上。
+describe('breakEven (ADR-0135)', () => {
+  it.each([
+    ['batch', '1h', (2 - 1) / (2 - 0.05)],
+    ['batch', '5m', (1.25 - 1) / (1.25 - 0.05)],
+    ['realtime', '5m', (2.5 - 2) / (2.5 - 0.1)],
+    ['realtime', '1h', (4 - 2) / (4 - 0.1)],
+  ] as const)('is the share of hits a %s request with a %s cache needs on Sonnet 5.5', (mode, ttl, expected) => {
+    expect(breakEven(sonnet, mode, ttl)).toBeCloseTo(expected, 12);
+  });
+
+  it('is about the same on Opus 5.5', () => {
+    expect(breakEven(opus, 'batch', '1h')).toBeCloseTo((4 - 2) / (4 - 0.1), 12);
   });
 });
 

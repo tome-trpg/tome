@@ -9,14 +9,16 @@ import { estimateLocked, pendingFindings, saveSettings, type PlanOutcome } from 
 import { scanLocked } from './scan.ts';
 import { openBookStore } from './store.ts';
 import { translateLocked } from './translate.ts';
+import { trialLocked } from './trial.ts';
 import { assembleLocked, type VaultTexts } from './vault.ts';
 
 // tome run（白皮書 §6.1、ADR-0055、ADR-0127）：從加入過的書一路跑到下一個要人點頭的地方。依序是解析、
-// Pass 0 的估價、審定、翻譯的估價、翻譯、輸出 vault。Pass 0 有要送的、還有待審的卡、估價還沒確認，
-// 就停下來請使用者跑對應的指令，結束碼 0；某一步沒做完就停在那裡。各步的指令照樣能單獨跑。
+// Pass 0 的估價、審定、試翻（加 `--trial` 才有，ADR-0135）、翻譯的估價、翻譯、輸出 vault。Pass 0 或
+// 試翻有要送的、還有待審的卡、估價還沒確認，就停下來請使用者跑對應的指令，結束碼 0；某一步沒做完就停在
+// 那裡。各步的指令照樣能單獨跑。
 
 /** `tome run` 的步驟，`--json` 的 `stages` 與 `stopped_at` 用這些名字。 */
-export type RunStep = 'extract' | 'scan' | 'review' | 'estimate' | 'translate' | 'assemble';
+export type RunStep = 'extract' | 'scan' | 'review' | 'trial' | 'estimate' | 'translate' | 'assemble';
 
 export interface RunOptions {
   readonly home: string;
@@ -26,6 +28,8 @@ export interface RunOptions {
   readonly budget?: string | undefined;
   readonly chapters?: string | undefined;
   readonly chapterLevel?: string | undefined;
+  /** `--trial`：審定之後先試翻。不存進 `book.yaml`，已經校準過就跳過（ADR-0135）。 */
+  readonly trial?: boolean;
   readonly texts: VaultTexts;
   /** 解析的執行環境與進度，照 `tome extract`。 */
   readonly extract: Omit<ExtractOptions, 'home' | 'slug'>;
@@ -94,6 +98,16 @@ async function runLocked(options: RunOptions): Promise<PlanOutcome> {
     }
   });
   if (reviewed.findings.length > 0) return gate('review', `tome glossary review ${slug}`);
+
+  // 試翻也要花錢：這本書在這個模型與模式還沒校準，就顯示試翻的估價停下，請使用者確認後用
+  // `tome trial --confirm` 送。試翻後面就是確認估價的關卡，不另設「試翻後要不要停」（ADR-0135）。
+  if (options.trial === true) {
+    const tried = await step('trial', () => trialLocked({ home, slug, mode, confirm: false }));
+    if (failed(tried.findings)) return outcome('trial', null);
+    // 試翻還沒確認，或送出去還沒收回：都停在這裡，不往下估價、翻譯。
+    const waiting = tried.findings.some(({ code }) => code === 'trial.not_confirmed' || code === 'trial.in_flight');
+    if (waiting) return gate('trial', `tome trial ${slug} --confirm${realtime}`);
+  }
 
   // 關卡二：沒有確認、或確認的估價跟現在的不同就停。沒有要送的就直接輸出。
   const estimated = await step('estimate', () => estimateLocked({ home, slug, confirm: false, mode }));

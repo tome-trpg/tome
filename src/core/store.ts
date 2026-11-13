@@ -267,6 +267,33 @@ export const MIGRATIONS: Readonly<Record<StoreKind, readonly Migration[]>> = {
         ) STRICT;
       `,
     },
+    {
+      // 試翻（ADR-0135）：一本書、一個模型、一個模式的校準；試翻挑中、還沒做完的單位；帳本分得出試翻；
+      // 確認的估價記下中間值與有沒有校準，Q-6 拿它比。舊的估價沒有中間值，不算 Q-6。
+      version: 15,
+      sql: `
+        CREATE TABLE calibration (
+          model TEXT NOT NULL,
+          mode TEXT NOT NULL,
+          input_factor REAL NOT NULL,
+          output_factor REAL NOT NULL,
+          requests INTEGER NOT NULL,
+          resend_ratio REAL NOT NULL,
+          cache_ttl TEXT,
+          cache_hit_rate REAL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (model, mode)
+        ) STRICT;
+        CREATE TABLE trial_unit (
+          unit_id TEXT PRIMARY KEY,
+          model TEXT NOT NULL,
+          mode TEXT NOT NULL
+        ) STRICT;
+        ALTER TABLE ledger ADD COLUMN trial INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE estimate ADD COLUMN middle_usd REAL;
+        ALTER TABLE estimate ADD COLUMN calibrated INTEGER NOT NULL DEFAULT 0;
+      `,
+    },
   ],
   series: [
     { version: 1, sql: metaTable('series') },

@@ -6,6 +6,7 @@ import type { DocumentBlock, IrDocument } from '../../src/core/ir.ts';
 import {
   collectReport,
   compareEstimate,
+  q6Text,
   renderReport,
   reportCounts,
   reportedBlocks,
@@ -14,6 +15,9 @@ import {
 } from '../../src/core/report.ts';
 import { openStore, type Store } from '../../src/core/store.ts';
 import { tempDir } from '../helpers.ts';
+
+/** 遷移第 15 版之前確認的估價：沒有中間值，沒有校準，不算 Q-6（ADR-0135）。 */
+const UNCALIBRATED = { middle_usd: null, calibrated: false, q6: null } as const;
 
 // 交付報告（ADR-0123）。文字都是這裡編的。
 
@@ -417,7 +421,7 @@ describe('compareEstimate (ADR-0132)', () => {
   function item(low: number, high: number, spent: number): EstimateItem {
     const width = high - low;
     const position = width > 0 ? Math.round(((spent - low) / width) * 100) : null;
-    return { stage: 'translate', mode: 'batch', created_at: 't', low_usd: low, high_usd: high, spent_usd: spent, position };
+    return { ...UNCALIBRATED, stage: 'translate', mode: 'batch', created_at: 't', low_usd: low, high_usd: high, spent_usd: spent, position };
   }
 
   // 前四列是 M3 收尾的數字（ADR-0129 第 4、5 項）。
@@ -442,14 +446,70 @@ describe('compareEstimate (ADR-0132)', () => {
   });
 });
 
+// Q-6：實際的翻譯花費 ÷ 校準後估價的中間值 − 1，只算校準過、已經有花費的翻譯估價（ADR-0135）。
+describe('Q-6 (ADR-0135)', () => {
+  /** 一個確認過的估價，之後在 p1 花了 `spent`；試翻的估價配試翻的帳。 */
+  function measured(stage: string, calibrated: 0 | 1, middle: number | null, spent: number): EstimateItem | undefined {
+    const db = store();
+    addUnit(db, 'p1', 0, 'The Warden waits at the ford.', 'DONE', '守衛在渡口等待。');
+    db.run(
+      `INSERT INTO estimate (stage, mode, model, requests, low_usd, high_usd, created_at, middle_usd, calibrated)
+       VALUES (?, 'batch', 'm', 1, 0.2, 0.6, '2026-11-09T00:50:00.000Z', ?, ?)`,
+      stage,
+      middle,
+      calibrated,
+    );
+    db.run(
+      `INSERT INTO ledger (request_id, unit_id, model, mode, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, created_at, trial)
+       VALUES ('r', 'p1', 'm', 'batch', 0, 0, 0, 0, ?, '2026-11-09T01:00:00.000Z', ?)`,
+      spent,
+      stage === 'trial' ? 1 : 0,
+    );
+    return collectReport(db, DOCUMENT, [], null).estimates[0];
+  }
+
+  it('measures a calibrated translation estimate against what was spent after it', () => {
+    expect(measured('translate', 1, 0.5, 0.4)?.q6).toBeCloseTo(-0.2, 12);
+    expect(measured('translate', 1, 0.5, 0.6)?.q6).toBeCloseTo(0.2, 12);
+  });
+
+  it.each([
+    ['an estimate not calibrated', 'translate', 0, 0.5, 0.4],
+    ['the estimate of a trial', 'trial', 1, 0.5, 0.4],
+    ['an estimate confirmed before migration 15', 'translate', 1, null, 0.4],
+    ['an estimate with a middle of nothing', 'translate', 1, 0, 0.4],
+    ['an estimate nothing was spent on yet', 'translate', 1, 0.5, 0],
+  ] as const)('does not measure %s', (_name, stage, calibrated, middle, spent) => {
+    const item = measured(stage, calibrated, middle, spent);
+    expect(item?.spent_usd).toBe(spent);
+    expect(item?.q6).toBeNull();
+  });
+
+  it('sets the estimate of a stage it does not know against the translation', () => {
+    expect(measured('unknown', 0, 0.5, 0.4)?.spent_usd).toBe(0.4);
+  });
+});
+
+describe('q6Text (ADR-0135)', () => {
+  it.each([
+    [0.1234, '+12.3'],
+    [0.2, '+20.0'],
+    [-0.05, '-5.0'],
+    [0, '0.0'],
+    [0.00049, '0.0'],
+  ])('writes %d as %s percent', (q6, text) => {
+    expect(q6Text(q6)).toBe(text);
+  });
+});
+
 describe('renderReport (ADR-0123)', () => {
   const place = (id: string): string => `[[01#^${id}|01]]`;
   const FULL: BookReport = {
     coverage: { total: 4, kept: 1, fielded: 0, human: 0, done: 2, in_flight: 0, blocked: 1, failed: 1, refused: 0, left: 0 },
     spent: { translate: 0.4, scan: 0.15, budget: 5 },
     estimates: [
-      { stage: 'translate', mode: 'batch', created_at: '2026-11-09T00:50:00.000Z', low_usd: 0.2, high_usd: 0.6, spent_usd: 0.4, position: 50 },
-      { stage: 'scan', mode: 'realtime', created_at: '2026-11-09T00:20:00.000Z', low_usd: 0.1, high_usd: 0.1, spent_usd: 0.15, position: null },
+      { ...UNCALIBRATED, stage: 'translate', mode: 'batch', created_at: '2026-11-09T00:50:00.000Z', low_usd: 0.2, high_usd: 0.6, spent_usd: 0.4, position: 50 },
+      { ...UNCALIBRATED, stage: 'scan', mode: 'realtime', created_at: '2026-11-09T00:20:00.000Z', low_usd: 0.1, high_usd: 0.1, spent_usd: 0.15, position: null },
     ],
     pending_cards: 1,
     untranslated: [
@@ -651,11 +711,11 @@ describe('renderReport (ADR-0123)', () => {
   it('says in the table how each spending compares with its estimate', () => {
     const at = '2026-11-09T00:00:00.000Z';
     const rows: EstimateItem[] = [
-      { stage: 'translate', mode: 'batch', created_at: at, low_usd: 0.1786, high_usd: 0.2902, spent_usd: 0.1713, position: -7 },
-      { stage: 'translate', mode: 'batch', created_at: at, low_usd: 0.0438, high_usd: 0.0712, spent_usd: 0.0437, position: 0 },
-      { stage: 'translate', mode: 'batch', created_at: at, low_usd: 1, high_usd: 2, spent_usd: 2.005, position: 101 },
-      { stage: 'translate', mode: 'batch', created_at: at, low_usd: 1, high_usd: 2, spent_usd: 0, position: -100 },
-      { stage: 'translate', mode: 'batch', created_at: at, low_usd: 1, high_usd: 1, spent_usd: 1, position: null },
+      { ...UNCALIBRATED, stage: 'translate', mode: 'batch', created_at: at, low_usd: 0.1786, high_usd: 0.2902, spent_usd: 0.1713, position: -7 },
+      { ...UNCALIBRATED, stage: 'translate', mode: 'batch', created_at: at, low_usd: 0.0438, high_usd: 0.0712, spent_usd: 0.0437, position: 0 },
+      { ...UNCALIBRATED, stage: 'translate', mode: 'batch', created_at: at, low_usd: 1, high_usd: 2, spent_usd: 2.005, position: 101 },
+      { ...UNCALIBRATED, stage: 'translate', mode: 'batch', created_at: at, low_usd: 1, high_usd: 2, spent_usd: 0, position: -100 },
+      { ...UNCALIBRATED, stage: 'translate', mode: 'batch', created_at: at, low_usd: 1, high_usd: 1, spent_usd: 1, position: null },
     ];
     const text = renderReport({ ...filled().report, estimates: rows }, vaultTexts.report, place);
     expect(text).toContain('| 與估價相比 |');

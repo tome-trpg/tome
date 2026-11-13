@@ -140,6 +140,31 @@ describe('messageResult (ADR-0104)', () => {
     expect(result).toMatchObject({ usage: { ...USAGE, cache_read_tokens: 7, cache_write_tokens: 3 } });
   });
 
+  // 1 小時的寫入價錢不同，帳本要知道多少是 1 小時的（ADR-0135）。
+  it('keeps how many of the cache writes were for an hour', () => {
+    const result = messageResult({
+      id: 'msg_1',
+      stop_reason: 'end_turn',
+      content: [],
+      usage: {
+        ...usage,
+        cache_creation_input_tokens: 8,
+        cache_creation: { ephemeral_5m_input_tokens: 3, ephemeral_1h_input_tokens: 5 },
+      },
+    });
+    expect(result).toMatchObject({ usage: { cache_write_tokens: 8, cache_write_1h_tokens: 5 } });
+  });
+
+  it('adds nothing for an hour when no write was for an hour', () => {
+    const result = messageResult({
+      id: 'msg_1',
+      stop_reason: 'end_turn',
+      content: [],
+      usage: { ...usage, cache_creation_input_tokens: 3, cache_creation: { ephemeral_5m_input_tokens: 3, ephemeral_1h_input_tokens: 0 } },
+    });
+    expect(result.usage).toEqual({ ...USAGE, cache_write_tokens: 3 });
+  });
+
   it('calls a cut-off reply truncated', () => {
     const result = messageResult({ id: 'msg_1', stop_reason: 'max_tokens', content: [], usage });
     expect(result.outcome).toBe('truncated');

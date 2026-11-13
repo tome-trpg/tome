@@ -127,7 +127,7 @@ describe('tome backup (ADR-0128)', () => {
       format: 'tome-backup/1',
       book: 'book',
       tome_version: packageJson.version,
-      user_version: { book: 14, series: 3 },
+      user_version: { book: 15, series: 3 },
     });
     expect(target.endsWith(backupStamp(new Date(manifest.created_at)))).toBe(true);
     expect(manifest.files.map(({ path }) => path)).toEqual(LAYOUT);
@@ -154,7 +154,7 @@ describe('tome backup (ADR-0128)', () => {
     expect(ran.exit).toBe(0);
     expect(ran.output.findings[0]).toMatchObject({ params: { path: target, files: '4' } });
     const manifest = JSON.parse(readFileSync(join(target, 'manifest.json'), 'utf8')) as Manifest;
-    expect(manifest.user_version).toEqual({ book: 14, series: null });
+    expect(manifest.user_version).toEqual({ book: 15, series: null });
     expect(manifest.files.map(({ path }) => path)).toEqual([
       'books/book/book.db',
       'books/book/book.yaml',

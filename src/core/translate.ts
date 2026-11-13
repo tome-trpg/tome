@@ -34,6 +34,7 @@ import {
   type MessagesBody,
   type PlannedRequest,
   type PlanOutcome,
+  type PlanOverride,
   type SizedRequest,
 } from './request.ts';
 import { failureEvent, nextState, type UnitEvent, type UnitState } from './state.ts';
@@ -91,6 +92,10 @@ export interface TranslationRun {
   batches: number;
   /** 批次收回時鍵跟送出時不同、回到待翻的單位（ADR-0123）。 */
   rewound: number;
+  /** 試翻挑中、還沒校準的單位。它們的請求在帳本標成試翻，不管是哪個指令收回的（ADR-0135）。 */
+  readonly trialUnits: ReadonlySet<string>;
+  /** 試翻只送這些單位，其他流程是 null（ADR-0135）。 */
+  readonly only: ReadonlySet<string> | null;
 }
 
 type Run = TranslationRun;
@@ -301,6 +306,7 @@ export function prepareWork(run: Run, work: Work): { readonly work: Work; readon
   const fresh = skipRemembered(run, work.request.units);
   if (fresh.length === 0) return null;
   const request = partOfRequest(plan.units, work.request.id, fresh, plan.chapterOf);
+  const { calibration, cache } = plan;
   const sized = sizeRequest(request, {
     prefix: plan.prefix,
     terms: plan.terms,
@@ -310,6 +316,8 @@ export function prepareWork(run: Run, work: Work): { readonly work: Work; readon
     model: work.model,
     provider: plan.provider.profile,
     mode: plan.mode,
+    calibration: calibration === null ? null : { input: calibration.input_factor, output: calibration.output_factor },
+    cache,
   });
   return { work: { request, model: work.model }, sized };
 }
@@ -323,6 +331,7 @@ function charge(run: Run, { request, model }: Work, result: Answer, limit: numbe
     units: request.units.map(({ unit_id, source }) => ({ unit_id, chars: source.length })),
     stop_reason: result.stopReason,
     max_tokens: limit,
+    trial: request.units.length > 0 && request.units.every(({ unit_id }) => run.trialUnits.has(unit_id)),
   });
 }
 
@@ -498,10 +507,15 @@ async function sendWork(run: Run, planned: Work): Promise<Step> {
   return answered(run, work, result, sized.body.max_tokens);
 }
 
-/** `PENDING`、`QUEUED` 的單位照閱讀順序組成請求。`exclude` 是已經排好要重送的單位。 */
-export function queuedWork({ store, plan }: Run, exclude: ReadonlySet<string> = new Set()): Work[] {
+/**
+ * `PENDING`、`QUEUED` 的單位照閱讀順序組成請求。`exclude` 是已經排好要重送的單位。試翻只排它挑中的
+ * 單位（ADR-0135）。
+ */
+export function queuedWork({ store, plan, only }: Run, exclude: ReadonlySet<string> = new Set()): Work[] {
   const rows = store.all<{ unit_id: string }>("SELECT unit_id FROM unit WHERE state IN ('PENDING', 'QUEUED')");
-  const waiting = new Set(rows.map(({ unit_id }) => unit_id).filter((id) => !exclude.has(id)));
+  const waiting = new Set(
+    rows.map(({ unit_id }) => unit_id).filter((id) => !exclude.has(id) && (only === null || only.has(id))),
+  );
   const wanted = (unit: TranslationUnit): boolean => waiting.has(unit.unit_id) && plan.inScope(unit);
   return planRequests(plan.units, plan.chapterOf, wanted).map((request) => ({ request, model: plan.model }));
 }
@@ -530,7 +544,7 @@ export function reportProgress(run: Run): void {
  * 重送到沒有要送的單位。驗證失敗的單位回到佇列，要等這一輪做完才一起重組，
  * 對半拆的請求排在最前面，不會被併回原本的大小。`attempts` 的上限保證走得完。
  */
-async function drain(run: Run): Promise<Finding | null> {
+export async function drain(run: Run): Promise<Finding | null> {
   for (let queue = queuedWork(run); queue.length > 0; queue = queuedWork(run)) {
     for (let work = queue.shift(); work !== undefined; work = queue.shift()) {
       const { next, stop } = await sendWork(run, work);
@@ -610,10 +624,17 @@ export function connect(home: string, book: Book, store: Store, host: LLMHost): 
 
 export interface RunSetup {
   readonly mode: RequestMode;
-  /** 要花新的錢的指令要先確認估價（ADR-0103 第 14 項）。 */
+  /** 要花新的錢的指令要先確認估價（ADR-0103 第 14 項）。試翻有自己的確認（ADR-0135）。 */
   readonly confirm: boolean;
   /** 即時模式遇到還沒收回的批次要停下，否則同一段要付兩次（ADR-0107 第 16 項）。 */
   readonly refusePending: boolean;
+  /** 試翻：只送挑中的單位，快取照試翻的設定，不套校準（ADR-0135）。 */
+  readonly trial?: { readonly only: ReadonlySet<string>; readonly override: PlanOverride };
+}
+
+/** 試翻挑中、還沒校準的單位（ADR-0135）。 */
+export function trialUnitIds(store: Store): Set<string> {
+  return new Set(store.all<{ unit_id: string }>('SELECT unit_id FROM trial_unit').map(({ unit_id }) => unit_id));
 }
 
 /** 開資料庫、組請求、檢查確認、載入驗證規則，把流程要的東西放進 `Run`。 */
@@ -630,7 +651,7 @@ export async function withRun(
     if (setup.refusePending && outstandingBatches(store) > 0) {
       return { data: { book: slug }, findings: [finding('batch.pending', 'fail', { book: slug })] };
     }
-    const { plan, findings } = await planBook(home, book, store, setup.mode);
+    const { plan, findings } = await planBook(home, book, store, setup.mode, setup.trial?.override);
     if (plan === null) return { data: { book: slug }, findings };
     const budget = book.config.budget_usd;
     const confirmed = budget !== undefined && stageFingerprint(store, ESTIMATE_STAGE) === plan.fingerprint;
@@ -664,6 +685,8 @@ export async function withRun(
       sent: 0,
       batches: 0,
       rewound: 0,
+      trialUnits: trialUnitIds(store),
+      only: setup.trial?.only ?? null,
     };
     return await work(run, findings);
   } finally {

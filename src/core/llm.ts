@@ -187,6 +187,11 @@ export interface MessageReply {
     readonly output_tokens: number;
     readonly cache_read_input_tokens?: number | null;
     readonly cache_creation_input_tokens?: number | null;
+    /** 寫入依 TTL 的細項，1 小時的價錢不同（ADR-0135）。 */
+    readonly cache_creation?: {
+      readonly ephemeral_5m_input_tokens?: number | null;
+      readonly ephemeral_1h_input_tokens?: number | null;
+    } | null;
   };
 }
 
@@ -195,6 +200,7 @@ export interface MessageReply {
  * 所以一律看 `stop_reason`（白皮書 §5.7）。
  */
 export function messageResult({ id, stop_reason, stop_details, content, usage }: MessageReply): Answer {
+  const hour = usage.cache_creation?.ephemeral_1h_input_tokens ?? 0;
   const answered = {
     requestId: id,
     stopReason: stop_reason,
@@ -203,6 +209,7 @@ export function messageResult({ id, stop_reason, stop_details, content, usage }:
       output_tokens: usage.output_tokens,
       cache_read_tokens: usage.cache_read_input_tokens ?? 0,
       cache_write_tokens: usage.cache_creation_input_tokens ?? 0,
+      ...(hour > 0 ? { cache_write_1h_tokens: hour } : {}),
     },
   };
   if (stop_reason === 'refusal') {

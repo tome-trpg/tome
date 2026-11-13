@@ -45,7 +45,8 @@ TOME 的設計目標是解決這些問題，並讓譯文可以直接用於實際
 | 解析頁面 | `tome extract` | 已實作：將原生文字頁交給解析引擎，組裝成文件，並檢查字元是否遺失 |
 | 擷取專有名詞 | `tome scan-terms` | 已實作：在本機挑出專有名詞，交由模型提議譯名，送出前先估價並確認。提議的品質尚未驗證 |
 | 審定譯名 | `tome glossary review`、`tome glossary import` | 已實作：以本機的審定檔鎖定或拒絕提議，也可從 CSV 匯入自己整理的譯名 |
-| 估算費用 | `tome estimate`、`tome translate --dry-run` | 已實作：在本機估算，不連網，估算比例尚未校準 |
+| 估算費用 | `tome estimate`、`tome translate --dry-run` | 已實作：在本機估算，不連網。估算比例依兩本書的紀錄提出，可再以試翻依各書校準 |
+| 試翻 | `tome trial`、`tome run --trial` | 已實作：先翻約一成的請求，依實際用量校準這本書的估價，並量測提示快取的命中率。送出前先估價並確認，試翻的譯文會保留。尚未以實際的 API 執行過 |
 | 翻譯 | `tome translate`、`tome batch status`、`collect`、`cancel` | 已實作：預設以批次送出，加上 `--realtime` 則逐一送出。已用實際的 API 翻譯過一篇公有領域短篇與一本規則書的大部分內容，批次與即時模式都用過，但只用過一個模型 |
 | 重新驗證譯文 | `tome verify` | 已實作，不消耗 token |
 | 對照原文與譯文 | `tome preview` | 已實作，只存放於本機 |

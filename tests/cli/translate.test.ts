@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -361,6 +362,19 @@ describe('the estimate comes first (ADR-0104 item 21)', () => {
     const { exit, output } = await translate(lib, host);
     expect(exit).toBe(1);
     expect(found(output, 'translate.not_confirmed')?.level).toBe('fail');
+    expect(output.data).toEqual({ book: 'book' });
+    expect(provider.requests).toHaveLength(0);
+  });
+
+  it('stops at a book pattern that does not compile, and sends nothing', async () => {
+    const lib = await confirmed();
+    const path = join(lib.home, 'books', 'book', 'book.yaml');
+    writeFileSync(path, `${readFileSync(path, 'utf8')}patterns:\n  - id: broken\n    use: mask\n    regex: 'TC-(\\d'\n`);
+    const { provider, host } = await fake(GOOD);
+    const { exit, output } = await translate(lib, host);
+    expect(exit).toBe(1);
+    expect(codes(output)).toContain('book.bad_pattern');
+    expect(output.data).toEqual({ book: 'book' });
     expect(provider.requests).toHaveLength(0);
   });
 
@@ -943,6 +957,38 @@ describe('translation memory (ADR-0104 item 18)', () => {
     await translate(lib, host);
     expect(provider.requests.map(unitsIn)).toEqual([1, 1]);
     expect(statesOf(lib.home)).toEqual(['DONE', 'DONE', 'DONE']);
+  });
+
+  // 短段落的譯法看前一段（ADR-0104 第 18 項）：同一句短話跟在不同的段落後面，不拿記憶裡的；
+  // 長段落不看前一段，照樣拿。兩章的最後一段相同，只看後一段的話兩句短話會被當成同一個。
+  it('reads the paragraph before a short one, not the one after', async () => {
+    const lib = await library();
+    const path = join(lib.home, 'books', 'book', 'ir', 'document.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { blocks: Record<string, unknown>[]; sections: unknown[] };
+    const [model] = document.blocks;
+    if (model === undefined) throw new Error('the book has no blocks');
+    const texts = [
+      'The warden lights a lantern at the ford before the night comes down.',
+      'It moves.',
+      'The ferry waits for the tide to turn before it crosses the marsh.',
+      'A heron stands in the reeds by the bank and watches the water.',
+      'It moves.',
+      'The ferry waits for the tide to turn before it crosses the marsh.',
+    ];
+    document.blocks = texts.map((text, index) => {
+      const content_hash = createHash('sha256').update(text).digest('hex');
+      return { ...model, id: `p0001-00000${index}`, content_hash, text, ...('raw' in model ? { raw: text } : {}) };
+    });
+    document.sections = [
+      { title: 'One', block_id: 'p0001-000000', children: [] },
+      { title: 'Two', block_id: 'p0001-000003', children: [] },
+    ];
+    writeFileSync(path, JSON.stringify(document));
+    await estimate(lib, '--realtime', '--budget', '100', '--confirm');
+    const { provider, host } = await fake(GOOD);
+    expect((await translate(lib, host)).exit).toBe(0);
+    // 第二章的長段落第一次出現要送，短話跟在不同的段落後面也要送，最後一段拿記憶裡的。
+    expect(provider.requests.map(unitsIn)).toEqual([3, 2]);
   });
 });
 

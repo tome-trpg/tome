@@ -156,6 +156,27 @@ describe('locked entity cards in the translation (ADR-0120)', () => {
     expect(text).not.toContain('Salt Marsh');
   });
 
+  // 估價的指紋只算鎖定、有譯名的卡，算它們的內容，不只算張數（ADR-0120）。
+  it('asks for the estimate again when a locked card takes another translation', async () => {
+    const lib = await book();
+    expect((await tome(lib, null, 'estimate', 'book', '--realtime', '--budget', '100', '--confirm')).output.data['confirmed']).toBe(true);
+    withStore(lib.home, (store) => store.run("UPDATE entity SET target = '灰袍守望者' WHERE source = 'Grey Warden'"));
+    expect((await tome(lib, null, 'estimate', 'book', '--realtime')).output.data['confirmed']).toBe(false);
+  });
+
+  it('stays confirmed when a card that is not used comes in', async () => {
+    const lib = await book();
+    expect((await tome(lib, null, 'estimate', 'book', '--realtime', '--budget', '100', '--confirm')).output.data['confirmed']).toBe(true);
+    addCards(lib.home, [{ source: 'Salt Marsh', target: '鹽沼', status: 'proposed' }]);
+    withStore(lib.home, (store) =>
+      store.run(
+        `INSERT INTO entity (source, target, class, keep_source, status, origin, sources, occurrences, created_at, updated_at)
+         VALUES ('Tide Stones', NULL, 'thing', 0, 'locked', 'pass0', '[]', 2, 't', 't')`,
+      ),
+    );
+    expect((await tome(lib, null, 'estimate', 'book', '--realtime')).output.data['confirmed']).toBe(true);
+  });
+
   it('asks for the estimate again once a locked card changes', async () => {
     const { lib, provider } = await translatedBook();
     await tome(lib, null, 'glossary', 'import', 'book', csv('source,target\nOld Ferry,老渡口\n'));

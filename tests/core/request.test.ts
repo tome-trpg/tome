@@ -1,9 +1,15 @@
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readBook } from '../../src/core/book.ts';
 import type { DocumentBlock, IrDocument } from '../../src/core/ir.ts';
+import { saveCalibration } from '../../src/core/ledger.ts';
 import { loadTargetLanguage } from '../../src/core/language.ts';
 import { maskText } from '../../src/core/mask.ts';
 import { findPack, resolvePack, type LocalizedTerm, type ResolvedPack } from '../../src/core/pack.ts';
 import { staticPrefix } from '../../src/core/prompt.ts';
+import { estimateRequest } from '../../src/core/estimate.ts';
 import { findModel, loadProvider } from '../../src/core/provider.ts';
 import { chapterMap, parseChapters } from '../../src/core/chapters.ts';
 import {
@@ -15,6 +21,7 @@ import {
   maxTokens,
   PAIRED_OUTPUT_TOKENS,
   planBatches,
+  planBook,
   planRequests,
   REQUEST_CHARS,
   REQUEST_UNITS,
@@ -26,9 +33,11 @@ import {
   type Feedback,
   type PlannedRequest,
 } from '../../src/core/request.ts';
+import { openBookStore } from '../../src/core/store.ts';
 import { parseUnits } from '../../src/core/tags.ts';
 import type { TranslationUnit } from '../../src/core/units.ts';
 import { tempDir } from '../helpers.ts';
+import { library, MODEL } from '../helpers/library.ts';
 
 // 文字都是這裡編的。
 
@@ -637,6 +646,25 @@ describe('requestBody', () => {
     expect(maxTokens(provider, sonnet, cells) - maxTokens(provider, sonnet, plain)).toBe(80);
   });
 
+  // 斷點只有一個，在靜態前綴的結尾（ADR-0135）。
+  it('marks the end of the static prefix for the prompt cache when asked', () => {
+    const [request] = planRequests([unit('a', text(300))], ONE_CHAPTER);
+    if (request === undefined) throw new Error('no request');
+    const prefix = staticPrefix(language, generic());
+    const cached = requestBody(request, { prefix, user: 'x', model: opus, provider, cache: { ttl: '1h', hitRate: 0 } });
+    expect(cached.system).toEqual([{ type: 'text', text: prefix, cache_control: { type: 'ephemeral', ttl: '1h' } }]);
+    const quick = requestBody(request, { prefix, user: 'x', model: opus, provider, cache: { ttl: '5m', hitRate: 0.9 } });
+    expect(quick.system).toEqual([{ type: 'text', text: prefix, cache_control: { type: 'ephemeral', ttl: '5m' } }]);
+    expect(cached.messages).toEqual([{ role: 'user', content: 'x' }]);
+  });
+
+  it('sends the prefix as plain text without a cache', () => {
+    expect(body(3000).system).toBe(staticPrefix(language, generic()));
+    const [request] = planRequests([unit('a', text(300))], ONE_CHAPTER);
+    if (request === undefined) throw new Error('no request');
+    expect(requestBody(request, { prefix: 'p', user: 'x', model: opus, provider, cache: null }).system).toBe('p');
+  });
+
   it('sends no sampling parameters, the current API refuses them', () => {
     for (const name of ['temperature', 'top_p', 'top_k']) expect(body(3000)).not.toHaveProperty(name);
   });
@@ -662,6 +690,21 @@ describe('sizeRequest (ADR-0134)', () => {
     const output = (150 / 3) * 1.2 + 5 * 12;
     expect(sized.estimate.high_usd).toBeCloseTo((input * 1 + output * 5) / 1_000_000, 12);
     expect(sized.estimate.low_usd).toBe(sized.estimate.high_usd);
+  });
+
+  // 試翻校準的倍數與快取，估價與請求內容用同一份（ADR-0135）。
+  it('passes the calibration and the cache on to both the estimate and the body', () => {
+    const cells = Array.from({ length: 5 }, (_, index) => unit(`c${index}`, text(30)));
+    const [request] = planRequests(cells, ONE_CHAPTER);
+    if (request === undefined) throw new Error('no request');
+    const pack = generic();
+    const prefix = staticPrefix(language, pack);
+    const user = userMessage(request, { terms: [], pack });
+    const context = { calibration: { input: 1.2, output: 0.9 }, cache: { ttl: '1h', hitRate: 0.7 } } as const;
+    const sized = sizeRequest(request, { prefix, model: sonnet, provider: flat, mode: 'batch', terms: [], pack, ...context });
+    const size = { prefixChars: prefix.length, userChars: user.length, sourceChars: 150, units: 5 };
+    expect(sized.estimate).toEqual(estimateRequest(flat, sonnet, size, 'batch', context));
+    expect(sized.body.system).toEqual([{ type: 'text', text: prefix, cache_control: { type: 'ephemeral', ttl: '1h' } }]);
   });
 
   it('costs more for a request of many short units than for one unit of the same text', () => {
@@ -768,5 +811,77 @@ describe('chapters (ADR-0103)', () => {
 
   it.each(['', '0', '6', '3-1', 'a', '1-', '1,,2', '1-2-3'])('refuses %j', (spec) => {
     expect(() => parseChapters(spec, 5)).toThrow(expect.objectContaining({ code: 'chapters.invalid' }));
+  });
+});
+
+// 估價的內容指紋釘成固定值（ADR-0103、ADR-0115、ADR-0120、ADR-0135）。使用者確認過的估價存的就是這個值：
+// 它一改，每本書已確認的估價都會失效，要重新確認，CHANGELOG 要寫。沒有章節層級、鎖定的卡、校準時
+// 不加進去，舊的確認才不會失效，這組值釘的就是這個承諾。提示、規則包或供應商設定檔改了，它本來就會
+// 跟著變，照 prompt.test.ts 的做法更新，並在 CHANGELOG 說估價要重新確認。
+describe('the fingerprint of the translation estimate', () => {
+  /** 合成的段落，段落編號、內容與出處都固定，兩個平台算出來相同。 */
+  function block(id: string, source: string): Record<string, unknown> {
+    return {
+      id,
+      content_hash: createHash('sha256').update(source).digest('hex'),
+      role: 'paragraph',
+      flow: 'main',
+      spans: [{ page: 0, bbox: [0, 0, 10, 10] }],
+      text: source,
+      raw: source,
+      lang: 'en',
+      writing_mode: 'horizontal-tb',
+      provenance: { engine: 'fake', version: '1', config_hash: 'b'.repeat(64) },
+    };
+  }
+
+  async function fingerprint(extras: { readonly level?: boolean; readonly card?: boolean; readonly calibration?: boolean } = {}): Promise<string> {
+    const lib = await library();
+    const path = join(lib.home, 'books', 'book', 'ir', 'document.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    const blocks = [
+      block('p0000-aaaaa1', 'The Grey Warden keeps the Salt Marsh, and she counts the tide stones every single night.'),
+      block('p0000-aaaaa2', 'It rains on the marsh all winter long, and the ferry waits for the tide to turn again.'),
+    ];
+    writeFileSync(path, JSON.stringify({ ...document, blocks, sections: [{ title: 'One', block_id: 'p0000-aaaaa1', children: [] }] }));
+    if (extras.level === true) {
+      const yaml = join(lib.home, 'books', 'book', 'book.yaml');
+      writeFileSync(yaml, `${readFileSync(yaml, 'utf8')}chapter_level: 1\n`);
+    }
+    const store = openBookStore(lib.home, 'book');
+    try {
+      if (extras.card === true) {
+        store.run(
+          `INSERT INTO entity (source, target, class, gender, pronoun, keep_source, status, origin, sources, occurrences, created_at, updated_at)
+           VALUES ('Grey Warden', '灰色守望者', 'person', 'female', '她', 0, 'locked', 'pass0', '[]', 2, 't', 't')`,
+        );
+      }
+      if (extras.calibration === true) {
+        saveCalibration(store, {
+          model: MODEL,
+          mode: 'realtime',
+          input_factor: 1.25,
+          output_factor: 0.75,
+          requests: 5,
+          resend_ratio: 0.2,
+          cache_ttl: '5m',
+          cache_hit_rate: 0.5,
+          created_at: '2026-11-13T00:00:00.000Z',
+        });
+      }
+      const { plan } = await planBook(lib.home, readBook(lib.home, 'book'), store, 'realtime');
+      if (plan === null) throw new Error('the book has no plan');
+      return plan.fingerprint;
+    } finally {
+      store.close();
+    }
+  }
+
+  it('leaves out the chapter level, the locked cards and the calibration when there are none', async () => {
+    expect(await fingerprint()).toBe('8e05819b4519f74a11c6b864ac20e5de4cd59c70f1f95e569e5032a051ef6fea');
+  });
+
+  it('takes in the chapter level, the locked cards and the calibration when there are', async () => {
+    expect(await fingerprint({ level: true, card: true, calibration: true })).toBe('42258800c9a20fc6b97b5af1c827665deab3116d6101ecce7d82a927d04448b2');
   });
 });

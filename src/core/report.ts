@@ -73,6 +73,15 @@ export interface EstimateItem {
   readonly spent_usd: number;
   /** 花費落在估價區間的哪裡，0 是下限、100 是上限；區間寬度是 0 時是 null。 */
   readonly position: number | null;
+  /** 估價的中間值；遷移第 15 版之前確認的是 null（ADR-0135）。 */
+  readonly middle_usd: number | null;
+  /** 依試翻校準過（ADR-0135）。 */
+  readonly calibrated: boolean;
+  /**
+   * Q-6：實際的翻譯花費 ÷ 中間值 − 1。只算校準過的翻譯估價，含重送與回退，不含 Pass 0 與試翻；
+   * 其他的、或還沒有花費時是 null（ADR-0135）。
+   */
+  readonly q6: number | null;
 }
 
 /**
@@ -188,13 +197,30 @@ function coverageOf(units: readonly UnitRow[]): Record<string, number> {
   return { total: counts.total, kept: counts.kept, fielded: counts.fielded, human: counts.human, ...buckets };
 }
 
+/** 每個階段的估價對照哪些帳：Pass 0 看單位代號，試翻看標記，翻譯是其他的（ADR-0135）。 */
+const SCOPES: Readonly<Record<string, string>> = {
+  scan: PASS0,
+  trial: `NOT ${PASS0} AND trial = 1`,
+  translate: `NOT ${PASS0} AND trial = 0`,
+};
+
+interface EstimateRow {
+  readonly stage: string;
+  readonly mode: string;
+  readonly created_at: string;
+  readonly low_usd: number;
+  readonly high_usd: number;
+  readonly middle_usd: number | null;
+  readonly calibrated: number;
+}
+
 function estimatesOf(store: Store): EstimateItem[] {
-  const rows = store.all<{ stage: string; mode: string; created_at: string; low_usd: number; high_usd: number }>(
-    'SELECT stage, mode, created_at, low_usd, high_usd FROM estimate ORDER BY id',
+  const rows = store.all<EstimateRow>(
+    'SELECT stage, mode, created_at, low_usd, high_usd, middle_usd, calibrated FROM estimate ORDER BY id',
   );
-  return rows.map((row, index) => {
+  return rows.map(({ calibrated, ...row }, index) => {
     const next = rows.slice(index + 1).find(({ stage }) => stage === row.stage);
-    const scope = row.stage === 'scan' ? PASS0 : `NOT ${PASS0}`;
+    const scope = SCOPES[row.stage] ?? SCOPES['translate'];
     const spent =
       store.get<{ spent: number | null }>(
         `SELECT SUM(cost_usd) AS spent FROM ledger WHERE ${scope} AND created_at >= ? AND created_at < ?`,
@@ -202,8 +228,21 @@ function estimatesOf(store: Store): EstimateItem[] {
         next?.created_at ?? '9999',
       )?.spent ?? 0;
     const width = row.high_usd - row.low_usd;
-    return { ...row, spent_usd: spent, position: width > 0 ? Math.round(((spent - row.low_usd) / width) * 100) : null };
+    const counted = row.stage === 'translate' && calibrated === 1 && row.middle_usd !== null && row.middle_usd > 0 && spent > 0;
+    return {
+      ...row,
+      spent_usd: spent,
+      position: width > 0 ? Math.round(((spent - row.low_usd) / width) * 100) : null,
+      calibrated: calibrated === 1,
+      q6: counted && row.middle_usd !== null ? spent / row.middle_usd - 1 : null,
+    };
   });
+}
+
+/** Q-6 的百分比，帶正負號、一位小數（ADR-0135）。 */
+export function q6Text(q6: number): string {
+  const value = Math.round(q6 * 1000) / 10;
+  return `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
 }
 
 /** 同一個原文、還沒鎖定卡，各單位回報了兩種以上的譯名（ADR-0123）。 */
@@ -613,6 +652,9 @@ export function reportBook(home: string, slug: string): PlanOutcome {
       Object.fromEntries(Object.entries(values).map(([name, value]) => [name, String(value)]));
     const latest = report.estimates.at(-1);
     const estimate = latest === undefined ? [] : [estimateFinding(latest)];
+    // 最近一次校準過、已經有花費的翻譯估價（ADR-0135）。
+    const measured = report.estimates.filter(({ q6 }) => q6 !== null).at(-1);
+    const q6 = measured?.q6 == null ? [] : [finding('report.q6', 'info', { percent: q6Text(measured.q6) })];
     return {
       data: { book: slug, coverage: report.coverage, spent_usd: spent, spent: report.spent, estimates: report.estimates, counts },
       findings: [
@@ -624,6 +666,7 @@ export function reportBook(home: string, slug: string): PlanOutcome {
           scan: usd(report.spent.scan),
         }),
         ...estimate,
+        ...q6,
         finding('report.issues', 'info', text(counts)),
       ],
     };

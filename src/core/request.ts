@@ -23,14 +23,23 @@ import {
 import { hitCount, scanBody, type PiiRules } from './egress/gate.ts';
 import { TomeError } from './errors.ts';
 import { bookSummary, entityCards, type EntityCard } from './entities.ts';
-import { estimateRequest, outputTokens, sumEstimates, type Estimate } from './estimate.ts';
+import {
+  breakEven,
+  estimateRequest,
+  outputTokens,
+  sumEstimates,
+  type CacheSetting,
+  type CacheTtl,
+  type Calibration,
+  type Estimate,
+} from './estimate.ts';
 import { fieldUnits } from './fields.ts';
 import { fieldedFindings } from './status.ts';
 import { readDocument } from './extract.ts';
 import { finding, type Finding } from './findings.ts';
 import type { IrDocument } from './ir.ts';
 import { loadTargetLanguage } from './language.ts';
-import { recordEstimate, spentUsd } from './ledger.ts';
+import { loadCalibration, recordEstimate, spentUsd, type CalibrationRow } from './ledger.ts';
 import { packHash, type LocalizedTerm, type ResolvedPack } from './pack.ts';
 import { feedbackSentences, fillSentence, promptHash, staticPrefix } from './prompt.ts';
 import {
@@ -384,10 +393,18 @@ export function userMessage(request: PlannedRequest, { terms, pack, feedback, re
   return parts.filter((part) => part !== null).join('\n\n');
 }
 
+/** 帶快取斷點的靜態前綴（ADR-0135）。 */
+export interface SystemBlock {
+  readonly type: 'text';
+  readonly text: string;
+  readonly cache_control: { readonly type: 'ephemeral'; readonly ttl: CacheTtl };
+}
+
 export interface MessagesBody extends ThinkingParams {
   readonly model: string;
   readonly max_tokens: number;
-  readonly system: string;
+  /** 沒開快取是字串，跟 ADR-0135 之前一樣；開了是一塊帶斷點的文字。SDK 的型別要可變的陣列。 */
+  readonly system: string | [SystemBlock];
   readonly messages: readonly [{ readonly role: 'user'; readonly content: string }];
 }
 
@@ -396,6 +413,8 @@ export interface BodyOptions {
   readonly user: string;
   readonly model: ProviderModel;
   readonly provider: Provider;
+  /** 開快取時，斷點只有一個，在靜態前綴的結尾（ADR-0135）。 */
+  readonly cache?: CacheSetting | null;
 }
 
 /**
@@ -408,12 +427,14 @@ export function maxTokens(provider: Provider, model: ProviderModel, units: reado
   return Math.max(MIN_MAX_TOKENS, Math.ceil((expected + tags) * OUTPUT_ROOM));
 }
 
-/** 組成 Messages API 的內容。 */
-export function requestBody({ units }: PlannedRequest, { prefix, user, model, provider }: BodyOptions): MessagesBody {
+/** 組成 Messages API 的內容。`user` 每個請求都不同，放在斷點之後。 */
+export function requestBody({ units }: PlannedRequest, { prefix, user, model, provider, cache = null }: BodyOptions): MessagesBody {
+  const system: MessagesBody['system'] =
+    cache === null ? prefix : [{ type: 'text', text: prefix, cache_control: { type: 'ephemeral', ttl: cache.ttl } }];
   return {
     model: model.id,
     max_tokens: maxTokens(provider, model, units),
-    system: prefix,
+    system,
     messages: [{ role: 'user', content: user }],
     ...thinkingParams(model),
   };
@@ -434,23 +455,50 @@ export interface SizeOptions extends MessageContext {
   readonly model: ProviderModel;
   readonly provider: Provider;
   readonly mode: RequestMode;
+  /** 試翻量到的倍數與快取，沒有是 null（ADR-0135）。 */
+  readonly calibration?: Calibration | null;
+  readonly cache?: CacheSetting | null;
 }
 
 /** 組成請求內容並估價。實際送出與估價走同一段，數字才對得起來。 */
 export function sizeRequest(request: PlannedRequest, options: SizeOptions): SizedRequest {
-  const { prefix, model, provider, mode } = options;
+  const { prefix, model, provider, mode, calibration = null, cache = null } = options;
   const user = userMessage(request, options);
   const sourceChars = charsOf(request.units);
   return {
-    body: requestBody(request, { prefix, user, model, provider }),
+    body: requestBody(request, { prefix, user, model, provider, cache }),
     sourceChars,
     estimate: estimateRequest(
       provider,
       model,
       { prefixChars: prefix.length, userChars: user.length, sourceChars, units: request.units.length },
       mode,
+      { calibration, cache },
     ),
   };
+}
+
+/** 試翻量到的命中率高過損益兩平點，主翻譯才開快取，TTL 跟試翻相同（ADR-0135）。 */
+export function cacheOf(calibration: CalibrationRow | null, model: ProviderModel, mode: RequestMode): CacheSetting | null {
+  if (calibration === null || calibration.cache_ttl === null || calibration.cache_hit_rate === null) return null;
+  const ttl = calibration.cache_ttl;
+  return calibration.cache_hit_rate > breakEven(model, mode, ttl) ? { ttl, hitRate: calibration.cache_hit_rate } : null;
+}
+
+/** 估價怎麼校準的，`tome estimate` 印出來：用了幾個請求、命中率、損益兩平點，只有數字。 */
+function calibrationFindings(plan: BookPlan): Finding[] {
+  const { calibration, model, mode, cache } = plan;
+  if (calibration === null) return plan.requests.length === 0 ? [] : [finding('estimate.uncalibrated', 'info')];
+  const used = [finding('estimate.calibrated', 'info', { requests: String(calibration.requests) })];
+  const { cache_ttl: ttl, cache_hit_rate: rate } = calibration;
+  if (ttl === null || rate === null) return used;
+  return [...used, finding(cache === null ? 'estimate.cache_off' : 'estimate.cache_on', 'info', cacheParams(rate, model, mode, ttl))];
+}
+
+/** 命中率與損益兩平點是百分比，TTL 另外給分鐘數，訊息用得到（ADR-0135）。 */
+export function cacheParams(rate: number, model: ProviderModel, mode: RequestMode, ttl: CacheTtl): Record<string, string> {
+  const percent = (share: number): string => String(Math.round(share * 100));
+  return { rate: percent(rate), break_even: percent(breakEven(model, mode, ttl)), ttl, minutes: ttl === '1h' ? '60' : '5' };
 }
 
 export interface BookPlan {
@@ -487,6 +535,15 @@ export interface BookPlan {
   readonly bookPatterns: number;
   readonly terms: readonly LocalizedTerm[];
   readonly recent: ActiveEntities;
+  /** 這本書在這個模型與模式的校準，沒試翻過是 null（ADR-0135）。 */
+  readonly calibration: CalibrationRow | null;
+  /** 請求帶不帶 `cache_control`：試翻一律帶，主翻譯要命中率過損益兩平點（ADR-0135）。 */
+  readonly cache: CacheSetting | null;
+}
+
+/** 試翻的計畫：不套校準，快取照試翻的設定（ADR-0135）。 */
+export interface PlanOverride {
+  readonly cache: CacheSetting;
 }
 
 export interface PlanResult {
@@ -504,7 +561,13 @@ function pendingUnits(store: Store): ReadonlySet<string> {
 }
 
 /** 組出這本書還要送的請求。單位寫進 `book.db`，其他什麼都不動。 */
-export async function planBook(home: string, book: Book, store: Store, mode: RequestMode): Promise<PlanResult> {
+export async function planBook(
+  home: string,
+  book: Book,
+  store: Store,
+  mode: RequestMode,
+  override?: PlanOverride,
+): Promise<PlanResult> {
   const modelId = workspaceModel(home, 'translator_model');
   if (modelId === undefined) throw new TomeError('model.missing');
   const provider = loadProvider(PROVIDER_ID);
@@ -547,8 +610,11 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
 
   const prefix = staticPrefix(language, pack, bookSummary(store));
   const recent = activeEntities(units, terms, chapterOf);
+  const calibration = override === undefined ? loadCalibration(store, model.id, mode) : null;
+  const cache = override === undefined ? cacheOf(calibration, model, mode) : override.cache;
+  const factors = calibration === null ? null : { input: calibration.input_factor, output: calibration.output_factor };
   const sized = requests.map((request) =>
-    sizeRequest(request, { prefix, terms, pack, recent, model, provider: provider.profile, mode }),
+    sizeRequest(request, { prefix, terms, pack, recent, model, provider: provider.profile, mode, calibration: factors, cache }),
   );
   const locked = cardsDigest(cards);
   const planned = requests.flatMap((request) => request.units);
@@ -571,6 +637,8 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
         ...(book.config.chapter_level === undefined ? [] : [book.config.chapter_level]),
         // 鎖定的實體卡改了，請求就不同。沒有卡時不加（ADR-0120）；提要在靜態前綴裡，提示的雜湊已經算到。
         ...(locked === null ? [] : [locked]),
+        // 試翻校準過，估價與快取就不同。沒有校準時不加，舊的確認才不會失效（ADR-0135）。
+        ...(calibration === null ? [] : [calibration]),
       ]),
     )
     .digest('hex');
@@ -599,6 +667,8 @@ export async function planBook(home: string, book: Book, store: Store, mode: Req
       bookPatterns: bookPatterns.length,
       terms,
       recent,
+      calibration,
+      cache,
     },
     findings: packFindings,
   };
@@ -640,6 +710,8 @@ function planData(plan: BookPlan): Readonly<Record<string, unknown>> {
     retention_days: plan.provider.profile.retention_days,
     chapter_level: plan.level,
     book_patterns: plan.bookPatterns,
+    calibrated: plan.calibration !== null,
+    cache_ttl: plan.cache?.ttl ?? null,
   };
 }
 
@@ -724,6 +796,11 @@ function chosenSettings(home: string, book: Book, options: BookSettings): Partia
   return patch;
 }
 
+/** 估價的中間值：區間的下限是它乘 `low`（ADR-0103）。 */
+export function middleOf({ estimate, provider }: Pick<BookPlan, 'estimate' | 'provider'>): number {
+  return estimate.low_usd / provider.profile.estimate.low;
+}
+
 function confirmation(
   store: Store,
   plan: BookPlan,
@@ -750,8 +827,11 @@ function confirmation(
     recordStage(store, ESTIMATE_STAGE, plan.fingerprint);
     // 同一份估價再確認一次不另記，交付報告才不會多出一列沒有花費的（ADR-0123）。
     if (!confirmed) {
-      const { mode, model, requests, estimate } = plan;
-      recordEstimate(store, { stage: 'translate', mode, model: model.id, requests: requests.length, ...estimate });
+      const { mode, model, requests, estimate, calibration } = plan;
+      // 中間值記下來，Q-6 拿它比，不用之後反推（ADR-0135）。
+      const middle_usd = middleOf(plan);
+      const calibrated = calibration !== null;
+      recordEstimate(store, { stage: 'translate', mode, model: model.id, requests: requests.length, ...estimate, middle_usd, calibrated });
     }
     return { confirmed: true, findings: [shown, finding('estimate.confirmed', 'info')] };
   }
@@ -780,7 +860,15 @@ export async function estimateLocked(options: EstimateOptions): Promise<PlanOutc
     const { confirmed, findings: decided } = confirmation(store, plan, budget, spent, confirm);
     return {
       data: { book: slug, ...planData(plan), budget_usd: budget ?? null, spent_usd: spent, confirmed },
-      findings: [...summary, ...fieldedFindings(plan.fieldedCount), ...plan.levelFindings, ...decided, ...warnings, ...prices],
+      findings: [
+        ...summary,
+        ...calibrationFindings(plan),
+        ...fieldedFindings(plan.fieldedCount),
+        ...plan.levelFindings,
+        ...decided,
+        ...warnings,
+        ...prices,
+      ],
     };
   } finally {
     store.close();
@@ -825,7 +913,7 @@ async function dryRunLocked(home: string, slug: string, mode: RequestMode): Prom
   try {
     const { plan, findings } = await planBook(home, book, store, mode);
     if (plan === null) return { data: { book: slug }, findings };
-    const prefixes = new Set(plan.bodies.map(({ system }) => system));
+    const prefixes = new Set(plan.bodies.map(({ system }) => JSON.stringify(system)));
     return {
       data: { book: slug, ...planData(plan) },
       findings: [
