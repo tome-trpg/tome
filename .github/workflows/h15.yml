@@ -6,6 +6,10 @@ name: h15
 
 on:
   workflow_dispatch:
+  # 暫時的：workflow 在 main 上之前不能手動觸發，回合 046 合併前用 PR 量一次（ADR-0136），下一個 commit 拿掉。
+  pull_request:
+    paths:
+      - '.github/workflows/h15.yml'
 
 permissions:
   contents: read
