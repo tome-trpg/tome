@@ -119,7 +119,7 @@ external:
     sha256: d38af1fc2c27326b0ee8e42af0579684220ccf30809b195275d9daf29cedbb28
     retrieved: '2026-11-13'
   # 向美國著作權局註冊的 ORC License 定稿（TX 9-307-067），systems/d100-orc/LICENSE 照它抄。
-  # Azora Law 在 AxE 裡把授權條文獻給公有領域。
+  # Azora Law 在 AxE（ORC_AxE_FINAL.pdf 第 3 頁）裡把授權條文獻給公有領域（ADR-0136 第 2 項）。
   - id: orc-license
     url: https://downloads.paizo.com/ORC_LicenseFINAL.pdf
     file: ORC_LicenseFINAL.pdf

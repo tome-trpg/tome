@@ -24,7 +24,7 @@ amends: [ADR-0061]
 **文件與下載**
 
 1. **用 Chaosium 官方的 Basic Roleplaying ORC Content Document，PDF 版。** 它是 Chaosium 唯一的 ORC 內容文件，也有 RTF 版，但 `tome add` 只收 PDF。2026-11-13 下載到維護者的 `C:\Repos\tome-books\public\`，保留給 050 的全流程用：3,843,799 位元組，SHA-256 `d38af1fc2c27326b0ee8e42af0579684220ccf30809b195275d9daf29cedbb28`。網頁沒有公布雜湊、版本或大小，雜湊是下載後算的。文件 303 頁、有書籤；它是公開素材，可以讀內容，規則包從它衍生；文件本身、整段原文、譯文與截圖都不進 repo。
-2. **授權全文用註冊的定稿。** Chaosium 網頁上的 `ORC_License_FINAL.pdf`（202,167 位元組）內文標題是「ORC LICENSE [INTERIM]」，聲明的範例寫「TX00[number TBD]」，是註冊前的暫定版；條文第 V.c 節說以 Azora Law 向美國著作權局註冊的英文版為準。維護者同意改下載 Paizo 的 `ORC_LicenseFINAL.pdf`（248,604 位元組，SHA-256 `3fffe0fe69781b7115bccbfa0f51489e0a073c211772f5ebcd84d34f88f19b29`），內文標題是「ORC LICENSE FINAL」、號碼是 TX 9-307-067；兩版的條文只差這個號碼。另外下載的 Chaosium 暫定版與 AxE（251,968 位元組）只拿來讀，不是測試素材，不登記。
+2. **授權全文用註冊的定稿。** Chaosium 網頁上的 `ORC_License_FINAL.pdf`（202,167 位元組）內文標題是「ORC LICENSE [INTERIM]」，聲明的範例寫「TX00[number TBD]」，是註冊前的暫定版；條文第 V.c 節說以 Azora Law 向美國著作權局註冊的英文版為準。維護者同意改下載 Paizo 的 `ORC_LicenseFINAL.pdf`（248,604 位元組，SHA-256 `3fffe0fe69781b7115bccbfa0f51489e0a073c211772f5ebcd84d34f88f19b29`），內文標題是「ORC LICENSE FINAL」、號碼是 TX 9-307-067；兩版的條文只差這個號碼。授權條文在公有領域：Chaosium 網頁上的 AxE（`ORC_AxE_FINAL.pdf`）第 3 頁說 Azora Law 不主張條文的著作權，並「hereby dedicates it to the public domain」，「it」指 ORC License。另外下載的 Chaosium 暫定版與 AxE（251,968 位元組）只拿來讀，不是測試素材，不登記。
 3. **完成條件那一章是第 11 章 Creatures**（第 262 到 303 頁，42 頁），維護者在各章的數字出來後選定。下面的數字只用 PDF 的文字層算，**不是 `tome extract` 與 `tome estimate` 的結果**（成熟度：估算）：
    * 一行裡六個屬性（STR、CON、SIZ、INT、POW、DEX）齊全的行：Creatures 54 行、在 33 頁，其他章合計 4 行。
    * 估價：段落照行距粗分、照 `REQUEST_CHARS` 與 `REQUEST_UNITS` 裝進請求，照 ADR-0134 的算式、0.25 的重送餘裕，Sonnet 5.5 批次、只算主翻譯：138,981 個字元、約 280 段、約 26 個請求，$0.39 到 $0.63。不含 Pass 0、試翻與欄位化省下的請求。
@@ -44,7 +44,7 @@ amends: [ADR-0061]
    * 其他照預設。
    * 只在數值塊比對的角色寫成 `d100-orc:stat_block`：單位的角色帶規則包的 ID，寫成 `stat_block` 一處都比對不到，`tests/core/d100-orc-pack.test.ts` 擋著。
 8. **resistance roll 譯「抗衡檢定」，Resistance Table 譯「抗衡表」**；opposed roll 譯「對抗檢定」、opposed skill roll 譯「技能對抗檢定」。整份文件 resistance roll 出現 222 次、Resistance Table 43 次、opposed roll 6 次，另有約 46 處其他的 opposed，兩種都有，所以分開。Creatures 只有 resistance roll，這個回合只收它；Resistance Table 與兩種 opposed 留給之後的章。
-9. **授權與聲明**：`LICENSE` 放第 2 項的定稿全文，文字照 PDF 的文字層，只修正抽字留下的空白與合併的欄位，字詞逐字對過。`NOTICE` 照 Chaosium 網頁的寫法放 ORC 聲明與署名，我們的署名寫「TOME 的貢獻者（TOME contributors）」；這個包沒有自己保留的部分，全部照 ORC 授權提供；寫明不是 Chaosium 的官方產品、沒有背書。不放「Powered by BRP」標誌或任何圖檔；商標與世界設定的專有名詞不收進詞條。
+9. **授權與聲明**：`LICENSE` 放第 2 項的定稿全文，文字照 PDF 的文字層，只修正抽字留下的空白與合併的欄位，字詞逐字對過。`NOTICE` 照 Chaosium 網頁的寫法放 ORC 聲明與署名，我們的署名寫「TOME 的貢獻者（TOME contributors）」；這個包沒有自己保留的部分，全部照 ORC 授權提供；寫明不是 Chaosium 的官方產品、沒有背書。`NOTICE` 列的商標有出處：「Basic Roleplaying is the trademark of Chaosium Inc.」在內容文件第 1 頁（版權頁）；Call of Cthulhu、Chaosium、Fantasy World、Futureworld、Pendragon、RuneQuest、Superworld 在 Chaosium 的 [ORC License 頁](https://www.chaosium.com/orc-license/)。不放「Powered by BRP」標誌或任何圖檔；商標與世界設定的專有名詞不收進詞條。
 
 **登記、驗證與量測**
 
