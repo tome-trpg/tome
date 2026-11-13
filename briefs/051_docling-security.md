@@ -75,7 +75,7 @@ protectedFiles:
 ## Invariants
 
 - [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
-- [ ] `specs`、`test`、`engine` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
+- [x] `specs`、`test`、`engine` 在 Windows 與 Ubuntu 的 CI 第一次跑就通過，沒有靠重跑
 - [x] 重鎖只動 `soupsieve`，其他版本都不變
 - [x] 鎖定檔裡沒有任何套件還有 PyPI 列出的通報
 
@@ -94,5 +94,6 @@ protectedFiles:
 - 本機：`npm run spec`（468 條斷言，含 ADR-0137 的 3 條）、`npm run typecheck`、`npm test`（2318 個通過、5 個略過）、`npm run licenses`（299 個套件，0 個違規）都通過。
 - 本機引擎：`tome engine add docling` 裝到暫存工作區 45 秒，CPU 版；`tests/engine` 的 2 個測試通過，170 秒。CUDA 版沒有重新安裝，理由寫在 ADR-0137。
 - 這份通報在 PDF 流程碰不碰得到，沒有驗證，只粗查過 `bs4` 的匯入位置。
+- CI：PR 86 在 `a130482` 的 attempt 1 全綠，沒有重跑。`specs` #292、`test` #283、`engine` #76 都是 Windows 與 Ubuntu 兩個 job，另有 CodeQL 的三個分析。`engine` 的 Ubuntu 拿掉網路跑 `tests/engine` 34 秒，Windows 45 秒。
 
 **Accepted debt**：白皮書 §9 的 ADR 索引這個回合不加 ADR-0137，回合 046 正在改白皮書，合併後再補一列。
