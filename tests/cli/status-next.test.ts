@@ -160,6 +160,34 @@ describe('tome status names the next step (ADR-0138)', () => {
     expect(nextOf((await status(lib)).output)).toEqual({ step: 'scan', command: 'tome scan-terms book --confirm' });
   });
 
+  it('records a clean extract under the stage name an older book.db already holds', async () => {
+    const lib = await library();
+    const stages = withStore(lib.home, (store) => store.all<{ name: string }>('SELECT name FROM stage').map(({ name }) => name));
+    expect(stages).toContain('document');
+  });
+
+  it('prints no card line and no card counts before there are cards', async () => {
+    const { output } = await status(await library());
+    expect(output.findings.map(({ code }) => code)).not.toContain('status.entities');
+    expect(output.data).not.toHaveProperty('entities');
+  });
+
+  it('says each line of the counts as info, and which batches were deleted', async () => {
+    const lib = await library();
+    await run(['estimate', 'book'], lib.session().io);
+    withStore(lib.home, (store) => {
+      store.run("INSERT INTO batch (nonce, remote_id, state, requests, high_usd, created_at, deleted_at) VALUES ('d1', 'r1', 'collected', 1, 0.1, 't', 't')");
+      store.run("INSERT INTO batch (nonce, remote_id, state, requests, high_usd, created_at) VALUES ('d2', 'r2', 'collected', 1, 0.1, 't')");
+    });
+    const first = await status(lib);
+    const level = (output: Envelope, code: string): unknown => output.findings.find((item) => item.code === code)?.level;
+    expect(level(first.output, 'status.units')).toBe('info');
+    expect(level(first.output, 'status.no_budget')).toBe('info');
+    expect((first.output.data['batches'] as { deleted: boolean }[]).map(({ deleted }) => deleted)).toEqual([true, false]);
+    await run(['estimate', 'book', '--budget', '5'], lib.session().io);
+    expect(level((await status(lib)).output, 'status.spent')).toBe('info');
+  });
+
   it('takes no lock, so it answers while another command holds the book', async () => {
     const lib = await library();
     const { writeFileSync } = await import('node:fs');

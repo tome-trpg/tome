@@ -332,7 +332,73 @@ describe('tome glossary review (ADR-0119)', () => {
     const { exit, output } = await review(lib);
     expect(exit).toBe(1);
     expect(codes(output)).toEqual(['glossary.file_invalid']);
+    expect(output.data).toEqual({ book: 'book', path: reviewPath(lib.home) });
+    expect(output.findings[0]?.params).toEqual({ path: reviewPath(lib.home) });
     expect(readFileSync(reviewPath(lib.home), 'utf8')).toBe('review: [unclosed\n');
+  });
+
+  it('stops before touching anything when the pack of the book cannot be loaded', async () => {
+    const lib = await book();
+    childEntities(lib, 'classes:\n  Bad Name: {}\n');
+    const { exit, output } = await review(lib);
+    expect(exit).toBe(1);
+    expect(output.data).toEqual({ book: 'book' });
+    expect(output.findings.some(({ level }) => level === 'fail')).toBe(true);
+    expect(cards(lib.home)['Old Ferry']).toMatchObject({ status: 'proposed' });
+  });
+
+  it('writes keep_source and the stored match conditions into the file', async () => {
+    const lib = await book();
+    await review(lib);
+    withStore(lib.home, (store) =>
+      store.run(`UPDATE entity SET match = '{"case_sensitive":false,"roles":["heading"]}' WHERE source = 'Old Ferry'`),
+    );
+    await review(lib);
+    const file = readReview(lib.home);
+    expect(file.review.find(({ source }) => source === 'Tide Stones')).toMatchObject({ keep_source: true });
+    expect(file.review.find(({ source }) => source === 'Salt Marsh')).toMatchObject({ keep_source: false });
+    expect(file.locked.find(({ source }) => source === 'Old Ferry')?.['match']).toEqual({ case_sensitive: false, whole_word: true, roles: ['heading'] });
+  });
+
+  it('says how many entries it applied, with the book and the file', async () => {
+    const lib = await book();
+    await review(lib);
+    edit(lib.home, { 'Salt Marsh': { decision: 'lock' }, 'Tide Stones': { decision: 'reject' } });
+    const { output } = await review(lib);
+    expect(output.findings[0]).toMatchObject({
+      code: 'glossary.reviewed',
+      level: 'info',
+      params: { book: 'book', path: reviewPath(lib.home), applied: '2', new_terms: '0', auto: '0', review: '2', locked: '2', rejected: '1', skipped: '1' },
+    });
+  });
+
+  it('takes only well-formed new terms, trimmed, and counts where each appears', async () => {
+    const lib = await book();
+    withStore(lib.home, (store) => {
+      const details = [
+        null,
+        'not json',
+        '{"source":5}',
+        '{"source":"   "}',
+        '{"source":" Travellers ","target":"  "}',
+        '{"source":"Salt Cove","target":" 鹽灣 "}',
+        '{"source":"Harbor Light","target":7}',
+      ];
+      details.forEach((detail, index) => {
+        store.run("INSERT INTO issue (unit_id, code, level, detail, created_at) VALUES (?, 'new_term', 'report', ?, 't')", `u${index}`, detail);
+      });
+    });
+    const { exit, output } = await review(lib);
+    expect(exit).toBe(0);
+    expect(output.data).toMatchObject({ new_terms: 3 });
+    const added = withStore(lib.home, (store) =>
+      store.all<Record<string, unknown>>("SELECT source, target, occurrences, first_block FROM entity WHERE origin = 'new_term' ORDER BY source"),
+    );
+    expect(added).toEqual([
+      { source: 'Harbor Light', target: null, occurrences: 0, first_block: null },
+      { source: 'Salt Cove', target: '鹽灣', occurrences: 0, first_block: null },
+      { source: 'Travellers', target: null, occurrences: 1, first_block: 'p0000-aaaaa2' },
+    ]);
   });
 
   it('takes the new terms translation reported into the queue, once, for a person to review', async () => {
@@ -466,7 +532,9 @@ describe('tome glossary review (ADR-0119)', () => {
     await review(lib);
     const { output } = await tome(lib, 'status', 'book');
     const line = output.findings.find(({ code }) => code === 'status.entities');
+    expect(line?.level).toBe('info');
     expect(line?.params).toMatchObject({ review: '4', failed: '1', locked: '1', auto: '1', human: '0', imported: '0', rejected: '0' });
+    expect(output.data['entities']).toEqual({ review: 4, failed: 1, locked: 1, human: 0, auto: 1, imported: 0, rejected: 0, skipped: 1 });
   });
 });
 
