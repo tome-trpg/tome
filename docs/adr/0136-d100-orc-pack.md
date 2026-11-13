@@ -27,7 +27,8 @@ amends: [ADR-0061]
 2. **授權全文用註冊的定稿。** Chaosium 網頁上的 `ORC_License_FINAL.pdf`（202,167 位元組）內文標題是「ORC LICENSE [INTERIM]」，聲明的範例寫「TX00[number TBD]」，是註冊前的暫定版；條文第 V.c 節說以 Azora Law 向美國著作權局註冊的英文版為準。維護者同意改下載 Paizo 的 `ORC_LicenseFINAL.pdf`（248,604 位元組，SHA-256 `3fffe0fe69781b7115bccbfa0f51489e0a073c211772f5ebcd84d34f88f19b29`），內文標題是「ORC LICENSE FINAL」、號碼是 TX 9-307-067；兩版的條文只差這個號碼。另外下載的 Chaosium 暫定版與 AxE（251,968 位元組）只拿來讀，不是測試素材，不登記。
 3. **完成條件那一章是第 11 章 Creatures**（第 262 到 303 頁，42 頁），維護者在各章的數字出來後選定。下面的數字只用 PDF 的文字層算，**不是 `tome extract` 與 `tome estimate` 的結果**（成熟度：估算）：
    * 一行裡六個屬性（STR、CON、SIZ、INT、POW、DEX）齊全的行：Creatures 54 行、在 33 頁，其他章合計 4 行。
-   * 估價：段落照行距粗分、照 `REQUEST_CHARS` 與 `REQUEST_UNITS` 裝進請求，照 ADR-0134 的算式、0.25 的重送餘裕，Sonnet 5.5 批次、只算主翻譯：138,981 個字元、約 280 段、約 26 個請求，$0.39 到 $0.63。不含 Pass 0、試翻與欄位化省下的請求。精確的數字等第 13 項的 workflow 在 runner 上解析後再補。
+   * 估價：段落照行距粗分、照 `REQUEST_CHARS` 與 `REQUEST_UNITS` 裝進請求，照 ADR-0134 的算式、0.25 的重送餘裕，Sonnet 5.5 批次、只算主翻譯：138,981 個字元、約 280 段、約 26 個請求，$0.39 到 $0.63。不含 Pass 0、試翻與欄位化省下的請求。
+   * 第 13 項的 workflow 用 Docling 解析之後的 `tome estimate --chapters 11`（成熟度：已量測，沒有校準）：31 個請求、120,822 個字元、$0.44 到 $0.72；欄位化 233 個單位、原樣保留 1,420 個。整份文件 290 個請求、$4.19 到 $6.81。
 
 **規則包**
 
@@ -51,6 +52,15 @@ amends: [ADR-0061]
 11. **驗證雜湊的工具不連網**：`node tools/verify-public.ts <資料夾> [ID …]` 照登記的檔名找、比位元組數與 SHA-256，只印 ID 與結果；下載用瀏覽器或指令手動做。
 12. CI 的 `test` 跟 `generic` 一樣跑 `system lint systems/d100-orc --public` 與 `system test systems/d100-orc`。
 13. **H-15 在 GitHub runner 上量整份文件**：`.github/workflows/h15.yml` 只能手動觸發，下載文件、用第 11 項的工具驗證、用 Docling 解析、套 `d100-orc`，跑 `tome estimate` 與 `tools/h15.ts`，只上傳數字：數值塊的單位有幾個在本機翻好、幾個原樣保留、幾個要送 LLM，整份與 Creatures 各一組，加上兩者的估價。
+    * 手動觸發的 workflow 要在預設分支上才能 dispatch（API 回 404），維護者同意在這個 PR 暫時加 `pull_request` 觸發、路徑只過濾 `h15.yml` 自己，量一次後下一個 commit 拿掉。
+    * **結果**（run 43462567244，PR head `704e645`，runner 解析的是它跟 `main` 合併的版本，attempt 1，成功，17 分鐘；成熟度：已量測，一次）：
+
+      | 範圍 | 數值塊的單位 | 欄位化 | 原樣保留 | 送 LLM | 表格（不判角色） |
+      | :--- | ---: | ---: | ---: | ---: | ---: |
+      | Creatures（第 262 到 303 頁） | 333 | 233（70.0%） | 0 | 100 | 100 |
+      | 整份（303 頁） | 385 | 234（60.8%） | 0 | 151 | 199 |
+
+    * H-15「數值塊欄位化能涵蓋多數數值塊」在這份文件成立：Creatures 七成、整份六成的數值塊單位整塊在本機翻好。送 LLM 的多是護甲後面有說明、技能有沒收的專長、攻擊有特殊效果的行。屬性標頭沒有單獨成為一個單位（原樣保留是 0），跟後面的數字列解析在同一個區塊。自然動物表與命中部位表是表格，不判角色，照常送 LLM。
 14. **本機語料**：2026-11-13 用維護者工作區兩本書的 document 層唯讀暫存複本量，只印數字，量完刪掉；照組裝時的做法用 `d100-orc` 的偵測判角色，再照翻譯時的做法遮蔽、欄位化（成熟度：已量測，但不是 `tome extract` 重新組裝的結果）。規則書（1,723 個區塊、54 個表格）判到 3 個數值塊，欄位化 0 個；公有領域短篇 0 個。兩本都不是 BRP，數字只當參考。
 
 ## 驗證
@@ -69,6 +79,7 @@ amends: [ADR-0061]
 <!-- @assert-count target="tests/fixtures/SOURCES.yaml" symbol="sha256: d38af1fc2c27326b0ee8e42af0579684220ccf30809b195275d9daf29cedbb28" expected="1" comments="include" reason="第 1、10 項：內容文件的雜湊" -->
 <!-- @assert-count target="tools/verify-public.ts" symbol="fetch(" expected="0" comments="include" reason="第 11 項：不連網" -->
 <!-- @assert-count target="tools/h15.ts" symbol="fetch(" expected="0" comments="include" reason="第 13 項：量測不連網" -->
+<!-- @assert-count target=".github/workflows/h15.yml" symbol="pull_request" expected="0" comments="include" reason="第 13 項：合併後只能手動觸發，量測用的暫時觸發已經拿掉" -->
 
 ## 後果
 
