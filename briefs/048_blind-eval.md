@@ -17,6 +17,7 @@ affectedFiles:
   - src/cli/review/**
   - src/core/batch.ts
   - src/core/prompt.ts
+  - src/core/provider-test.ts
   - src/core/provider.ts
   - src/core/request.ts
   - src/core/translate.ts

@@ -28,6 +28,8 @@ describe('providers/anthropic.yaml', () => {
     ['claude-sonnet-5-5', 2, 10, 0.1, 1, 5],
     ['claude-haiku-5-5', 0.1, 0.5, 0.01, 0.05, 0.25],
     ['claude-fable-5-1', 10, 50, 0.25, 5, 25],
+    // 2026-11-14 讀官方的價目頁：批次價列在批次的表裡，快取命中是 0.025 倍（ADR-0139）。
+    ['claude-fable-5-2', 8, 40, 0.2, 4, 20],
   ])('has the prices of the official page for %s', (id, input, output, read, batchIn, batchOut) => {
     expect(model(id).price).toMatchObject({
       input,
@@ -99,6 +101,11 @@ describe('priceFor', () => {
 
   it('has one price for models with no such tier', () => {
     expect(priceFor(model('claude-opus-5-5'), 900_000).input).toBe(4);
+    expect(priceFor(model('claude-fable-5-2'), 900_000).input).toBe(8);
+  });
+
+  it('writes the cache writes of Fable 5.2 from the official table', () => {
+    expect(model('claude-fable-5-2').price).toMatchObject({ cache_write_5m: 10, cache_write_1h: 16 });
   });
 });
 
@@ -106,6 +113,7 @@ describe('thinkingParams (ADR-0037)', () => {
   it('lowers effort on a model that cannot turn thinking off', () => {
     expect(thinkingParams(model('claude-opus-5-5'))).toEqual({ output_config: { effort: 'low' } });
     expect(thinkingParams(model('claude-fable-5-1'))).toEqual({ output_config: { effort: 'low' } });
+    expect(thinkingParams(model('claude-fable-5-2'))).toEqual({ output_config: { effort: 'low' } });
   });
 
   it('turns it off the way each model wants, and leaves effort alone', () => {

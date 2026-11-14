@@ -75,10 +75,18 @@ function bookBlock(summary: BookSummary | null): string {
   return `<book>\n<era>${escapeText(era)}</era>\n<tone>${escapeText(tone)}</tone>\n<factions>${escapeText(factions)}</factions>\n</book>`;
 }
 
-/** 同一本書位元組一致：提要只有重新掃描才會變（ADR-0036、ADR-0120）。 */
-export function staticPrefix(language: TargetLanguage, pack: ResolvedPack, summary: BookSummary | null = null): string {
+/**
+ * 同一本書位元組一致：提要只有重新掃描才會變（ADR-0036、ADR-0120）。`instructions` 只有評測換成別的版本
+ * （ADR-0139），平常是 `prompts/translate.md`。
+ */
+export function staticPrefix(
+  language: TargetLanguage,
+  pack: ResolvedPack,
+  summary: BookSummary | null = null,
+  instructions: string = readInstructions(),
+): string {
   const parts = [
-    readInstructions().trim(),
+    instructions.trim(),
     styleGuideOf(language),
     packText(pack, PERSONA_FILE),
     packText(pack, FEW_SHOTS_FILE),
