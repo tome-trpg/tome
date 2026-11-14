@@ -31,7 +31,8 @@ export interface ProviderModel {
   readonly price: Price;
   readonly long_prompt?: { readonly over_tokens: number; readonly price: Price };
   readonly thinking: {
-    readonly mode: 'none' | 'between_tools' | 'disabled';
+    /** `adaptive` 只在評測時於記憶體裡換上（ADR-0139），供應商檔與 schema 不收。 */
+    readonly mode: 'none' | 'between_tools' | 'disabled' | 'adaptive';
     readonly effort?: 'low' | 'medium' | 'high';
     readonly output_factor?: number;
   };
@@ -102,7 +103,7 @@ export function priceFor(model: ProviderModel, promptTokens: number): Price {
 }
 
 export interface ThinkingParams {
-  readonly thinking?: { readonly type: 'between_tools' | 'disabled' };
+  readonly thinking?: { readonly type: 'between_tools' | 'disabled' | 'adaptive' };
   readonly output_config?: { readonly effort: 'low' | 'medium' | 'high' };
 }
 

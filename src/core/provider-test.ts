@@ -46,6 +46,9 @@ function thinkingMatches({ thinking }: ProviderModel, reported: NonNullable<Mode
       return reported.between_tools;
     case 'disabled':
       return reported.disabled;
+    case 'adaptive':
+      // 只在評測的計畫裡、記憶體中換上（ADR-0139）；供應商檔的 schema 不收，這裡比對不到。
+      return false;
   }
 }
 

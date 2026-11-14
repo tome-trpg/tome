@@ -878,10 +878,11 @@ describe('the fingerprint of the translation estimate', () => {
   }
 
   it('leaves out the chapter level, the locked cards and the calibration when there are none', async () => {
-    expect(await fingerprint()).toBe('8e05819b4519f74a11c6b864ac20e5de4cd59c70f1f95e569e5032a051ef6fea');
+    // 指紋含供應商檔的雜湊；ADR-0139 補了 Fable 5.2，這兩個值跟著換（程式沒改指紋的內容）。
+    expect(await fingerprint()).toBe('59011a666617ceca6224ae0397ab2b12ea54f22c73456229a401e95dd2c17fe3');
   });
 
   it('takes in the chapter level, the locked cards and the calibration when there are', async () => {
-    expect(await fingerprint({ level: true, card: true, calibration: true })).toBe('42258800c9a20fc6b97b5af1c827665deab3116d6101ecce7d82a927d04448b2');
+    expect(await fingerprint({ level: true, card: true, calibration: true })).toBe('142d9cf7ab61c5fe3dcea25efc1a022050d6fd3a8db91dc9dfdedecc8af4dfff');
   });
 });

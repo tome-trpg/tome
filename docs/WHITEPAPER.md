@@ -1158,6 +1158,8 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 
 公開語料的評測結果放 `docs/evals/`，範本不內建預設模型，使用者靠這份資料選模型。商業書的結果不公開。
 
+**已實作**（ADR-0139）：盲評的工具 `tools/eval.ts`，不隨套件發佈。從 ORC 文件與 The Call of Cthulhu 照角色分層隨機挑 100 段（種子固定），照產品的翻法跑 6 組：Haiku 5.5、Sonnet 5.5（關思考、開思考、中文指令）、Opus 5.5、Fable 5.2，全部批次，一段一個請求；試算的上限超過 30 美元就不送。重送後還沒翻成的淘汰，淘汰率超過一成的組不評。評分在 047 的本機網頁上，隨機排序、隱藏組別、可以分次評，10 段重複題檢查前後一致。開思考與中文指令只給評測用，使用者碰不到。`docs/evals/` 只放數字、設定與段落的索引。工具只用假供應商測過，維護者還沒跑（**沒有驗證**）。
+
 ### 8.7 可重現性
 
 本節已定案（ADR-0067）。
@@ -1312,6 +1314,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0136](adr/0136-d100-orc-pack.md) | d100-orc 規則包 | M4 |
 | [ADR-0137](adr/0137-soupsieve-security-update.md) | Docling 環境的 soupsieve 安全更新 | M4 |
 | [ADR-0138](adr/0138-review-ui-and-next-step.md) | 審定網頁、審定門檻與下一步 | M4 |
+| [ADR-0139](adr/0139-blind-evaluation.md) | 盲評 | M4 |
 
 ---
 
@@ -1412,9 +1415,12 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | 模型 | 即時 | 即時＋快取 | Batch | Batch＋1h 快取（命中約 100%） | Batch＋1h 快取（命中 30%） |
 | :--- | ---: | ---: | ---: | ---: | ---: |
 | Fable 5.1 | 27.81 | 18.16 | 13.91 | 9.11 | 15.94 |
+| Fable 5.2 | 22.25 | 14.53 | 11.13 | 7.29 | 12.75 |
 | Opus 5.5 | 11.12 | 7.36 | 5.56 | 3.69 | 6.39 |
 | Sonnet 5.5 | 5.56 | 3.68 | 2.78 | 1.85 | 3.20 |
 | Haiku 5.5 | 0.28 | 0.19 | 0.14 | 0.09 | 0.16 |
+
+Fable 5.2 照 2026-11-14 的官方價目（ADR-0139），每一項價格都是 Fable 5.1 的 0.8 倍，所以這一列是上一列乘 0.8。
 
 其他 Batch 或離峰價格（不計快取）：`gpt-6-luna` 0.14、`gpt-6.1-sol` 2.78、`gemini-3.5-flash-lite` 0.57。`deepseek-flash` 離峰全命中約 0.23，但受 DC-2 限制，預設不用。
 
@@ -1468,6 +1474,7 @@ M4 已實作的項目：
 | `tome trial`、`tome run --trial`、估價校準、試翻與主翻譯的提示快取、Q-6、遷移第 15 版 | `src/core/trial.ts`、`src/core/estimate.ts`、`src/core/request.ts`、`src/core/translate.ts`、`src/core/batch.ts`、`src/core/ledger.ts`、`src/core/llm.ts`、`src/core/store.ts`、`src/core/report.ts`、`src/core/pipeline.ts`、`src/cli/run.ts` | `tests/cli/trial.test.ts`、`tests/core/trial.test.ts`、`tests/cli/tome-run.test.ts`、`tests/core/estimate.test.ts`、`tests/core/ledger.test.ts`、`tests/core/store.test.ts`、ADR-0135 的斷言 |
 | 內建規則包 `d100-orc`、repo 外公開素材的登記與驗證、H-15 的量測 | `systems/d100-orc/`、`tests/fixtures/SOURCES.yaml`、`tools/verify-public.ts`、`tools/h15.ts`、`.github/workflows/h15.yml`、`.github/workflows/test.yml` | `tests/core/d100-orc-pack.test.ts`、`tests/core/prompt.test.ts`、`tests/tools/fixtures.test.ts`、`tests/tools/verify-public.test.ts`、`tests/tools/h15.test.ts`、ADR-0136 的斷言 |
 | 審定網頁 `tome glossary review --web`、審定門檻、`tome status` 的下一步、`run.stopped` 帶上 `--trial` 與 `--realtime` | `src/cli/review/`、`src/cli/run.ts`、`src/cli/messages.ts`、`src/cli/messages/zh-TW.json`、`src/core/glossary.ts`、`src/core/status.ts`、`src/core/pipeline.ts` | `tests/cli/review-web.test.ts`、`tests/cli/review-page.test.ts`、`tests/cli/glossary.test.ts`、`tests/cli/status-next.test.ts`、`tests/core/status.test.ts`、`tests/cli/tome-run.test.ts`、ADR-0138 的斷言 |
+| 盲評的工具 `tools/eval.ts`、評測用的選項、Fable 5.2 | `tools/eval.ts`、`tools/eval-*.ts`、`tools/eval/`、`src/core/request.ts`、`src/core/prompt.ts`、`src/core/provider.ts`、`src/cli/review/server.ts`、`providers/anthropic.yaml` | `tests/tools/eval.test.ts`、`tests/core/eval-variant.test.ts`、`tests/core/provider.test.ts`、ADR-0139 的斷言 |
 
 M3 已實作的項目：
 

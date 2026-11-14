@@ -179,11 +179,13 @@ export function splitRequest(
 /**
  * 依閱讀順序組請求。`wanted` 決定哪些單位要送，其他單位只當上文。
  * 請求不跨章，字元與單位數都有上限，單一組超過上限時自成一個請求（ADR-0029、ADR-0114）。
+ * `separate` 是評測用的：一組一個請求，每組都帶自己前面的文字（ADR-0139）。
  */
 export function planRequests(
   units: readonly TranslationUnit[],
   chapterOf: (unit: TranslationUnit) => number,
   wanted: (unit: TranslationUnit) => boolean = () => true,
+  separate = false,
 ): PlannedRequest[] {
   const requests: PlannedRequest[] = [];
   let current: TranslationUnit[] = [];
@@ -199,7 +201,7 @@ export function planRequests(
     const groupChapter = chapterOf(first);
     const full =
       charsOf(current) + charsOf(group) > REQUEST_CHARS || current.length + group.length > REQUEST_UNITS;
-    if (groupChapter !== chapter || full) flush();
+    if (groupChapter !== chapter || full || separate) flush();
     chapter = groupChapter;
     current.push(...group);
   }
@@ -539,11 +541,29 @@ export interface BookPlan {
   readonly calibration: CalibrationRow | null;
   /** 請求帶不帶 `cache_control`：試翻一律帶，主翻譯要命中率過損益兩平點（ADR-0135）。 */
   readonly cache: CacheSetting | null;
+  /** 一段一個請求，只有評測會開（ADR-0139）。 */
+  readonly separate: boolean;
 }
 
-/** 試翻的計畫：不套校準，快取照試翻的設定（ADR-0135）。 */
+/**
+ * 只給評測用的選項（`tools/eval.ts`，ADR-0139）。CLI 不傳，使用者碰不到，也不進設定檔。
+ */
+export interface EvalVariant {
+  /** 換掉指令（`prompts/translate.md`）的文字，例如維護者審過的中文版本。 */
+  readonly instructions?: string;
+  /** 開思考：送自適應思考。 */
+  readonly thinking?: 'adaptive';
+  /** 一段一個請求，每段帶自己前面的文字當上下文。 */
+  readonly separate?: boolean;
+}
+
+/** 評測開思考時估價的輸出倍數。思考的 token 沒量過，是提案，取大一點讓 30 美元的把關有意義（ADR-0139）。 */
+export const EVAL_THINKING_FACTOR = 4;
+
+/** 試翻與評測的計畫：不套校準，快取照呼叫的人給的設定（ADR-0135、ADR-0139）。 */
 export interface PlanOverride {
-  readonly cache: CacheSetting;
+  readonly cache: CacheSetting | null;
+  readonly variant?: EvalVariant;
 }
 
 export interface PlanResult {
@@ -571,7 +591,12 @@ export async function planBook(
   const modelId = workspaceModel(home, 'translator_model');
   if (modelId === undefined) throw new TomeError('model.missing');
   const provider = loadProvider(PROVIDER_ID);
-  const model = findModel(provider.profile, modelId);
+  const variant = override?.variant ?? {};
+  const found = findModel(provider.profile, modelId);
+  // 評測開思考：只在這次的計畫裡換掉，供應商檔不動（ADR-0139）。
+  const model: ProviderModel =
+    variant.thinking === undefined ? found : { ...found, thinking: { mode: variant.thinking, output_factor: EVAL_THINKING_FACTOR } };
+  const separate = variant.separate === true;
   const fallbackId = workspaceModel(home, 'fallback_model');
   const fallback = fallbackId === undefined ? null : findModel(provider.profile, fallbackId);
   const document = readDocument(home, book.slug);
@@ -606,9 +631,9 @@ export async function planBook(
   const chapterOf = (unit: TranslationUnit): number => chapters.get(unit.block_id) ?? 0;
   const inScope = (unit: TranslationUnit): boolean => chosen === null || chosen.has(chapterOf(unit));
   const pending = pendingUnits(store);
-  const requests = planRequests(units, chapterOf, (unit) => pending.has(unit.unit_id) && inScope(unit));
+  const requests = planRequests(units, chapterOf, (unit) => pending.has(unit.unit_id) && inScope(unit), separate);
 
-  const prefix = staticPrefix(language, pack, bookSummary(store));
+  const prefix = staticPrefix(language, pack, bookSummary(store), variant.instructions);
   const recent = activeEntities(units, terms, chapterOf);
   const calibration = override === undefined ? loadCalibration(store, model.id, mode) : null;
   const cache = override === undefined ? cacheOf(calibration, model, mode) : override.cache;
@@ -669,6 +694,7 @@ export async function planBook(
       recent,
       calibration,
       cache,
+      separate,
     },
     findings: packFindings,
   };

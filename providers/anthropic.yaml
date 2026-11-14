@@ -103,3 +103,22 @@ models:
       output_factor: 1.5
     fallback:
       server: true
+  # 2026-11-14 讀官方的模型頁、價目頁與批次頁：批次價列在批次的表裡，快取命中是基本輸入價的 0.025 倍，
+  # 沒有長 prompt 的另一組價格。思考一直開著、關不掉，effort 可以調（ADR-0139）。
+  # `fallback.server` 照 Fable 5.1 先填，維護者跑 `tome provider test` 對過 Models API 再改。
+  - id: claude-fable-5-2
+    effective: 2026-11-14
+    price:
+      input: 8
+      output: 40
+      cache_read: 0.20
+      cache_write_5m: 10
+      cache_write_1h: 16
+      batch_input: 4
+      batch_output: 20
+    thinking:
+      mode: none
+      effort: low
+      output_factor: 1.5
+    fallback:
+      server: true
