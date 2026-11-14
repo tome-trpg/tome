@@ -69,22 +69,22 @@ protectedFiles:
 
 ## Invariants
 
-- [ ] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
-- [ ] 新的測試先在舊程式上失敗過
-- [ ] ADR-0039 的斷言改成只對 `src/cli/review/` 放行 `node:http`，並有「只聽 `127.0.0.1`」「不呼叫 `http.request`、`http.get`」的斷言；ADR-0082 的斷言（`src` 的 `.ts` 沒有中文、核心不依賴 CLI、子行程只經過 `process.ts`）照舊成立
-- [ ] 沒有權杖、`Host` 不對、寫入的 `Origin` 不對的請求都被拒絕；回應有 CSP 與 `Cache-Control: no-store`
-- [ ] 訊息、`--json` 與紀錄只有數量與編號，沒有書本文字
-- [ ] 介面上的中文字樣經維護者審過
-- [ ] `mutation-lines` 跑過改過的行，存活的變異補上測試，或說明為什麼等價
-- [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
+- [x] 新的測試先在舊程式上失敗過
+- [x] ADR-0039 的斷言改成只對 `src/cli/review/` 放行 `node:http`，並有「只聽 `127.0.0.1`」「不呼叫 `http.request`、`http.get`」的斷言；ADR-0082 的斷言（`src` 的 `.ts` 沒有中文、核心不依賴 CLI、子行程只經過 `process.ts`）照舊成立
+- [x] 沒有權杖、`Host` 不對、寫入的 `Origin` 不對的請求都被拒絕；回應有 CSP 與 `Cache-Control: no-store`
+- [x] 訊息、`--json` 與紀錄只有數量與編號，沒有書本文字
+- [x] 介面上的中文字樣經維護者審過
+- [x] `mutation-lines` 跑過改過的行，存活的變異補上測試，或說明為什麼等價
+- [x] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
 
 ## Acceptance Criteria
 
-- [ ] ADR-0138 寫下維護者的 12 項回答、靜態檔怎麼發佈、book1 的門檻量測，成熟度照 ADR-0068 標
-- [ ] `tome glossary review <書> --web` 開得起來，`--no-open` 不開瀏覽器，Ctrl+C 結束時照 `book.db` 重寫 YAML 審定檔
-- [ ] 網頁上鎖定、拒絕、改欄位與 YAML 審定檔的結果相同（同一套驗證、`decided_by: human`、S-16）
-- [ ] 審定門檻照 ADR-0130 第 6 項，從下一次審定起套用到還在 `proposed` 的卡
-- [ ] `tome status` 印 `status.next`、`--json` 有 `next`，順序跟 `tome run` 的關卡相同
-- [ ] `run.stopped` 帶上這次的 `--trial` 與 `--realtime`，`--json` 也有
-- [ ] 白皮書、README、CHANGELOG 跟著改
+- [x] ADR-0138 寫下維護者的 12 項回答、靜態檔怎麼發佈、book1 的門檻量測，成熟度照 ADR-0068 標
+- [x] `tome glossary review <書> --web` 開得起來，`--no-open` 不開瀏覽器，Ctrl+C 結束時照 `book.db` 重寫 YAML 審定檔
+- [x] 網頁上鎖定、拒絕、改欄位與 YAML 審定檔的結果相同（同一套驗證、`decided_by: human`、S-16）
+- [x] 審定門檻照 ADR-0130 第 6 項，從下一次審定起套用到還在 `proposed` 的卡
+- [x] `tome status` 印 `status.next`、`--json` 有 `next`，順序跟 `tome run` 的關卡相同
+- [x] `run.stopped` 帶上這次的 `--trial` 與 `--realtime`，`--json` 也有
+- [x] 白皮書、README、CHANGELOG 跟著改
