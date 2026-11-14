@@ -44,7 +44,7 @@ The following features are design goals. See [Development status](#development-s
 | Parsing engine management | `tome engine add`, `list`, `remove` | Implemented |
 | Page parsing | `tome extract` | Implemented: native text pages are handed to a parsing engine, assembled into a document, and checked for lost characters |
 | Proper-noun extraction | `tome scan-terms` | Implemented: picks out proper nouns locally and asks a model to propose translations, with an estimate to confirm before anything is sent. The quality of the proposals is not verified yet |
-| Term review | `tome glossary review`, `tome glossary import` | Implemented: lock or reject proposals in a local review file, or import your own translations from CSV |
+| Term review | `tome glossary review`, `tome glossary import` | Implemented: lock or reject proposals on a web page that accepts local connections only (`--web`) or in a local review file, or import your own translations from CSV |
 | Cost estimate | `tome estimate`, `tome translate --dry-run` | Implemented: runs locally with no network. The ratios come from the records of two books, and a trial run can calibrate them for each book |
 | Trial run | `tome trial`, `tome run --trial` | Implemented: translates about a tenth of the requests first, calibrates the book's estimate from the actual usage, and measures the prompt cache hit rate. It shows an estimate to confirm before anything is sent, and the trial translations are kept. Not yet run against the real API |
 | Translation | `tome translate`, `tome batch status`, `collect`, `cancel` | Implemented: sends in batches by default, or one request at a time with `--realtime`. Run against the real API on a public-domain short story and most of one rulebook, in both batch and real-time mode, with one model only |
@@ -53,7 +53,7 @@ The following features are design goals. See [Development status](#development-s
 | Output | `tome assemble` | Implemented: writes the translation and a delivery report as an Obsidian vault, with no network |
 | Reading edits back | `tome sync` | Implemented: stores the passages edited in the vault as human translations |
 | Delivery report numbers | `tome report` | Implemented: prints counts only, with no network |
-| Progress and spending | `tome status` | Implemented: reads local data only, with no network |
+| Progress and spending | `tome status` | Implemented: reads local data only, with no network, and names the next command to run |
 | Run it through | `tome run` | Implemented: runs from parsing to output and stops where a cost or the terms need your confirmation |
 | Delete and back up | `tome purge`, `tome backup` | Implemented: lists what it will delete and deletes only after you confirm |
 

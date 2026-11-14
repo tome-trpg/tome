@@ -78,6 +78,8 @@
 - `tome report` 對依試翻校準的翻譯估價，顯示實際花費與估價中間值相差的百分比（Q-6），`--json` 的每一筆估價新增 `middle_usd`、`calibrated`、`q6`。
 - 內建規則包 `d100-orc`，依 Chaosium 的 Basic Roleplaying ORC Content Document 第 11 章 Creatures 寫成，照 ORC 授權發佈，`LICENSE` 是向美國著作權局註冊的授權全文，`NOTICE` 寫明出處與署名，並說明不是官方產品。含 299 個詞條（譯名由 TOME 的貢獻者自擬，未參考任何官方中文版），屬性與衍生數值的縮寫保留原文；能辨認數值塊，整塊都有譯名時在本機翻好，不送 LLM。用法：`tome add <pdf> --system d100-orc`。
 - 測試素材清單新增不在儲存庫中的公開素材，記錄網址、授權、大小、SHA-256 與取得日期；`node tools/verify-public.ts <資料夾>` 可在本機驗證下載的檔案，不連網。
+- `tome glossary review <名稱> --web`：在本機網頁上審定實體卡。網頁只接受這台電腦的連線，埠號由系統挑選，網址帶有每次啟動時產生的權杖；指令在前景執行，按 Ctrl+C 結束，並會打開預設瀏覽器，加上 `--no-open` 則只顯示網址。三個分頁對應審定檔的三段，可以修改欄位、鎖定、拒絕、搜尋與篩選，也可以用鍵盤操作；驗證規則、修改已鎖定譯名時的替換都與審定檔相同。啟動時會先讀回審定檔，結束時依資料庫重寫審定檔；網頁開著時若有人改過審定檔，結束時不會覆寫。網頁不連外，書籍內容不會存進瀏覽器。審定檔的用法不變。
+- `tome status` 多顯示一行下一步要執行的指令，順序與 `tome run` 的關卡相同，`--json` 新增 `next`。`tome status` 不會重新估價，確認估價後內容若又有變動，要等 `tome translate` 才會提醒重新確認。
 
 ### 變更
 
@@ -93,6 +95,8 @@
 - `tome translate`、`tome batch collect` 完成時、翻譯中的進度與 `tome status` 的單位數，改為 `--chapters` 範圍內的數字，與估價一致；範圍外尚未完成的單位另列一行。`--json` 的 `total`、`kept`、`done` 等欄位也改為範圍內的數字，並新增 `outside`、`chapters`，`tome status` 另新增 `scope`。結束碼的意思也跟著改變：範圍外留下的未通過驗證、遭拒答或被個資閘門擋下的單位，不再使 `tome translate` 與 `tome batch collect` 回傳 1。
 - `book.db` 的帳本記錄每個請求回覆的 `stop_reason` 與 `max_tokens`，用來區分回覆被截斷還是漏掉段落。既有的工作區開啟時會自動升級，舊紀錄的這兩欄是空值。
 - 頁面類型 `scan` 改名為 `full_image`（滿版圖片），掃描頁與整頁插圖都屬於這一類，判斷方式不變。已探測的書籍下次會重新探測一次。`tome-engine/1` 的頁面類型也一併改名，在 `engine.yaml` 宣告 `scan` 的引擎需要改寫。
+- 審定的門檻：性別為 `none`，或代名詞與類別的預設代名詞相同（例如 `creature` 的「牠」），不再算成需要人工審定。下一次執行 `tome glossary review` 時，仍待審且符合條件的提議會自動鎖定；已鎖定或已拒絕的實體卡不受影響。
+- `tome run` 停下時，提示接著執行的 `tome run` 會帶上這次的 `--trial` 與 `--realtime`，`--json` 新增 `rerun`；停在審定時改為建議 `tome glossary review <名稱> --web`。
 - 已解析的書籍下次執行 `tome extract` 時會重新組裝一次 `document` 層，以判定索引與版權頁，解析引擎不會重新執行。
 - 已解析的書籍下次執行 `tome extract` 時會再重新組裝一次 `document` 層，以加入粗體、斜體與連結。已翻譯的書籍在這之後，含有粗體、斜體或連結的段落會重新翻譯一次，需另外付費，估價會先列出，確認後才送出；整段同一種樣式的段落（例如整段粗體的標題）保留原本的譯文。不重新執行 `tome extract` 就不受影響。
 - 每個請求的 `max_tokens` 依 `<pc>` 標記的數量多留空間，估價不變。

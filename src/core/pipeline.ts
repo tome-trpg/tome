@@ -62,12 +62,15 @@ async function runLocked(options: RunOptions): Promise<PlanOutcome> {
   const stages: { readonly stage: RunStep; readonly data: PlanOutcome['data'] }[] = [];
   const findings: Finding[] = [];
   const realtime = mode === 'realtime' ? ' --realtime' : '';
+  // `--trial` 與 `--realtime` 不存進 `book.yaml`，接著要跑的 `tome run` 要帶上（045 實測找到，ADR-0138）。
+  const rerun = `tome run ${slug}${options.trial === true ? ' --trial' : ''}${realtime}`;
   const outcome = (stopped: RunStep | null, next: string | null, last: readonly Finding[] = []): PlanOutcome => ({
-    data: { book: slug, stages, stopped_at: stopped, next },
+    data: { book: slug, stages, stopped_at: stopped, next, rerun: next === null ? null : rerun },
     findings: once([...findings, ...last]),
   });
   // 停在要人點頭的地方：結束碼 0，說下一步要跑哪個指令（ADR-0127）。
-  const gate = (step: RunStep, command: string): PlanOutcome => outcome(step, command, [finding('run.stopped', 'warn', { book: slug, command })]);
+  const gate = (step: RunStep, command: string): PlanOutcome =>
+    outcome(step, command, [finding('run.stopped', 'warn', { book: slug, command, rerun })]);
   const step = async (name: RunStep, work: () => Promise<PlanOutcome>): Promise<PlanOutcome> => {
     options.onStep?.(name);
     const result = await work();
@@ -87,7 +90,7 @@ async function runLocked(options: RunOptions): Promise<PlanOutcome> {
   if (failed(scanned.findings)) return outcome('scan', null);
   if (scanned.findings.some(({ code }) => code === 'scan.not_confirmed')) return gate('scan', `tome scan-terms ${slug} --confirm${realtime}`);
 
-  // 關卡一：還有待審的卡就停（ADR-0055 第 3 項、ADR-0119 第 2 項）。
+  // 關卡一：還有待審的卡就停（ADR-0055 第 3 項、ADR-0119 第 2 項），建議用網頁審（ADR-0138）。
   const reviewed = await step('review', async () => {
     const store = openBookStore(home, slug);
     try {
@@ -97,7 +100,7 @@ async function runLocked(options: RunOptions): Promise<PlanOutcome> {
       store.close();
     }
   });
-  if (reviewed.findings.length > 0) return gate('review', `tome glossary review ${slug}`);
+  if (reviewed.findings.length > 0) return gate('review', `tome glossary review ${slug} --web`);
 
   // 試翻也要花錢：這本書在這個模型與模式還沒校準，就顯示試翻的估價停下，請使用者確認後用
   // `tome trial --confirm` 送。試翻後面就是確認估價的關卡，不另設「試翻後要不要停」（ADR-0135）。
