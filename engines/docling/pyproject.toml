@@ -6,7 +6,7 @@ description = "tome-engine/1 adapter for Docling"
 license = "Apache-2.0"
 requires-python = ">=3.13,<3.14"
 dependencies = [
-    "docling==2.140.0",
+    "docling==2.145.0",
     "docling-core==2.104.0",
     "huggingface-hub==1.33.0",
 ]
