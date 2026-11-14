@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-13
 type: feature
 wave: 51
@@ -43,7 +43,15 @@ protectedFiles:
   - src/core/store.ts
   - stryker.config.mjs
   - systems/**
+integrity: sha256-fa3ce2dcc78245253228b6c1aca97d043d576aad2eaec23187898082146dfa06
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-14.**
+> Merged in pull request [#87](https://github.com/tome-trpg/tome/pull/87).
+> Recorded at commit `c6195a7`: 29 files changed, +2904 −74.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 047 — 審定介面與下一步
 
