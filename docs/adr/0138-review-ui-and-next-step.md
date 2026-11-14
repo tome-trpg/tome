@@ -77,6 +77,18 @@ ADR-0130 把回合 047 排成審定介面：第一版除了 CLI，還有一個�
 13. **靜態的 CSS 與 JS 寫成 `src/cli/review/assets.ts` 的字串常數**，跟程式一起由 `tsc` 編出、隨 `dist` 發佈；不改 `package.json` 的 `files`，沒有建置步驟，發佈的就是審過的原始碼（成熟度：已實作）。
 14. **測試**：伺服器用 vitest 起真的本機伺服器測（`tests/cli/review-web.test.ts`），用 `node:http` 自己組 `Host` 與 `Origin`；頁面的 HTML 與篩選另外測（`tests/cli/review-page.test.ts`）。不加瀏覽器自動化的相依；鍵盤的腳本沒有自動測試。2026-11-14 執行的 session 用合成的書在桌面版的內建瀏覽器（Chromium）點過一次：鍵盤移動、編輯、鎖定、拒絕、搜尋、驗證沒過的標示與聚焦、結束時重寫審定檔都照預期。點的時候找到兩個自動測試沒抓到的錯，已修正並補上測試：`Referrer-Policy: no-referrer` 讓表單的 `Origin` 變成 `null`、被自己擋下（第 2 項）；驗證沒過的頁面在 `cards/<id>/lock` 送回來，相對的網址接錯地方，改成頁面裡的網址都從權杖寫起。維護者自己再點一次（Open Questions）。
 
+15. **變異測試**（成熟度：已量測）。`mutation-lines` 在 CI 跑了四輪，每一次 attempt 1 都成功；各輪的 run id、範圍與每個存活的分類寫在共用筆記 `brief-047-details.md`。
+    * 第一輪（`8258bca`，5 次）：範圍寫成整段，連帶掃到沒改的舊程式。74.15、73.21、85.77、78.10、65.94。
+    * 第二輪（`5fce54a`，5 次）：補了測試、刪掉走不到的分支，只跑改過的行。93.75、92.74、98.91、94.93、97.76。
+    * 第三輪（`1722eb4`，3 次）：第一輪掃到、沒改的舊行，比照 045（ADR-0135 第 18 項）也補了測試。90.12、95.00、98.18。
+    * 第四輪（`abc791e`，3 次）：第二、三輪能殺的行，加上 `FieldContext` 改的行。100、100、100。
+
+    剩下的存活都分類過，沒有能殺的：
+    * **等價**：`policyOf` 的 `kind ?? ''` 換成別的字串（類別名照 schema 只有小寫英數與 `-`、`_`，查不到任何類別）；審定檔也替已鎖定的卡算上下文（`locked` 段不寫 `seen_in`，只差效能）；沒有 Content-Type 時的預設字串（都不是表單，同樣回 415）；`request.resume()`（回應結束時 Node 自己丟掉沒讀的本文）；`collectNewTerms` 的 `detail === null`、讀不懂時的 `catch`、`found.size === 0`（後面照樣跳過或回 0）；`matchOf` 一律寫 `roles: undefined`（YAML 不寫 undefined 的鍵，其他地方用 `?? []`）。
+    * **走不到**：上下文的 `?.` 與 `?? []`（啟動時對三段的卡都算過）；`COUNT(*)` 的 `?.count`；`split` 的 `[0]?.`；請求的 `url ?? '/'` 與路徑的預設值；送出之後的 `headersSent` 分支；`listen` 的 `error`（在 `127.0.0.1` 聽系統挑的埠不會失敗）；S-16 的 `value ?? ''`；語域欄的 `marks('register', …)`（表單送來的一定是字串）。
+    * **測不出來**：`reviewLocked` 的 `finally` 裡的 `store.close()`。連線沒關要等 GC 才放掉，Linux 上刪暫存檔不受影響，沒有可觀察的行為。
+    * **刪掉的分支**（行為不變，共 7 處）：`policyOf` 查 `Map` 之前的 null 判斷、`nextAfter` 對不在這一頁的編號的特例、聚焦編號的整數判斷、埠號的保底值、空搜尋的判斷、`checkbox` 的預設參數（`5fce54a`），與一律是 true 的 `FieldContext.focus`（`abc791e`）。
+
 ## 驗證
 
 <!-- @assert-import-absence target="src" exclude="src/core/egress/**" module="node:https node:http2 node:net node:tls node:dgram node:dns https http2 net tls dgram dns undici axios node-fetch got ky ws @anthropic-ai/sdk openai @google/genai" reason="ADR-0039：對外連線與供應商 SDK 只能在對外出口模組（從 ADR-0039 移來，node:http 另外一條）" -->
