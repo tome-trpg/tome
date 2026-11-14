@@ -46,7 +46,8 @@ const REVIEW: PageModel = {
         origin: 'new_term',
         seen_in: ['The "Grey <Warden>" waits & watches.', 'She counts stones.'],
       },
-      { ...BASE, id: 7, source: 'Harrow Gate', origin: 'import' },
+      // 待審的分頁不印誰決定的，卡上有也不印。
+      { ...BASE, id: 7, source: 'Harrow Gate', origin: 'import', decided_by: 'human' },
     ],
     locked: [{ ...BASE, id: 9, source: 'Old Ferry', target: '老渡口', decided_by: 'auto' }],
     skipped: [],
@@ -62,7 +63,7 @@ const REVIEW: PageModel = {
   },
 };
 
-/** 已鎖定的分頁，篩選條件都設了：一張留下、一張被篩掉。 */
+/** 已鎖定的分頁，篩選條件都設了：兩張留下、一張被篩掉。 */
 const LOCKED: PageModel = {
   base: '/t0ken/',
   book: 'book',
@@ -72,6 +73,8 @@ const LOCKED: PageModel = {
     locked: [
       { ...BASE, id: 9, source: 'Old Ferry', target: '老渡口', decided_by: 'human', origin: 'unknown', seen_in: ['At the Old Ferry.'] },
       { ...BASE, id: 10, source: 'Salt Marsh', target: '鹽沼', class: 'place', decided_by: 'import' },
+      // 已鎖定、卻沒記誰決定的（照理不會有），只是不印那一項。
+      { ...BASE, id: 12, source: 'Ferry Bell', target: '渡口鐘' },
     ],
     skipped: [{ ...BASE, id: 11, source: 'Each Night' }],
   },

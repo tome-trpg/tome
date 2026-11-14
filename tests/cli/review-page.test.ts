@@ -217,27 +217,34 @@ describe('renderPage, word for word', () => {
     expect(renderPage(model as PageModel, reviewPageTexts)).toBe(expected);
   });
 
-  it('draws the locked tab with every filter set, one card left and its sentences folded', () => {
+  it('draws the locked tab with every filter set, two cards left and their sentences folded', () => {
     const model = GOLDEN_MODELS[1];
-    const ferry =
-      opening(9, '', 'locked') +
-      '<header><h2>Old Ferry</h2><p class="meta"><span>出現 1 次</span><span>unknown</span><span>人審</span><span>#9</span></p></header>' +
+    const plain = (target: string): string =>
       fields(
-        '老渡口',
+        target,
         `${unset}<option value="person">person</option><option value="place">place</option>`,
         `${unset}${genders}`,
         `<select name="pronoun">${unset}<option value="她">她</option><option value="他">他</option></select>`,
-      ) +
-      match(' checked', '', '') +
+      ) + match(' checked', '', '');
+    const ferry =
+      opening(9, '', 'locked') +
+      '<header><h2>Old Ferry</h2><p class="meta"><span>出現 1 次</span><span>unknown</span><span>人審</span><span>#9</span></p></header>' +
+      plain('老渡口') +
       '<details class="seen"><summary>出現的句子</summary><ul><li>At the Old Ferry.</li></ul></details>' +
       actions(9);
+    const bell =
+      opening(12, '', 'locked') +
+      '<header><h2>Ferry Bell</h2><p class="meta"><span>出現 1 次</span><span>Pass 0 提議</span><span>#12</span></p></header>' +
+      plain('渡口鐘') +
+      '<details class="seen"><summary>出現的句子</summary><p class="muted">在會翻譯的文字中找不到這個詞。</p></details>' +
+      actions(12);
     const expected = [
       ...HEAD,
-      '<nav class="tabs"><a href="/t0ken/?tab=review">待人審（0）</a><a href="/t0ken/?tab=locked" aria-current="page">已鎖定（2）</a><a href="/t0ken/?tab=skipped">不是專有名詞（1）</a></nav>',
+      '<nav class="tabs"><a href="/t0ken/?tab=review">待人審（0）</a><a href="/t0ken/?tab=locked" aria-current="page">已鎖定（3）</a><a href="/t0ken/?tab=skipped">不是專有名詞（1）</a></nav>',
       '<form class="filters" method="post" action="/t0ken/view"><input type="hidden" name="tab" value="locked"><label class="field wide"><span>搜尋原文或譯名</span><input type="search" id="search" name="q" value=" FERRY " autocomplete="off"></label><label class="field"><span>類別</span><select name="kind"><option value="">全部類別</option><option value="-" selected>沒有類別</option><option value="person">person</option><option value="place">place</option></select></label><label class="field"><span>提議</span><select name="proposal"><option value="all">全部</option><option value="with" selected>有提議</option><option value="without">沒有提議</option></select></label><button type="submit">篩選</button><button type="submit" name="clear" value="1" class="secondary">清除條件</button></form>',
       '',
-      '<p class="muted">顯示 1 筆，共 2 筆。</p>',
-      `<main>${ferry}</main>`,
+      '<p class="muted">顯示 2 筆，共 3 筆。</p>',
+      `<main>${ferry}${bell}</main>`,
       ...TAIL,
     ].join('\n');
     expect(renderPage(model as PageModel, reviewPageTexts)).toBe(expected);

@@ -206,10 +206,13 @@ describe('tome glossary review (ADR-0119)', () => {
 
   it('keeps the previous translation when a locked one changes, for S-16 in round 037', async () => {
     const lib = await book();
-    await review(lib);
+    const first = await review(lib);
+    expect(first.output.data).not.toHaveProperty('renamed');
     edit(lib.home, { 'Old Ferry': { target: '舊渡口', decision: 'lock' } });
-    await review(lib);
+    const { output } = await review(lib);
     expect(cards(lib.home)['Old Ferry']).toMatchObject({ target: '舊渡口', previous_target: '老渡口', decided_by: 'human' });
+    // 改了已鎖定的譯名，S-16 的數量放進 `--json`（沒有翻好的單位，都是 0）。
+    expect(output.data['renamed']).toEqual({ replaced: 0, resend: 0, reset: 0, in_flight: 0 });
   });
 
   it('refuses what a person got wrong, names the entry and field, and applies the rest', async () => {

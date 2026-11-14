@@ -144,14 +144,14 @@ function options(values: readonly string[], chosen: string, labelOf: (value: str
 
 interface FieldContext {
   readonly id: number;
+  /** 驗證沒過的欄位；只有驗證沒過的那張卡有。 */
   readonly invalid: string | null;
-  readonly focus: boolean;
 }
 
 /** 有問題的欄位標出來，說明接在旁邊；聚焦在它上面，改完直接按 Enter。 */
 function marks(name: string, context: FieldContext): string {
   if (context.invalid !== name) return '';
-  return ` aria-invalid="true" aria-describedby="error-${context.id}"${attribute('data-focus', context.focus)}`;
+  return ` aria-invalid="true" aria-describedby="error-${context.id}" data-focus`;
 }
 
 function select(name: string, label: string, body: string, context: FieldContext): string {
@@ -184,7 +184,7 @@ function renderCard(card: ReviewCard, model: PageModel, texts: PageTexts): strin
   const invalid = model.invalid !== null && model.invalid.id === card.id ? model.invalid : null;
   const input = invalid?.input ?? inputOf(card);
   const focusCard = model.focus === card.id && invalid === null;
-  const context: FieldContext = { id: card.id, invalid: invalid?.field ?? null, focus: invalid !== null };
+  const context: FieldContext = { id: card.id, invalid: invalid?.field ?? null };
   const { choices } = model;
   const error =
     invalid === null
