@@ -106,8 +106,11 @@ describe('tome run (ADR-0127)', () => {
     expect(scan.exit).toBe(0);
     expect(codes(scan.output)).toContain('scan.estimate');
     expect(codes(scan.output).slice(-2)).toEqual(['scan.not_confirmed', 'run.stopped']);
-    expect(scan.output.findings.at(-1)).toMatchObject({ level: 'warn', params: { book: 'book', command: 'tome scan-terms book --confirm' } });
-    expect(scan.output.data).toMatchObject({ book: 'book', stopped_at: 'scan', next: 'tome scan-terms book --confirm' });
+    expect(scan.output.findings.at(-1)).toMatchObject({
+      level: 'warn',
+      params: { book: 'book', command: 'tome scan-terms book --confirm', rerun: 'tome run book' },
+    });
+    expect(scan.output.data).toMatchObject({ book: 'book', stopped_at: 'scan', next: 'tome scan-terms book --confirm', rerun: 'tome run book' });
     expect((scan.output.data['stages'] as { stage: string }[]).map(({ stage }) => stage)).toEqual(['extract', 'scan']);
     expect(readFileSync(join(lib.home, 'books', 'book', 'book.yaml'), 'utf8')).toContain('budget_usd: 5');
     expect(scan.progress).toContain('tome run：解析頁面。');
@@ -118,7 +121,8 @@ describe('tome run (ADR-0127)', () => {
     const review = await tome(lib, undefined, 'run', 'book');
     expect(review.exit).toBe(0);
     expect(codes(review.output).slice(-2)).toEqual(['glossary.pending', 'run.stopped']);
-    expect(review.output.data).toMatchObject({ stopped_at: 'review', next: 'tome glossary review book' });
+    // 停在審定時建議網頁，YAML 審定檔的用法寫在說明裡（ADR-0138）。
+    expect(review.output.data).toMatchObject({ stopped_at: 'review', next: 'tome glossary review book --web' });
     expect((review.output.data['stages'] as { stage: string; data: unknown }[]).at(-1)).toEqual({ stage: 'review', data: { pending: 3 } });
     // 待審的是 proposed 與 failed，拒絕或鎖定的不算。
     const pending = async (statuses: readonly string[]): Promise<unknown> => {
@@ -144,7 +148,7 @@ describe('tome run (ADR-0127)', () => {
     expect(done.exit).toBe(0);
     expect(done.output.findings.at(-1)).toMatchObject({ code: 'run.done', level: 'info', params: { book: 'book' } });
     expect(codes(done.output)).toEqual(expect.arrayContaining(['translate.done', 'assemble.done']));
-    expect(done.output.data).toMatchObject({ stopped_at: null, next: null });
+    expect(done.output.data).toMatchObject({ stopped_at: null, next: null, rerun: null });
     expect((done.output.data['stages'] as { stage: string }[]).map(({ stage }) => stage)).toEqual(['extract', 'scan', 'review', 'estimate', 'translate', 'assemble']);
     expect(existsSync(join(lib.home, 'vault', 'book', '00-交付報告.md'))).toBe(true);
     expect(done.progress).toContain('tome run：翻譯。');
@@ -349,13 +353,19 @@ describe('tome run (ADR-0127)', () => {
     const trial = await tome(lib, undefined, 'run', 'book', '--trial', '--realtime');
     expect(trial.exit).toBe(0);
     expect(codes(trial.output).slice(-2)).toEqual(['trial.not_confirmed', 'run.stopped']);
-    expect(trial.output.data).toMatchObject({ stopped_at: 'trial', next: 'tome trial book --confirm --realtime' });
+    // 接著要跑的 `tome run` 帶上這次的 `--trial` 與 `--realtime`：兩個都不存檔（045 實測找到，ADR-0138）。
+    expect(trial.output.data).toMatchObject({
+      stopped_at: 'trial',
+      next: 'tome trial book --confirm --realtime',
+      rerun: 'tome run book --trial --realtime',
+    });
+    expect(trial.output.findings.at(-1)).toMatchObject({ code: 'run.stopped', params: { rerun: 'tome run book --trial --realtime' } });
     expect((trial.output.data['stages'] as { stage: string }[]).map(({ stage }) => stage)).toEqual(['extract', 'scan', 'review', 'trial']);
     expect(trial.progress).toContain('tome run：試翻的估價。');
     // `--trial` 不存進 `book.yaml`：沒加的時候不試翻，直接到估價。
     expect(readFileSync(join(lib.home, 'books', 'book', 'book.yaml'), 'utf8')).not.toContain('trial');
     const plain = await tome(lib, undefined, 'run', 'book', '--realtime');
-    expect(plain.output.data).toMatchObject({ stopped_at: 'estimate' });
+    expect(plain.output.data).toMatchObject({ stopped_at: 'estimate', rerun: 'tome run book --realtime' });
 
     expect((await tome(lib, host, 'trial', 'book', '--confirm', '--realtime')).exit).toBe(0);
     // 這本書只有一個請求，試翻就翻完了，估價沒有要送的，直接輸出。

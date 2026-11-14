@@ -53,6 +53,8 @@ ADR-0113 第 22 項把回合 028 排成「審定與詞庫：`tome glossary revie
    * `keep_source`；
    * 沒拿到提議（`failed`）或來自 `<new-term>`。
 
+   2026-11-14 由 ADR-0138 第 10 項修改（ADR-0130 第 6 項）：`gender: none` 與跟類別預設相同的代名詞不算要人審，預設代名詞照繼承鏈由子到父找；從下一次審定起套用到還在 `proposed` 的卡。這一項的兩條斷言移到 ADR-0138。
+
    自動鎖定要有譯名。門檻 5 與「有性別或代名詞」的範圍都是**提案**：`prompts/scan-terms.md` 會把類別的預設代名詞列給模型看，模型可能每個 `item`、`creature` 都加上代名詞，自動鎖定的比例就會變低；照字面只會多審，不會少審。等真的跑過 Pass 0、看到分布，兩者一起調。
 10. **上一個譯名**：已鎖定的卡改了譯名才記 `previous_target`，再改就換成新的上一個；沒改譯名時保留原本記的。給 037 的 S-16 用。
 11. **`<new-term>` 進佇列**：跑 `tome glossary review` 時把 `issue` 表裡 `new_term` 的列收進 `entity`，`origin` 是 `new_term`、`status` 是 `proposed`、`target` 是模型在譯文裡用的譯名（沒有就留空），出現次數照全書重算。同一個原文只收一次；`entity` 已有同一個原文的（任何狀態）不收，被拒絕的詞翻譯再回報也不會回來。
@@ -77,9 +79,7 @@ ADR-0113 第 22 項把回合 028 排成「審定與詞庫：`tome glossary revie
 <!-- @assert-count target="src/core/store.ts" symbol="ALTER TABLE entity ADD COLUMN previous_target TEXT;" expected="1" reason="第 10、13 項：上一個譯名，給 037 的 S-16" -->
 <!-- @assert-count target="src/core/glossary.ts" symbol="export const REVIEW_FILE = 'glossary-review.yaml';" expected="1" reason="第 3 項：審定檔的位置" -->
 <!-- @assert-count target="src/core/glossary.ts" symbol="export const REVIEW_THRESHOLD = 5;" expected="1" reason="第 9 項：門檻 5，是提案" -->
-<!-- @assert-count target="src/core/glossary.ts" symbol="row.occurrences * weightOf(row.class) >= REVIEW_THRESHOLD" expected="1" reason="第 9 項：出現次數乘權重" -->
 <!-- @assert-count target="src/core/glossary.ts" symbol="row.origin === 'new_term' ||" expected="1" reason="第 9 項：new-term 一律人審" -->
-<!-- @assert-count target="src/core/glossary.ts" symbol="if (needsHuman(row, weightOf) || row.target === null || touched.has(row.id)) continue;" expected="1" reason="第 7、9 項：要人審的、沒譯名的、人改壞的不自動鎖定" -->
 <!-- @assert-count target="src/core/glossary.ts" symbol="const change = whatChanged(editable(entry), stored(row), row.review_written);" expected="1" reason="第 7 項：沒填 decision 的列跟上次寫出的內容比" -->
 <!-- @assert-count target="src/core/glossary.ts" symbol="if (mine === written) return 'database';" expected="1" reason="第 7 項：人沒動的照 book.db 重寫，匯入的譯名才會出現" -->
 <!-- @assert-count target="src/core/glossary.ts" symbol="if (!applied.kept.has(row.id)) store.run('UPDATE entity SET review_written = ? WHERE id = ?', stored(row), row.id);" expected="1" reason="第 7 項：照人填的樣子寫回的列不記成上次寫出的內容" -->
@@ -118,5 +118,5 @@ ADR-0113 第 22 項把回合 028 排成「審定與詞庫：`tome glossary revie
 
 ## Open Questions
 
-- [ ] 分級審定的門檻 5 與「有性別或代名詞」的範圍（`gender: none` 與類別預設代名詞算不算），等真的 Pass 0 提議出來，看分布與要人審的比例再一起調（第 9 項）。
+- [x] 分級審定的門檻 5 與「有性別或代名詞」的範圍（`gender: none` 與類別預設代名詞算不算），等真的 Pass 0 提議出來，看分布與要人審的比例再一起調（第 9 項）。2026-11-14 由 ADR-0138 第 10 項定案：門檻 5 維持，`gender: none` 與跟類別預設相同的代名詞不算；book1 人審的 332 張裡少審 41 張。
 - [ ] 審定檔在上千筆時好不好用，等 M3 收尾用真的規則書審過再看（第 4 項）。

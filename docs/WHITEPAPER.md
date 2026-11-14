@@ -605,6 +605,8 @@ flowchart LR
 
 **已實作**：第 4 步的審定與 `tome glossary import`（ADR-0119）。`tome glossary review <書>` 把實體卡寫成工作區裡的 `books/<slug>/glossary-review.yaml`，分成要審、已鎖定、判定不是專有名詞三段，要審的列帶最多兩句上下文；使用者改完再跑一次，只套用 `decision` 填了 `lock` 或 `reject` 的列；有問題的列與還沒填 `decision` 的修改照填的樣子留著，只印編號與欄位名。出現次數乘類別的 `review_weight` 達 5、有性別或代名詞、`keep_source`、沒拿到提議或翻譯回報的 `<new-term>` 要人審，其餘的提議自動鎖定並記下是自動的；門檻與條件是**提案**，沒有真的 Pass 0 提議可以量。主翻譯回報的 `<new-term>` 收進同一個佇列。`tome glossary import <書> <csv>` 把使用者的譯名直接鎖定，CSV 是手寫解析。
 
+**已實作**：審實體卡的本機網頁與新的門檻（ADR-0138）。`tome glossary review <書> --web` 在 `127.0.0.1` 開一個網頁，埠號由系統挑，網址帶每次啟動的隨機權杖，前景執行、Ctrl+C 結束，並打開預設瀏覽器（`--no-open` 不開）。三個分頁照審定檔的三段，可以改欄位、鎖定、拒絕、搜尋與篩選，有鍵盤操作；驗證與 S-16 跟審定檔相同，鎖定記 `human`。`book.db` 是唯一的依據：網頁啟動時先讀回審定檔，開著時拿著書的鎖，結束時照 `book.db` 重寫審定檔。頁面由伺服器組好，表單送回本機，不連外，不存進瀏覽器。`gender: none` 與跟類別預設相同的代名詞不再算要人審，預設代名詞照繼承鏈由子到父找：book1 人審的 332 張裡少 41 張（已量測）。自動測試對本機伺服器送請求；瀏覽器裡的操作只在桌面版的內建瀏覽器用合成的書點過一次，維護者還沒在自己的瀏覽器點過（**沒有驗證**）。
+
 **已實作**：第 5 步（ADR-0120）。只有鎖定的卡進翻譯，同一個原文實體卡優先於規則包；`keep_source` 的卡遮蔽；翻譯記憶的鍵加上卡的性別、代名詞、語域，只有規則包詞條的單位鍵不變；譯名驗證涵蓋實體卡。還有待審的卡時，估價與翻譯只提醒筆數，不擋。模型會不會照卡的代名詞翻**沒有驗證**，這個回合只跟假供應商跑。
 
 **翻譯記憶**（S-6）的鍵是：遮蔽後文字的雜湊、命中詞條摘要、目標語言、風格版本。風格版本是該角色風格文字的雜湊（ADR-0050）。短段落（預設 40 字元以下）再加前一段的雜湊，避免 `It moves.` 這種句子用錯它、牠、祂。模型不在鍵裡，存成中繼資料。翻譯記憶與人工譯文存在 `series.db`；每本書預設自成一個系列，所以 0.1.0 也用它，跨書共用排到之後。人工譯文的優先序最高（ADR-0012）。依內容雜湊只翻變動段落的新版更新，排到 0.1.0 之後。
@@ -843,12 +845,14 @@ flowchart TD
 
 兩個關卡都不能跳過：
 
-* 鎖定譯名前審高影響的詞條，用 `tome glossary review <book>`。
+* 鎖定譯名前審高影響的詞條，用 `tome glossary review <book> --web`，或不加 `--web`、改審定檔（ADR-0138）。
 * 主翻譯前確認估價，用 `tome estimate <book> --confirm`。
 
 過關後再執行一次 `tome run` 就會接著跑。試翻後面一定是確認估價的關卡，不另設「試翻後要不要停」（ADR-0135）。Pass 0 與試翻也會花錢，它們在關卡之前，但都顯示自己的估價，並計入預算。
 
 **已實作**（ADR-0127）：`tome run <書>` 依序解析、Pass 0 的估價、審定、翻譯的估價、翻譯、輸出 vault，整條拿一次書的鎖。Pass 0 有要送的就顯示估價停下，請使用者跑 `tome scan-terms --confirm`（兩個關卡之外多停的一次，只確認花費）；還有待審的卡、估價沒確認也停。停下時結束碼 0，加 `run.stopped` 警告說下一步的指令，`--json` 寫停在哪一步；跑完是 `run.done`。某一步沒做完（含個資閘門第一次擋下時翻譯停在半路）就停在那裡；翻譯跑完只是有單位沒翻成，照樣輸出 vault，結束碼 1。預算與範圍在解析之後就寫進 `book.yaml`。不自動跑 `tome sync`。加 `--trial` 時，過了審定、這本書在目前的模型與模式還沒校準，就顯示試翻的估價停下，請使用者跑 `tome trial --confirm`；`--trial` 不存進 `book.yaml`，已經校準過就跳過（ADR-0135）。
+
+**已實作**（ADR-0138）：`run.stopped` 帶上接著要跑的 `tome run`，含這次的 `--trial` 與 `--realtime`（兩個都不存檔），`--json` 多一個 `rerun`；停在審定時建議 `--web`。`tome status` 多印一行下一步，順序跟 `tome run` 的關卡相同，`--json` 有 `next`。它照舊不拿鎖、不連網，也不重新估價，所以看不出確認之後又過期的估價，要等 `tome translate` 擋下。
 
 `translate` 包含驗證與重送。`tome verify` 用存下來的原始回應重跑驗證，不花 token，驗證規則改了就用它。
 
@@ -1092,7 +1096,7 @@ token 沒有 Administration 權限，下列設定要維護者在網頁上開：
 
 主程式所有對外網路請求 MUST 走單一模組，其他程式不得自己連網，由 spec-guard 斷言把關。唯一的例外是安裝解析引擎時由 uv 與引擎工具做的下載，那是獨立行程，使用者主動執行（ADR-0081）。個資閘門（DC-1）與端點白名單（DC-2）都在這裡。
 
-**已實作**：ADR-0039 的兩條斷言擋下 `src/core/egress/` 以外的連網模組、供應商 SDK 與全域連網 API，`spec-guard prove` 看過它們失敗。對外只有 `guardedFetch`（`src/core/egress/client.ts`；`tests/core/egress.test.ts`），依序檢查主機、掃描序列化後的完整請求、寫外送紀錄，都過了才送，轉址當成失敗。白名單是 `providers/anthropic.yaml` 的 `endpoint`，規則包碰不到。個資閘門在 `src/core/egress/gate.ts`，比對字串，解開 JSON 與標籤跳脫後才比，例外只免除它完整蓋住的命中，比例外長的項目照樣命中，清單項目少於 3 個字元時警告，命中時回報次數，不列出命中的文字（ADR-0104）。
+**已實作**：ADR-0039 的兩條斷言擋下 `src/core/egress/` 以外的連網模組、供應商 SDK 與全域連網 API，`spec-guard prove` 看過它們失敗。審實體卡的本機網頁是唯一的例外（ADR-0138）：`src/cli/review/server.ts` 只 import `node:http` 的 `createServer`、只聽 `127.0.0.1`，不呼叫 `http.request`、`http.get`，由 ADR-0138 的斷言把關；它不對外連線，頁面也不用任何連網的 API。對外只有 `guardedFetch`（`src/core/egress/client.ts`；`tests/core/egress.test.ts`），依序檢查主機、掃描序列化後的完整請求、寫外送紀錄，都過了才送，轉址當成失敗。白名單是 `providers/anthropic.yaml` 的 `endpoint`，規則包碰不到。個資閘門在 `src/core/egress/gate.ts`，比對字串，解開 JSON 與標籤跳脫後才比，例外只免除它完整蓋住的命中，比例外長的項目照樣命中，清單項目少於 3 個字元時警告，命中時回報次數，不列出命中的文字（ADR-0104）。
 
 本機留外送紀錄，只記內容雜湊、供應商、模型、大小與時間，不記內容。外送紀錄是每本書的，記在 `book.db`。`tome provider test` 沒有書，請求也沒有本文，所以不寫外送紀錄，白名單照樣檢查（ADR-0109）。OpenRouter 一律送 `data_collection: deny`，因為它的預設是 `allow`。
 
@@ -1307,6 +1311,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0135](adr/0135-trial-calibration-and-cache.md) | 試翻、估價校準與提示快取 | M4 |
 | [ADR-0136](adr/0136-d100-orc-pack.md) | d100-orc 規則包 | M4 |
 | [ADR-0137](adr/0137-soupsieve-security-update.md) | Docling 環境的 soupsieve 安全更新 | M4 |
+| [ADR-0138](adr/0138-review-ui-and-next-step.md) | 審定網頁、審定門檻與下一步 | M4 |
 
 ---
 
@@ -1462,6 +1467,7 @@ M4 已實作的項目：
 | 估價補上每個單位的標籤、靜態前綴的比例與 25% 的重送餘裕，Pass 0 照舊 | `src/core/estimate.ts`、`src/core/request.ts`、`src/core/provider.ts`、`providers/anthropic.yaml`、`schemas/tome-provider-1.schema.json` | `tests/core/estimate.test.ts`、`tests/core/request.test.ts`、`tests/core/provider.test.ts`、ADR-0134 的斷言 |
 | `tome trial`、`tome run --trial`、估價校準、試翻與主翻譯的提示快取、Q-6、遷移第 15 版 | `src/core/trial.ts`、`src/core/estimate.ts`、`src/core/request.ts`、`src/core/translate.ts`、`src/core/batch.ts`、`src/core/ledger.ts`、`src/core/llm.ts`、`src/core/store.ts`、`src/core/report.ts`、`src/core/pipeline.ts`、`src/cli/run.ts` | `tests/cli/trial.test.ts`、`tests/core/trial.test.ts`、`tests/cli/tome-run.test.ts`、`tests/core/estimate.test.ts`、`tests/core/ledger.test.ts`、`tests/core/store.test.ts`、ADR-0135 的斷言 |
 | 內建規則包 `d100-orc`、repo 外公開素材的登記與驗證、H-15 的量測 | `systems/d100-orc/`、`tests/fixtures/SOURCES.yaml`、`tools/verify-public.ts`、`tools/h15.ts`、`.github/workflows/h15.yml`、`.github/workflows/test.yml` | `tests/core/d100-orc-pack.test.ts`、`tests/core/prompt.test.ts`、`tests/tools/fixtures.test.ts`、`tests/tools/verify-public.test.ts`、`tests/tools/h15.test.ts`、ADR-0136 的斷言 |
+| 審定網頁 `tome glossary review --web`、審定門檻、`tome status` 的下一步、`run.stopped` 帶上 `--trial` 與 `--realtime` | `src/cli/review/`、`src/cli/run.ts`、`src/cli/messages.ts`、`src/cli/messages/zh-TW.json`、`src/core/glossary.ts`、`src/core/status.ts`、`src/core/pipeline.ts` | `tests/cli/review-web.test.ts`、`tests/cli/review-page.test.ts`、`tests/cli/glossary.test.ts`、`tests/cli/status-next.test.ts`、`tests/core/status.test.ts`、`tests/cli/tome-run.test.ts`、ADR-0138 的斷言 |
 
 M3 已實作的項目：
 
