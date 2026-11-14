@@ -111,9 +111,33 @@ function nextAfter(ids: readonly number[], id: number): number | null {
   return ids[index + 1] ?? ids[index - 1] ?? null;
 }
 
+/** 頁面回給瀏覽器的東西。 */
+export interface LocalReply {
+  readonly status: number;
+  /** 沒寫是 HTML。 */
+  readonly type?: string;
+  readonly body: string;
+  /** 轉址（303）的去處，從 `base` 寫起。 */
+  readonly location?: string;
+}
+
+/**
+ * 掛在本機伺服器上的頁面：審定網頁，以及評測的評分頁（`tools/eval/`，ADR-0139）。伺服器先擋下 Host、權杖、
+ * Origin 與格式不對的請求，剩下的才交給它；`path` 是權杖之後的路徑，`base` 是 `/<權杖>/`。回 null 是 404。
+ */
+export interface LocalApp {
+  get(path: string, query: URLSearchParams, base: string): LocalReply | null;
+  post(path: string, form: URLSearchParams, base: string): Promise<LocalReply | null>;
+  /** 擋下的請求的內文。 */
+  readonly rejected: string;
+}
+
+/** 轉址回頁面，帶著查詢字串。 */
+export function redirectTo(base: string, query: Readonly<Record<string, string>>): LocalReply {
+  return { status: 303, type: 'text/plain; charset=utf-8', body: '', location: `${base}?${new URLSearchParams(query).toString()}` };
+}
+
 export async function startReviewServer({ book, session, texts }: ReviewServerOptions): Promise<ReviewServer> {
-  const token = randomBytes(24).toString('base64url');
-  let port = 0;
   let view: ViewState = ALL_CARDS;
   // 一次只做一個決定：S-16 要比對決定前後的卡，兩個請求交錯就比錯了。
   let queue: Promise<unknown> = Promise.resolve();
@@ -123,30 +147,19 @@ export async function startReviewServer({ book, session, texts }: ReviewServerOp
     return result;
   };
 
-  const send = (response: ServerResponse, status: number, type: string, body: string, extra: Record<string, string> = {}): void => {
-    response.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': type, ...extra });
-    response.end(body);
-  };
-  const page = (response: ServerResponse, status: number, model: Omit<PageModel, 'base' | 'book' | 'cards' | 'choices' | 'view'>): void => {
-    const full: PageModel = { ...model, base: `/${token}/`, book, cards: session.cards(), choices: session.choices, view };
-    send(response, status, 'text/html; charset=utf-8', renderPage(full, texts));
-  };
-  const redirect = (response: ServerResponse, query: Record<string, string>): void => {
-    send(response, 303, 'text/plain; charset=utf-8', '', { Location: `/${token}/?${new URLSearchParams(query).toString()}` });
+  const page = (base: string, status: number, model: Omit<PageModel, 'base' | 'book' | 'cards' | 'choices' | 'view'>): LocalReply => {
+    const full: PageModel = { ...model, base, book, cards: session.cards(), choices: session.choices, view };
+    return { status, body: renderPage(full, texts) };
   };
 
-  const decide = async (response: ServerResponse, id: number, action: 'lock' | 'reject', form: URLSearchParams): Promise<void> => {
+  const decide = async (base: string, id: number, action: 'lock' | 'reject', form: URLSearchParams): Promise<LocalReply> => {
     const tab = sectionOf(form.get('tab'));
     const ids = visible(session.cards()[tab], view).map((card) => card.id);
     const input = formInput(form);
     const result: ReviewDecision = await serial(() => (action === 'lock' ? session.lock(id, input) : session.reject(id)));
     if (!result.ok) {
-      if (result.field === 'id') {
-        page(response, 404, { tab, focus: null, notice: texts.error['id'] ?? texts.error.other, invalid: null });
-        return;
-      }
-      page(response, 422, { tab, focus: id, notice: null, invalid: { id, field: result.field, input: input.display } });
-      return;
+      if (result.field === 'id') return page(base, 404, { tab, focus: null, notice: texts.error['id'] ?? texts.error.other, invalid: null });
+      return page(base, 422, { tab, focus: id, notice: null, invalid: { id, field: result.field, input: input.display } });
     }
     const next = nextAfter(ids, id);
     const renamed = result.renamed === null ? {} : {
@@ -155,7 +168,7 @@ export async function startReviewServer({ book, session, texts }: ReviewServerOp
       reset: String(result.renamed.reset),
       in_flight: String(result.renamed.in_flight),
     };
-    redirect(response, { tab, done: action, id: String(id), ...(next === null ? {} : { focus: String(next) }), ...renamed });
+    return redirectTo(base, { tab, done: action, id: String(id), ...(next === null ? {} : { focus: String(next) }), ...renamed });
   };
 
   const notice = (query: URLSearchParams): string | null => {
@@ -168,6 +181,46 @@ export async function startReviewServer({ book, session, texts }: ReviewServerOp
     return `${said}${fill(texts.renamed, { book, ...Object.fromEntries(counts.map(([name, value]) => [name, value ?? ''])) })}`;
   };
 
+  return startLocalServer({
+    rejected: texts.rejected,
+    get: (path, query, base) => {
+      if (path === '') {
+        return page(base, 200, {
+          tab: sectionOf(query.get('tab')),
+          // 卡的編號都是正整數，看不懂的值（0、NaN）不會對到任何一張。
+          focus: Number(query.get('focus')),
+          notice: notice(query),
+          invalid: null,
+        });
+      }
+      if (path === 'app.css') return { status: 200, type: 'text/css; charset=utf-8', body: STYLE };
+      if (path === 'app.js') return { status: 200, type: 'text/javascript; charset=utf-8', body: SCRIPT };
+      return null;
+    },
+    post: async (path, form, base) => {
+      if (path === 'view') {
+        view = viewOf(form);
+        return redirectTo(base, { tab: sectionOf(form.get('tab')) });
+      }
+      const decision = /^cards\/(\d{1,15})\/(lock|reject)$/.exec(path);
+      if (decision === null) return null;
+      return decide(base, Number(decision[1]), decision[2] as 'lock' | 'reject', form);
+    },
+  });
+}
+
+/** 只聽本機位址的伺服器，安全的檢查都在這裡，頁面只管內容（ADR-0138、ADR-0139）。 */
+export async function startLocalServer(app: LocalApp): Promise<ReviewServer> {
+  const token = randomBytes(24).toString('base64url');
+  let port = 0;
+  const base = `/${token}/`;
+
+  const send = (response: ServerResponse, reply: LocalReply): void => {
+    const location = reply.location === undefined ? {} : { Location: reply.location };
+    response.writeHead(reply.status, { ...SECURITY_HEADERS, 'Content-Type': reply.type ?? 'text/html; charset=utf-8', ...location });
+    response.end(reply.body);
+  };
+
   const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     // 別台機器連不到；本機的其他網站改了 DNS 指到這裡（DNS rebinding）時 Host 對不上。
     if (request.headers.host !== `${HOST}:${port}`) throw new Refused(421);
@@ -176,38 +229,24 @@ export async function startReviewServer({ book, session, texts }: ReviewServerOp
     if (!sameToken(given, token)) throw new Refused(404);
     const path = rest.join('/');
     if (request.method === 'GET') {
-      if (path === '') {
-        page(response, 200, {
-          tab: sectionOf(url.searchParams.get('tab')),
-          // 卡的編號都是正整數，看不懂的值（0、NaN）不會對到任何一張。
-          focus: Number(url.searchParams.get('focus')),
-          notice: notice(url.searchParams),
-          invalid: null,
-        });
-        return;
-      }
-      if (path === 'app.css') return send(response, 200, 'text/css; charset=utf-8', STYLE);
-      if (path === 'app.js') return send(response, 200, 'text/javascript; charset=utf-8', SCRIPT);
-      throw new Refused(404);
+      const reply = app.get(path, url.searchParams, base);
+      if (reply === null) throw new Refused(404);
+      send(response, reply);
+      return;
     }
     if (request.method !== 'POST') throw new Refused(405);
     // 別的網站在瀏覽器裡代送的表單，Origin 是那個網站。
     if (request.headers.origin !== `http://${HOST}:${port}`) throw new Refused(403);
     const form = await readForm(request);
-    if (path === 'view') {
-      view = viewOf(form);
-      redirect(response, { tab: sectionOf(form.get('tab')) });
-      return;
-    }
-    const decision = /^cards\/(\d{1,15})\/(lock|reject)$/.exec(path);
-    if (decision === null) throw new Refused(404);
-    await decide(response, Number(decision[1]), decision[2] as 'lock' | 'reject', form);
+    const reply = await app.post(path, form, base);
+    if (reply === null) throw new Refused(404);
+    send(response, reply);
   };
 
   const server = createServer((request, response) => {
     handle(request, response).catch((error: unknown) => {
       const status = error instanceof Refused ? error.status : 500;
-      if (!response.headersSent) send(response, status, 'text/plain; charset=utf-8', texts.rejected);
+      if (!response.headersSent) send(response, { status, type: 'text/plain; charset=utf-8', body: app.rejected });
       else response.end();
       // 讀不完的請求不留著。
       request.resume();

@@ -23,6 +23,7 @@ affectedFiles:
   - src/core/translate.ts
   - tests/**
   - tools/eval.ts
+  - tools/eval-*.ts
   - tools/eval/**
 protectedFiles:
   - .github/**
