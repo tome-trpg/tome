@@ -44,7 +44,7 @@ TOME 的設計目標是解決這些問題，並讓譯文可以直接用於實際
 | 管理解析引擎 | `tome engine add`、`list`、`remove` | 已實作 |
 | 解析頁面 | `tome extract` | 已實作：將原生文字頁交給解析引擎，組裝成文件，並檢查字元是否遺失 |
 | 擷取專有名詞 | `tome scan-terms` | 已實作：在本機挑出專有名詞，交由模型提議譯名，送出前先估價並確認。提議的品質尚未驗證 |
-| 審定譯名 | `tome glossary review`、`tome glossary import` | 已實作：以本機的審定檔鎖定或拒絕提議，也可從 CSV 匯入自己整理的譯名 |
+| 審定譯名 | `tome glossary review`、`tome glossary import` | 已實作：在只接受本機連線的網頁（`--web`）或本機的審定檔上鎖定或拒絕提議，也可從 CSV 匯入自己整理的譯名 |
 | 估算費用 | `tome estimate`、`tome translate --dry-run` | 已實作：在本機估算，不連網。估算比例依兩本書的紀錄提出，可再以試翻依各書校準 |
 | 試翻 | `tome trial`、`tome run --trial` | 已實作：先翻約一成的請求，依實際用量校準這本書的估價，並量測提示快取的命中率。送出前先估價並確認，試翻的譯文會保留。尚未以實際的 API 執行過 |
 | 翻譯 | `tome translate`、`tome batch status`、`collect`、`cancel` | 已實作：預設以批次送出，加上 `--realtime` 則逐一送出。已用實際的 API 翻譯過一篇公有領域短篇與一本規則書的大部分內容，批次與即時模式都用過，但只用過一個模型 |
@@ -53,7 +53,7 @@ TOME 的設計目標是解決這些問題，並讓譯文可以直接用於實際
 | 輸出 | `tome assemble` | 已實作：將譯文與交付報告輸出成 Obsidian vault，不連網 |
 | 讀回修改 | `tome sync` | 已實作：將 vault 中修改過的段落存為人工譯文 |
 | 查看交付報告的數字 | `tome report` | 已實作：只顯示數量，不連網 |
-| 查看進度與花費 | `tome status` | 已實作：只讀取本機資料，不連網 |
+| 查看進度與花費 | `tome status` | 已實作：只讀取本機資料，不連網，並說明下一步要執行的指令 |
 | 一次跑完 | `tome run` | 已實作：從解析一路執行到輸出，在需要確認費用或審定譯名的地方停下 |
 | 刪除與備份 | `tome purge`、`tome backup` | 已實作：刪除前先列出清單，確認後才刪除 |
 

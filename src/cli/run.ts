@@ -42,7 +42,7 @@ import { reportBook } from '../core/report.ts';
 import { syncBook } from '../core/sync.ts';
 import { bookStatus } from '../core/status.ts';
 import { collectScans, countOutstanding, scanTerms } from '../core/scan.ts';
-import { importGlossary, reviewGlossary } from '../core/glossary.ts';
+import { importGlossary, reviewGlossary, reviewOnWeb } from '../core/glossary.ts';
 import { translateBook } from '../core/translate.ts';
 import { trialBook } from '../core/trial.ts';
 import { verifyBook } from '../core/verify.ts';
@@ -61,10 +61,12 @@ import {
   promptText,
   usageText,
   glossaryReviewTexts,
+  reviewPageTexts,
   vaultTexts,
   workspaceTemplate,
   type ArgumentKey,
 } from './messages.ts';
+import { serveOnWeb } from './review/web.ts';
 import { errorEnvelope, renderFinding, successEnvelope } from './output.ts';
 import { EngineProgress, systemClock, type Clock } from './progress.ts';
 import { readSecret, type SecretInput } from './read-secret.ts';
@@ -86,6 +88,13 @@ export interface Io {
   readonly llm?: LLMHost;
   /** 進度依時間印，測試注入自己的時鐘（ADR-0111）。 */
   readonly clock?: Clock;
+  /** 審定網頁開著時，等使用者結束。測試注入；沒給就等 Ctrl+C（ADR-0138）。 */
+  readonly interrupted?: () => Promise<void>;
+}
+
+/** 等使用者按 Ctrl+C。測試給自己的事件來源。 */
+export function untilInterrupted(source: Pick<NodeJS.Process, 'once'> = process): Promise<void> {
+  return new Promise((resolve) => source.once('SIGINT', () => resolve()));
 }
 
 interface Result {
@@ -537,13 +546,29 @@ const COMMANDS: readonly Command[] = [
   },
   {
     path: ['glossary', 'review'],
-    options: {},
+    options: { web: { type: 'boolean' }, 'no-open': { type: 'boolean' } },
     positionals: 1,
     // 審定檔的說明與段落標題從訊息檔帶進去，核心不放給人看的文字（ADR-0119）。
-    run: async ({ positionals }, io) => {
+    // `--web` 開本機的審定網頁，前景執行、Ctrl+C 結束；網頁上的文字也從訊息檔帶進去（ADR-0138）。
+    run: async ({ positionals, values }, io) => {
       const slug = positionals[0];
       if (slug === undefined) throw missing('book');
-      return reviewGlossary({ home: resolveHome(io.env, io.platform), slug, texts: glossaryReviewTexts });
+      const options = { home: resolveHome(io.env, io.platform), slug, texts: glossaryReviewTexts };
+      if (values['web'] !== true) return reviewGlossary(options);
+      return reviewOnWeb({
+        ...options,
+        serve: (session) =>
+          serveOnWeb(session, {
+            book: slug,
+            texts: reviewPageTexts,
+            open: values['no-open'] !== true,
+            platform: io.platform ?? process.platform,
+            env: io.env,
+            tool: io.tool ?? runTool,
+            say: (key, params) => io.stderr.write(progressText(key, params)),
+            stopped: io.interrupted ?? (() => untilInterrupted()),
+          }),
+      });
     },
   },
   {

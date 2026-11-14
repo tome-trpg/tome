@@ -52,7 +52,8 @@ import { openBookStore } from './store.ts';
 // tome extract：把頁面交給引擎存成 source 層，再組裝成 document 層（白皮書 §5.1）。
 
 const SOURCE_STAGE = 'source';
-const DOCUMENT_STAGE = 'document';
+/** 解析乾淨地做完才記，`tome status` 拿它判斷解析過了沒（ADR-0138）。 */
+export const DOCUMENT_STAGE = 'document';
 const DOCUMENT_FILE = join('ir', 'document.json');
 /** 完整的雜湊會讓路徑在 Windows 超過 260 個字元。 */
 const PATH_HASH_LENGTH = 16;

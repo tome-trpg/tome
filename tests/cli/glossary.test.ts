@@ -206,10 +206,13 @@ describe('tome glossary review (ADR-0119)', () => {
 
   it('keeps the previous translation when a locked one changes, for S-16 in round 037', async () => {
     const lib = await book();
-    await review(lib);
+    const first = await review(lib);
+    expect(first.output.data).not.toHaveProperty('renamed');
     edit(lib.home, { 'Old Ferry': { target: '舊渡口', decision: 'lock' } });
-    await review(lib);
+    const { output } = await review(lib);
     expect(cards(lib.home)['Old Ferry']).toMatchObject({ target: '舊渡口', previous_target: '老渡口', decided_by: 'human' });
+    // 改了已鎖定的譯名，S-16 的數量放進 `--json`（沒有翻好的單位，都是 0）。
+    expect(output.data['renamed']).toEqual({ replaced: 0, resend: 0, reset: 0, in_flight: 0 });
   });
 
   it('refuses what a person got wrong, names the entry and field, and applies the rest', async () => {
@@ -332,7 +335,73 @@ describe('tome glossary review (ADR-0119)', () => {
     const { exit, output } = await review(lib);
     expect(exit).toBe(1);
     expect(codes(output)).toEqual(['glossary.file_invalid']);
+    expect(output.data).toEqual({ book: 'book', path: reviewPath(lib.home) });
+    expect(output.findings[0]?.params).toEqual({ path: reviewPath(lib.home) });
     expect(readFileSync(reviewPath(lib.home), 'utf8')).toBe('review: [unclosed\n');
+  });
+
+  it('stops before touching anything when the pack of the book cannot be loaded', async () => {
+    const lib = await book();
+    childEntities(lib, 'classes:\n  Bad Name: {}\n');
+    const { exit, output } = await review(lib);
+    expect(exit).toBe(1);
+    expect(output.data).toEqual({ book: 'book' });
+    expect(output.findings.some(({ level }) => level === 'fail')).toBe(true);
+    expect(cards(lib.home)['Old Ferry']).toMatchObject({ status: 'proposed' });
+  });
+
+  it('writes keep_source and the stored match conditions into the file', async () => {
+    const lib = await book();
+    await review(lib);
+    withStore(lib.home, (store) =>
+      store.run(`UPDATE entity SET match = '{"case_sensitive":false,"roles":["heading"]}' WHERE source = 'Old Ferry'`),
+    );
+    await review(lib);
+    const file = readReview(lib.home);
+    expect(file.review.find(({ source }) => source === 'Tide Stones')).toMatchObject({ keep_source: true });
+    expect(file.review.find(({ source }) => source === 'Salt Marsh')).toMatchObject({ keep_source: false });
+    expect(file.locked.find(({ source }) => source === 'Old Ferry')?.['match']).toEqual({ case_sensitive: false, whole_word: true, roles: ['heading'] });
+  });
+
+  it('says how many entries it applied, with the book and the file', async () => {
+    const lib = await book();
+    await review(lib);
+    edit(lib.home, { 'Salt Marsh': { decision: 'lock' }, 'Tide Stones': { decision: 'reject' } });
+    const { output } = await review(lib);
+    expect(output.findings[0]).toMatchObject({
+      code: 'glossary.reviewed',
+      level: 'info',
+      params: { book: 'book', path: reviewPath(lib.home), applied: '2', new_terms: '0', auto: '0', review: '2', locked: '2', rejected: '1', skipped: '1' },
+    });
+  });
+
+  it('takes only well-formed new terms, trimmed, and counts where each appears', async () => {
+    const lib = await book();
+    withStore(lib.home, (store) => {
+      const details = [
+        null,
+        'not json',
+        '{"source":5}',
+        '{"source":"   "}',
+        '{"source":" Travellers ","target":"  "}',
+        '{"source":"Salt Cove","target":" 鹽灣 "}',
+        '{"source":"Harbor Light","target":7}',
+      ];
+      details.forEach((detail, index) => {
+        store.run("INSERT INTO issue (unit_id, code, level, detail, created_at) VALUES (?, 'new_term', 'report', ?, 't')", `u${index}`, detail);
+      });
+    });
+    const { exit, output } = await review(lib);
+    expect(exit).toBe(0);
+    expect(output.data).toMatchObject({ new_terms: 3 });
+    const added = withStore(lib.home, (store) =>
+      store.all<Record<string, unknown>>("SELECT source, target, occurrences, first_block FROM entity WHERE origin = 'new_term' ORDER BY source"),
+    );
+    expect(added).toEqual([
+      { source: 'Harbor Light', target: null, occurrences: 0, first_block: null },
+      { source: 'Salt Cove', target: '鹽灣', occurrences: 0, first_block: null },
+      { source: 'Travellers', target: null, occurrences: 1, first_block: 'p0000-aaaaa2' },
+    ]);
   });
 
   it('takes the new terms translation reported into the queue, once, for a person to review', async () => {
@@ -359,15 +428,20 @@ describe('tome glossary review (ADR-0119)', () => {
     expect(second.output.data).toMatchObject({ new_terms: 0 });
   });
 
-  /** 工作區裡的規則包，`place` 的審定權重是 `weight`，書改用它。 */
-  function childPack(lib: Library, weight: number): void {
+  /** 工作區裡繼承 generic 的規則包，類別照 `entities`，書改用它。 */
+  function childEntities(lib: Library, entities: string): void {
     const dir = join(lib.home, 'systems', 'child');
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'pack.yaml'), 'schema: tome-pack/1\nid: child\nversion: 0.1.0\nlicense: UNLICENSED\nsource_langs: [en]\n');
-    writeFileSync(join(dir, 'entities.yaml'), `classes:\n  place:\n    review_weight: ${weight}\n`);
+    writeFileSync(join(dir, 'entities.yaml'), entities);
     const bookYaml = join(lib.home, 'books', 'book', 'book.yaml');
     const text = readFileSync(bookYaml, 'utf8');
     if (!text.includes('system: child')) writeFileSync(bookYaml, `${text}system: child\n`);
+  }
+
+  /** `place` 的審定權重是 `weight`。 */
+  function childPack(lib: Library, weight: number): void {
+    childEntities(lib, `classes:\n  place:\n    review_weight: ${weight}\n`);
   }
 
   const FERRY: readonly Card[] = [{ source: 'Old Ferry', target: '老渡口', status: 'proposed', occurrences: 1, class: 'place' }];
@@ -377,6 +451,60 @@ describe('tome glossary review (ADR-0119)', () => {
     childPack(lib, 5);
     const { output } = await review(lib);
     expect(output.data).toMatchObject({ auto: 0, entities: { review: 1 } });
+  });
+
+  // ADR-0130 第 6 項、ADR-0138：`gender: none` 與跟類別預設相同的代名詞不算要人審。
+  it('locks on its own a card whose gender is none or whose pronoun is the default of its class', async () => {
+    const lib = await book([
+      { source: 'Mire Hound', target: '沼地獵犬', status: 'proposed', class: 'creature', gender: 'none', pronoun: '牠' },
+      { source: 'Brass Lantern', target: '黃銅提燈', status: 'proposed', class: 'item', pronoun: '它' },
+      { source: 'Old Ferry', target: '老渡口', status: 'proposed', class: 'place', gender: 'none' },
+      { source: 'Sky Father', target: '天父', status: 'proposed', class: 'deity', gender: 'none', pronoun: '祂' },
+      // 類別有預設代名詞、卡上沒填的，也不用人審。
+      { source: 'Bog Rat', target: '沼鼠', status: 'proposed', class: 'creature' },
+    ]);
+    const { output } = await review(lib);
+    expect(output.data).toMatchObject({ auto: 5, entities: { review: 0 } });
+    for (const source of ['Mire Hound', 'Brass Lantern', 'Old Ferry', 'Sky Father', 'Bog Rat']) {
+      expect(cards(lib.home)[source]).toMatchObject({ status: 'locked', decided_by: 'auto' });
+    }
+  });
+
+  it('still asks a person about a gender, a pronoun that differs from the default, and a class with none', async () => {
+    const lib = await book([
+      { source: 'Grey Warden', target: '灰色守望者', status: 'proposed', class: 'person', pronoun: '她' },
+      { source: 'Tide Hound', target: '潮汐獵犬', status: 'proposed', class: 'creature', pronoun: '它' },
+      { source: 'Salt Wyrm', target: '鹽龍', status: 'proposed', class: 'creature', gender: 'female', pronoun: '牠' },
+      { source: 'Harrow Gate', target: '哈洛門', status: 'proposed', pronoun: '它' },
+      { source: 'Old Ferry', target: '老渡口', status: 'proposed', class: 'place', pronoun: '它' },
+      // 沒有譯名的提議不自動鎖定，影響再小都一樣。
+      { source: 'Quiet Bay', status: 'proposed', class: 'place' },
+    ]);
+    const { output } = await review(lib);
+    expect(output.data).toMatchObject({ auto: 0, entities: { review: 6 } });
+  });
+
+  it('leaves the cards already locked or rejected as they were', async () => {
+    const lib = await book([
+      { source: 'Mire Hound', target: '沼地獵犬', status: 'rejected', class: 'creature', pronoun: '牠' },
+      { source: 'Brass Lantern', target: '黃銅提燈', status: 'locked', class: 'item', pronoun: '它' },
+    ]);
+    const { output } = await review(lib);
+    expect(output.data).toMatchObject({ auto: 0 });
+    expect(cards(lib.home)['Mire Hound']).toMatchObject({ status: 'rejected', decided_by: null });
+    expect(cards(lib.home)['Brass Lantern']).toMatchObject({ status: 'locked', decided_by: null });
+  });
+
+  it('looks up the default pronoun along the chain of packs, the child first', async () => {
+    const lib = await book([
+      { source: 'Mire Hound', target: '沼地獵犬', status: 'proposed', class: 'creature', pronoun: '牠' },
+      { source: 'Tide Hound', target: '潮汐獵犬', status: 'proposed', class: 'creature', pronoun: '它' },
+    ]);
+    childEntities(lib, 'classes:\n  creature:\n    default_pronoun: 它\n');
+    const { output } = await review(lib);
+    expect(output.data).toMatchObject({ auto: 1 });
+    expect(cards(lib.home)['Tide Hound']).toMatchObject({ status: 'locked', decided_by: 'auto' });
+    expect(cards(lib.home)['Mire Hound']).toMatchObject({ status: 'proposed' });
   });
 
   it('does not lock on its own a card a person tried to change and got wrong', async () => {
@@ -407,7 +535,9 @@ describe('tome glossary review (ADR-0119)', () => {
     await review(lib);
     const { output } = await tome(lib, 'status', 'book');
     const line = output.findings.find(({ code }) => code === 'status.entities');
+    expect(line?.level).toBe('info');
     expect(line?.params).toMatchObject({ review: '4', failed: '1', locked: '1', auto: '1', human: '0', imported: '0', rejected: '0' });
+    expect(output.data['entities']).toEqual({ review: 4, failed: 1, locked: 1, human: 0, auto: 1, imported: 0, rejected: 0, skipped: 1 });
   });
 });
 
