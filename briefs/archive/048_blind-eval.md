@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-14
 type: feature
 wave: 52
@@ -44,7 +44,15 @@ protectedFiles:
   - src/core/store.ts
   - stryker.config.mjs
   - systems/**
+integrity: sha256-8d6986b5f911c3594f7e5b39d55961ce45ce34ea7ff4c48711c7abd2d7ccfa54
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-21.**
+> Merged in pull request [#94](https://github.com/tome-trpg/tome/pull/94).
+> Recorded at commit `05f6bd1`: 28 files changed, +2772 −61.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 048 — 盲評
 
