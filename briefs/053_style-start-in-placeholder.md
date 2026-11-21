@@ -61,7 +61,7 @@ protectedFiles:
 
 ## The Defect, Measured
 
-PR 98 的 `35b75f2`（只改 ADR-0140 的文字）在 2026-11-21 的 CI attempt 1，`test (ubuntu-24.04)`（job 136861826717）失敗；同樣程式的 `767cc32` 兩個平台都過。
+PR 98 的 `35b75f2`（只改 052 那份 ADR 的文字）在 2026-11-21 的 CI attempt 1，`test (ubuntu-24.04)`（job 136861826717）失敗；同樣程式的 `767cc32` 兩個平台都過。
 
 * 失敗的測試：`tests/core/mask.test.ts:314`「gets the text and every <pc> back for any text, ranges and styles」（ADR-0116 的性質測試，fast-check 每次用新的亂數）。`Property failed after 9 tests`，seed 1914687504，path `8:81:6:4:6:6`。
 * 反例：文字 `"\rf\u{10fff7}umen"`、骰子的範圍 0–2、粗體 0–2。預期 `<pc>` 在 1–2，還原後是 2–2。
