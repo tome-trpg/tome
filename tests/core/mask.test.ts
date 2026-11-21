@@ -297,6 +297,25 @@ describe('inline styles as <pc> (ADR-0116)', () => {
     expect(pairedJson([{ id: 1, start: 0, end: 2 }])).toBe('[{"id":1,"start":0,"end":2}]');
   });
 
+  // 佔位符從空白開始又被樣式蓋住：去掉空白後的起點落在佔位符裡，`<pc>` 要包住整個 `<ph>`（ADR-0141）。
+  // 第一個是 2026-11-21 下面的性質測試在 CI 上找到的反例，去掉不相干的字元。後兩個是不能動的邊界。
+  it.each([
+    ['\rfumen', DICE(0, 2), { start: 0, end: 2 }, '<pc id="1"><ph id="1" kind="dice"/></pc>umen', [1, 2]],
+    ['\nfumen', DICE(0, 2), { start: 0, end: 2 }, '<pc id="1"><ph id="1" kind="dice"/></pc>umen', [1, 2]],
+    ['ab \r1D6 cd', DICE(3, 7), { start: 2, end: 8 }, 'ab <pc id="1"><ph id="1" kind="dice"/></pc> cd', [4, 7]],
+    ['umenf\r', DICE(4, 6), { start: 4, end: 6 }, 'umen<pc id="1"><ph id="1" kind="dice"/></pc>', [4, 5]],
+    ['1D6x yz', DICE(0, 3), { start: 3, end: 4 }, '<ph id="1" kind="dice"/><pc id="1">x</pc> yz', [3, 4]],
+  ] as const)('opens the <pc> before a placeholder its trimmed start falls in: %j', (text, range, run, masked, [start, end]) => {
+    const { masked: got, placeholders, formats } = maskText(text, [range], [{ ...run, marks: ['bold'] }]);
+    expect(got).toBe(masked);
+    expect(formats?.paired.map(({ id, start: from, end: to }) => ({ id, start: from, end: to }))).toEqual([{ id: 1, start, end }]);
+    const { units, issues } = parseUnits(unitTag('1', 'paragraph', got));
+    expect(issues).toEqual([]);
+    const restored = restoreSegments(units[0]?.segments ?? [], placeholders);
+    expect(restored.text).toBe(text);
+    expect(restored.paired).toEqual([{ id: 1, start, end }]);
+  });
+
   it('gets the text and every <pc> back for any text, ranges and styles', () => {
     const scenario = fc.string({ unit: 'binary', maxLength: 40 }).chain((text) =>
       fc.record({
