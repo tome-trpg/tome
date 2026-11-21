@@ -294,13 +294,15 @@ describe('tome provider test (ADR-0103 item 6, ADR-0109 item 9)', () => {
       provider.models.set(fable ?? '', { ...of(fable), deprecated_at: '2026-11-01T00:00:00Z' });
     });
     expect(exit).toBe(0);
+    // 第五個是 Fable 5.2（ADR-0139），回覆照清單，照常是對過。
     expect(codes(output)).toEqual([
       'provider.fallback_mismatch',
       'provider.no_batch',
       'provider.thinking_mismatch',
       'provider.deprecated',
+      'provider.tested',
     ]);
-    expect(output.findings.every(({ level }) => level === 'warn')).toBe(true);
+    expect(output.findings.slice(0, 4).every(({ level }) => level === 'warn')).toBe(true);
   });
 
   it('warns when a model that cannot turn thinking off says it can', async () => {
@@ -320,7 +322,7 @@ describe('tome provider test (ADR-0103 item 6, ADR-0109 item 9)', () => {
     const { exit, output } = await tested((provider) => provider.models.set(opus ?? '', 404));
     expect(exit).toBe(0);
     expect(codes(output)[0]).toBe('provider.model_unavailable');
-    expect((output.data['models'] as { available: boolean }[]).map(({ available }) => available)).toEqual([false, true, true, true]);
+    expect((output.data['models'] as { available: boolean }[]).map(({ available }) => available)).toEqual([false, true, true, true, true]);
   });
 
   it('stops at a key the provider refused', async () => {

@@ -690,7 +690,7 @@ type RequestResult =
 | DeepSeek | 自動快取 | 無，走即時佇列，建議排離峰 |
 | Gemini | 隱式快取 | Batch API |
 
-**模型**：TOME 不內建預設模型，因為便宜模型的品質還沒驗證（H-2），不該替使用者選，也不該在沒注意時花到貴的模型。`scanner_model`（Pass 0 用）與 `translator_model`（主翻譯用）在 `tome.yaml` 必填，用到時才檢查，依區塊角色覆寫排到 M4（ADR-0103），例如規則文字用便宜模型、敘事文字用好模型。同一個群組用第一個單位的角色決定模型。`fallback_model` 選填，拒答時改送。範本會列出建議組合，並註明還沒有盲評。
+**模型**：TOME 不內建預設模型，因為便宜模型的品質還沒驗證（H-2），不該替使用者選，也不該在沒注意時花到貴的模型。`scanner_model`（Pass 0 用）與 `translator_model`（主翻譯用）在 `tome.yaml` 必填，用到時才檢查，依區塊角色覆寫排到 M4（ADR-0103），例如規則文字用便宜模型、敘事文字用好模型。同一個群組用第一個單位的角色決定模型。`fallback_model` 選填，拒答時改送。範本會列出建議組合，並註明還沒有盲評。2026-11-21 起範本建議翻譯用 `claude-sonnet-5-5`（維持註解），寫明維護者評過、不是盲評，其他模型還沒有比較（ADR-0139 第 15 項）。
 
 **已實作**：`providers/anthropic.yaml`，格式是 `tome-provider/1`（`schemas/tome-provider-1.schema.json`、`src/core/provider.ts`；`tests/core/provider.test.ts`）。這是 TOME 知道怎麼呼叫的模型清單，不是預設模型，不在表上的模型拒絕執行，查證滿 60 天時警告（ADR-0099）。`tome provider list` 列出這份清單的模型與即時、批次價格（ADR-0106）。
 
@@ -1158,6 +1158,12 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 
 公開語料的評測結果放 `docs/evals/`，範本不內建預設模型，使用者靠這份資料選模型。商業書的結果不公開。
 
+**已實作**（ADR-0139）：評測的工具 `tools/eval.ts`，不隨套件發佈。從 ORC 文件與 The Call of Cthulhu 照角色分層隨機挑 100 段（種子固定），照產品的翻法跑 6 組：Haiku 5.5、Sonnet 5.5（關思考、開思考、中文指令）、Opus 5.5、Fable 5.2，全部批次，一段一個請求；試算的上限超過 30 美元就不送。重送後還沒翻成的淘汰，淘汰率超過一成的組不評。開思考與中文指令只給評測用，使用者碰不到。`docs/evals/` 只放數字、設定與段落的索引。
+
+維護者 2026-11-14 起在自己的電腦上跑：6 組都跑完，共花費 $2.99（**已量測**）。2026-11-21 因為太花時間改了範圍（ADR-0139 第 16 項）：人評只評 B 組（Sonnet 5.5、關思考、英文指令），從 100 段照比例抽 50 段，維護者知道是哪個模型，所以不是盲評；評分在 047 的本機網頁上，可以分次評，5 段重複題檢查前後一致。Q-8 只用這 50 段判定。其他 5 組只有自動指標（淘汰率、只報告的問題、花費與 token），未經人評；H-2、H-13、H-18 的比較留到 0.1.0 之後。
+
+結果（2026-11-21，`docs/evals/2026-11-21-anthropic.md`）：B 組 50 段平均 4.48，95% 信賴區間 4.31 到 4.65，Q-8 達標（**已量測**：一次、一位評審，不是盲評）。沿用的 5 段（6 組並排時評的）平均 3.40，只看 B 評的 45 段平均 4.60；差距可能來自並排時有比較的對象，也可能來自知道模型後評得比較寬，5 段太少下不了結論，0.1.0 之後用並排的盲評驗證。重複的 5 段前後分數完全相同。自動指標：淘汰率 Haiku 5.5 為 4%，其他 0%；只報告的問題 Opus 5.5 有 113 個、Fable 5.2 有 142 個，其他組 30 到 55 個，留給之後的比較。
+
 ### 8.7 可重現性
 
 本節已定案（ADR-0067）。
@@ -1312,6 +1318,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0136](adr/0136-d100-orc-pack.md) | d100-orc 規則包 | M4 |
 | [ADR-0137](adr/0137-soupsieve-security-update.md) | Docling 環境的 soupsieve 安全更新 | M4 |
 | [ADR-0138](adr/0138-review-ui-and-next-step.md) | 審定網頁、審定門檻與下一步 | M4 |
+| [ADR-0139](adr/0139-blind-evaluation.md) | 盲評 | M4 |
 
 ---
 
@@ -1334,6 +1341,8 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 **Q-9 的第一次量測**（2026-11-01，參考機器，Node 24.22.1）：`tome add` 含探測與行程啟動，合成的 400 頁雙欄文字書 0.6 MB，三次都約 2.2 秒；合成的 1,200 頁書，其中 400 頁帶滿版圖，313 MB，約 14 秒。合成書的字型與圖片都比商業書單純，真實書籍還沒量過，所以 Q-9 仍是目標。建議規則包（ADR-0100）的額外耗時在 2026-11-02 量過：同一本 400 頁、約 150 萬字元的書，3 個規則包、各 3 個關鍵詞與 2 個模式，三次分別多花 0.5、0.3、0.8 秒，由 `tests/perf/probe-budget.test.ts` 把關。
 
 **Q-7 的當機注入**（2026-11-02，合成書，假供應商）：即時模式 39 個中斷點、批次模式 58 個，每一點中斷後續跑，已驗證的單位都沒有重付，由 `tests/cli/crash.test.ts` 在每次 CI 把關。真的 API 還沒跑過，「送出後、記下遠端 ID 前」那一點依賴 H-17，所以 Q-7 仍是目標。
+
+**Q-8 的人評**（2026-11-21，公開的 ORC 文件與 The Call of Cthulhu，ADR-0139 第 15、16 項）：Sonnet 5.5（關思考、英文指令）翻的 50 段，維護者評平均 4.48，95% 信賴區間 4.31 到 4.65，達標（**已量測**：一次、一位評審）。評分時知道是哪個模型，不是盲評；6 組並排時評的 5 段平均 3.40，比只看一組評的 45 段（4.60）低，0.1.0 之後用並排的盲評驗證。
 
 **第一版的完成條件**：公開的 ORC 文件一章，加本機商業書一章，全流程跑完，Q-1 到 Q-8 達標。
 
@@ -1412,9 +1421,12 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | 模型 | 即時 | 即時＋快取 | Batch | Batch＋1h 快取（命中約 100%） | Batch＋1h 快取（命中 30%） |
 | :--- | ---: | ---: | ---: | ---: | ---: |
 | Fable 5.1 | 27.81 | 18.16 | 13.91 | 9.11 | 15.94 |
+| Fable 5.2 | 22.25 | 14.53 | 11.13 | 7.29 | 12.75 |
 | Opus 5.5 | 11.12 | 7.36 | 5.56 | 3.69 | 6.39 |
 | Sonnet 5.5 | 5.56 | 3.68 | 2.78 | 1.85 | 3.20 |
 | Haiku 5.5 | 0.28 | 0.19 | 0.14 | 0.09 | 0.16 |
+
+Fable 5.2 照 2026-11-14 的官方價目（ADR-0139），每一項價格都是 Fable 5.1 的 0.8 倍，所以這一列是上一列乘 0.8。
 
 其他 Batch 或離峰價格（不計快取）：`gpt-6-luna` 0.14、`gpt-6.1-sol` 2.78、`gemini-3.5-flash-lite` 0.57。`deepseek-flash` 離峰全命中約 0.23，但受 DC-2 限制，預設不用。
 
@@ -1468,6 +1480,7 @@ M4 已實作的項目：
 | `tome trial`、`tome run --trial`、估價校準、試翻與主翻譯的提示快取、Q-6、遷移第 15 版 | `src/core/trial.ts`、`src/core/estimate.ts`、`src/core/request.ts`、`src/core/translate.ts`、`src/core/batch.ts`、`src/core/ledger.ts`、`src/core/llm.ts`、`src/core/store.ts`、`src/core/report.ts`、`src/core/pipeline.ts`、`src/cli/run.ts` | `tests/cli/trial.test.ts`、`tests/core/trial.test.ts`、`tests/cli/tome-run.test.ts`、`tests/core/estimate.test.ts`、`tests/core/ledger.test.ts`、`tests/core/store.test.ts`、ADR-0135 的斷言 |
 | 內建規則包 `d100-orc`、repo 外公開素材的登記與驗證、H-15 的量測 | `systems/d100-orc/`、`tests/fixtures/SOURCES.yaml`、`tools/verify-public.ts`、`tools/h15.ts`、`.github/workflows/h15.yml`、`.github/workflows/test.yml` | `tests/core/d100-orc-pack.test.ts`、`tests/core/prompt.test.ts`、`tests/tools/fixtures.test.ts`、`tests/tools/verify-public.test.ts`、`tests/tools/h15.test.ts`、ADR-0136 的斷言 |
 | 審定網頁 `tome glossary review --web`、審定門檻、`tome status` 的下一步、`run.stopped` 帶上 `--trial` 與 `--realtime` | `src/cli/review/`、`src/cli/run.ts`、`src/cli/messages.ts`、`src/cli/messages/zh-TW.json`、`src/core/glossary.ts`、`src/core/status.ts`、`src/core/pipeline.ts` | `tests/cli/review-web.test.ts`、`tests/cli/review-page.test.ts`、`tests/cli/glossary.test.ts`、`tests/cli/status-next.test.ts`、`tests/core/status.test.ts`、`tests/cli/tome-run.test.ts`、ADR-0138 的斷言 |
+| 評測的工具 `tools/eval.ts`、評測用的選項、Fable 5.2 | `tools/eval.ts`、`tools/eval-*.ts`、`tools/eval/`、`src/core/request.ts`、`src/core/prompt.ts`、`src/core/provider.ts`、`src/cli/review/server.ts`、`providers/anthropic.yaml` | `tests/tools/eval.test.ts`、`tests/core/eval-variant.test.ts`、`tests/core/provider.test.ts`、ADR-0139 的斷言 |
 
 M3 已實作的項目：
 
