@@ -172,6 +172,15 @@ type Cut =
   | { readonly at: number; readonly order: number; readonly range: MaskRange };
 
 /**
+ * `<pc>` 開頭的位置。佔位符從空白開始又被樣式蓋住時，樣式去掉空白後的起點落在佔位符裡；`<pc>` 切不開 `<ph>`，
+ * 改從佔位符的開頭起，記下的位置照舊不含空白，還原時兩端的空白也不算（ADR-0116 第 13 項、ADR-0141）。
+ * 結尾落在佔位符裡不用處理：輸出佔位符之後游標已經在它後面，`</pc>` 本來就接在後面。
+ */
+function openingAt(start: number, hidden: readonly MaskRange[]): number {
+  return hidden.find((range) => range.start < start && start < range.end)?.start ?? start;
+}
+
+/**
  * 佔位符編號在單位內從 1 起算，依出現順序，翻譯記憶的鍵才穩定。`<pc>` 另外從 1 起算（ADR-0116），
  * 沒有 `runs` 的單位遮蔽後的文字跟以前一樣。
  */
@@ -181,7 +190,7 @@ export function maskText(text: string, ranges: readonly MaskRange[], runs: reado
   // 同一個位置先關再開，`<ph>` 最後：從這裡開始的 `<ph>` 在新開的 `<pc>` 裡面。
   const cuts: Cut[] = [
     ...(formats?.paired ?? []).flatMap(({ id, start, end }) => [
-      { at: start, order: 1, tag: pairedTag(id) },
+      { at: openingAt(start, hidden), order: 1, tag: pairedTag(id) },
       { at: end, order: 0, tag: PAIRED_END },
     ]),
     ...hidden.map((range) => ({ at: range.start, order: 2, range })),
