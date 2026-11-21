@@ -178,7 +178,7 @@
       "locked": " 已鎖定：decided_by 為 human（人審）、auto（自動鎖定）或 import（匯入）。要改譯名時，修改後在 decision 填 lock。",
       "skipped": " 判定不是專有名詞：預設不必審。要改為專有名詞時，填寫 target，並在 decision 填 lock。"
     },
-    "workspace":"schema: tome-workspace/1\n\n# 設定檔不得存放金鑰。金鑰請以 tome provider auth set <供應商> 存入作業系統憑證庫。\n\n# 譯文的目標語言，目前僅支援 zh-TW。\ntarget_lang: zh-TW\n\n# Obsidian vault 的路徑，必須位於任何 git 儲存庫之外。\n# vault_path:\n\n# 解析引擎，由 tome engine add 更新。同一種頁面有多個引擎時，排在前面的優先。\n# engines: []\n\n# 翻譯使用的模型，用到時才檢查。TOME 不內建預設模型，目前也沒有通過盲評的建議組合。\n# translator_model:\n# 模型拒絕翻譯時改用的模型，選填。\n# fallback_model:\n# 掃描專有名詞（tome scan-terms）使用的模型，用到時才檢查。\n# scanner_model:\n\n# 購買者姓名、訂單編號等個資。送出前會掃描，符合時不會送出。\npii: []\n",
+    "workspace":"schema: tome-workspace/1\n\n# 設定檔不得存放金鑰。金鑰請以 tome provider auth set <供應商> 存入作業系統憑證庫。\n\n# 譯文的目標語言，目前僅支援 zh-TW。\ntarget_lang: zh-TW\n\n# Obsidian vault 的路徑，必須位於任何 git 儲存庫之外。\n# vault_path:\n\n# 解析引擎，由 tome engine add 更新。同一種頁面有多個引擎時，排在前面的優先。\n# engines: []\n\n# 翻譯使用的模型，用到時才檢查。TOME 不內建預設模型。\n# 建議：claude-sonnet-5-5（TOME 送出時會關閉思考、用英文指令）。維護者 2026-11-21 評了這個設定翻的 50 段公開文本，\n# 平均 4.48 分（滿分 5 分），達到 TOME 的品質門檻：平均 4 分以上，也就是可以直接上桌。\n# 評分時知道是哪個模型，不是盲評；其他模型還沒有人評的比較。數字見 https://github.com/tome-trpg/tome/tree/main/docs/evals\n# translator_model: claude-sonnet-5-5\n# 模型拒絕翻譯時改用的模型，選填。\n# fallback_model:\n# 掃描專有名詞（tome scan-terms）使用的模型，用到時才檢查。\n# scanner_model:\n\n# 購買者姓名、訂單編號等個資。送出前會掃描，符合時不會送出。\npii: []\n",
     "pack": {
       "pack.yaml": "schema: tome-pack/1\nid: {id}\nversion: 0.1.0\n# 未指定 extends 時繼承 generic。\n# extends: generic\n# 僅供個人使用時不需修改。要公開規則包時，請改為 Apache-2.0、ORC 或 CC-BY-3.0，並加上 LICENSE 與 NOTICE。\nlicense: UNLICENSED\nsource_langs: [en]\n",
       "roles.yaml": "# 區塊角色。鍵名只寫角色名稱，判定時 TOME 會自動加上規則包 ID，成為 <規則包 ID>:<角色>。detect 列出的模式全部符合時才成立。\nroles: {}\n",

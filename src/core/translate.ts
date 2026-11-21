@@ -517,7 +517,7 @@ export function queuedWork({ store, plan, only }: Run, exclude: ReadonlySet<stri
     rows.map(({ unit_id }) => unit_id).filter((id) => !exclude.has(id) && (only === null || only.has(id))),
   );
   const wanted = (unit: TranslationUnit): boolean => waiting.has(unit.unit_id) && plan.inScope(unit);
-  return planRequests(plan.units, plan.chapterOf, wanted).map((request) => ({ request, model: plan.model }));
+  return planRequests(plan.units, plan.chapterOf, wanted, plan.separate).map((request) => ({ request, model: plan.model }));
 }
 
 /** 範圍內的數字，範圍外沒完成的另算，跟 `tome status` 用同一套算法（ADR-0114）。 */
