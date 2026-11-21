@@ -56,15 +56,17 @@ depends-on: [ADR-0049, ADR-0131, ADR-0139]
 
 8. **Windows runner 上的秒數**（CI 的 `test (windows-2025)`，從 job 的日誌讀；**已量測**）：
 
-   | 測試 | main `47cd1ac` | PR 98 `1b2bb27`（6 組照樣先試算） | PR 98 `767cc32`（6 組不先試算） |
-   | :--- | ---: | ---: | ---: |
-   | runs the six variants… | 17.3 秒 | 9.7 秒 | 7.4 秒 |
-   | walks select, estimate, run, score and report… | 26.6 秒 | 5.8 秒 | 4.3 秒 |
-   | estimates each variant… | 6.3 秒 | 6.3 秒 | 6.0 秒 |
-   | copies the books out of the workspace… | 2.7 秒 | 3.0 秒 | 3.3 秒 |
-   | 整個測試檔 | 53.0 秒 | 24.8 秒 | 21.0 秒 |
+   | 測試 | main `47cd1ac` | PR 98 `1b2bb27`（6 組照樣先試算） | PR 98 `767cc32`（6 組不先試算） | PR 98 `8eaa333`（併入 main 後） |
+   | :--- | ---: | ---: | ---: | ---: |
+   | runs the six variants… | 17.3 秒 | 9.7 秒 | 7.4 秒 | 8.1 秒 |
+   | walks select, estimate, run, score and report… | 26.6 秒 | 5.8 秒 | 4.3 秒 | 4.8 秒 |
+   | estimates each variant… | 6.3 秒 | 6.3 秒 | 6.0 秒 | 6.4 秒 |
+   | copies the books out of the workspace… | 2.7 秒 | 3.0 秒 | 3.3 秒 | 4.0 秒 |
+   | 整個測試檔 | 53.0 秒 | 24.8 秒 | 21.0 秒 | 23.3 秒 |
 
-   Ubuntu 上同一個檔是 11.2、6.7、5.7 秒。6 組的測試不先試算（第 1 項）是在 `1b2bb27` 之後改的：PR 95 上（vitest 5.1.0）兩個測試比 main 慢將近一倍，照這個比例 9.7 秒的版本約 18 秒（**估算**），所以再把試算拿掉。照同一個比例，`767cc32` 的 7.4 秒約 14 秒，是上限的一半。兩次 CI 之間，沒改的測試也差到 0.3 秒，runner 本身就有起伏。
+   Ubuntu 上同一個檔是 11.2、6.7、5.7、8.5 秒。6 組的測試不先試算（第 1 項）是在 `1b2bb27` 之後改的：PR 95 上（vitest 5.1.0）兩個測試比 main 慢將近一倍，照這個比例 9.7 秒的版本約 18 秒（**估算**），所以再把試算拿掉。照同一個比例，`767cc32` 的 7.4 秒約 14 秒、`8eaa333` 的 8.1 秒約 16 秒，都在上限的一半上下。`8eaa333` 的評測測試跟 `767cc32` 一樣，只多併進 main；兩次之間每個測試差 0.4 到 0.7 秒，是 runner 本身的起伏。
+
+   PR 98 的 `35b75f2`（只改這份 ADR 的文字）在 CI attempt 1 的 Ubuntu `test` 失敗，失敗的是遮蔽還原的性質測試，跟這個回合無關，原因與修正見 ADR-0141。`8eaa333` 的 `specs`、`test` 在 attempt 1 兩個平台都過，沒有重跑。
 
 ## 驗證
 
