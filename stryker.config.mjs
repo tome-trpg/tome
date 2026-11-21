@@ -34,6 +34,10 @@ export default {
   // 回合 041 在 CI 跟預設各量兩次，維護者看過數字後留下這個設定（ADR-0131 第 8、9 項）。
   timeoutFactor: 3,
   timeoutMS: 10000,
+  // 變異之前先把有關的測試完整跑一次，預設上限 5 分鐘。遮蔽還原有關的測試多，11-12 要 3 分 35 秒，
+  // 11-15 起超過 5 分鐘、還沒變異就停下。15 分鐘約是 11-12 那次的四倍，測試再多一陣子也還夠。
+  // 只放寬這一步，不改上面每個變異的時限與門檻（ADR-0141 第 7 項，修改 ADR-0131 第 9 項）。
+  dryRunTimeoutMinutes: 15,
   reporters: ['clear-text', 'progress', 'html', 'json'],
   // TypeScript 7 沒有 JS 編譯器 API，Stryker 在沙箱裡改寫 tsconfig 的步驟會丟錯。指向不存在的檔案，
   // 那個步驟就跳過。TOME 的 tsconfig 沒有 extends 或 references 指到專案外，不需要改寫（ADR-0110）。

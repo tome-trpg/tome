@@ -72,6 +72,7 @@ brief 020 要照 ADR-0063 與 ADR-0099 第 17、18 項加入 Stryker。`@stryker
 
      不在 workflow 設 `TZ`：設成跟測試相同的時區，換時區沒生效也會通過，遮掉這個測試要檢查的事。不改測試：要動 019 的測試，範圍比較大。
    * `.gitignore` 加 `.stryker-tmp/` 與 `reports/`。
+   * 2026-11-21 由 ADR-0141 第 7 項新增：`dryRunTimeoutMinutes: 15`。變異之前的完整測試超過預設的 5 分鐘，遮蔽還原的 job 還沒變異就停下。
 
 **CI**
 
