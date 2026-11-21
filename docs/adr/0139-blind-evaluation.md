@@ -117,7 +117,7 @@ ADR-0065 定了盲評的做法：約 100 段涵蓋各角色的黃金段落，先
 
       E、F 的只報告問題（機翻腔、過長、代名詞等）明顯比其他組多，數字記在這裡，留給 0.1.0 之後的比較；這次沒有人評，不知道是譯文的問題還是驗證規則的偏差。C 的輸出 token 是 B 的 1.32 倍，遠低於估價暫用的 4 倍（第 3 項，`EVAL_THINKING_FACTOR`）。
     * H-2、H-13、H-18 這次只有上面的自動指標，沒有人評的比較（第 16 項）。
-    * 範本的字樣：維護者審過後補上（第 11 項）。
+    * **範本**（第 11 項，維護者 2026-11-21 審過）：`tome init` 的 `tome.yaml` 建議 `claude-sonnet-5-5`，那一行維持註解（ADR-0041 第 1 項，不內建預設模型）；寫明 TOME 送出時關閉思考、用英文指令，平均 4.48 分、達到平均 4 分以上的門檻，評分時知道是哪個模型、不是盲評，其他模型還沒有人評的比較，附 `docs/evals` 的 GitHub 網址。`scanner_model`、`fallback_model` 沒有評過，不寫建議。
 
 **2026-11-21 的範圍修改**
 
@@ -138,6 +138,7 @@ ADR-0065 定了盲評的做法：約 100 段涵蓋各角色的黃金段落，先
 <!-- @assert-absence target="schemas" symbol="adaptive" reason="第 3 項：供應商檔與 schema 不收自適應思考" -->
 <!-- @assert-absence target="src/cli" regex="true" symbol="\b(variant|separate|instructions)\s*:|'adaptive'" reason="第 3 項：CLI 碰不到評測用的選項" -->
 <!-- @assert-count target="src/core/request.ts" symbol="variant.thinking === undefined ? found : { ...found, thinking: { mode: variant.thinking, output_factor: EVAL_THINKING_FACTOR } };" expected="1" reason="第 3 項：開思考只換這次計畫裡的模型" -->
+<!-- @assert-count target="src/cli/messages/zh-TW.json" symbol="# translator_model: claude-sonnet-5-5" expected="1" comments="include" reason="第 11 項：範本建議評過的模型，保持註解" -->
 <!-- @assert-count target="src/core/request.ts" symbol="export const EVAL_THINKING_FACTOR = 4;" expected="1" reason="第 3 項：思考的輸出倍數是提案" -->
 <!-- @assert-count target="src/core/request.ts" symbol="if (groupChapter !== chapter || full || separate) flush();" expected="1" reason="第 6 項：一段一個請求" -->
 <!-- @assert-count target="tools/eval-run.ts" symbol="export const BUDGET_USD = 30;" expected="1" reason="第 13 項：總估價超過 30 美元就不送" -->

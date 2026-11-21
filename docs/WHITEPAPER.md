@@ -690,7 +690,7 @@ type RequestResult =
 | DeepSeek | 自動快取 | 無，走即時佇列，建議排離峰 |
 | Gemini | 隱式快取 | Batch API |
 
-**模型**：TOME 不內建預設模型，因為便宜模型的品質還沒驗證（H-2），不該替使用者選，也不該在沒注意時花到貴的模型。`scanner_model`（Pass 0 用）與 `translator_model`（主翻譯用）在 `tome.yaml` 必填，用到時才檢查，依區塊角色覆寫排到 M4（ADR-0103），例如規則文字用便宜模型、敘事文字用好模型。同一個群組用第一個單位的角色決定模型。`fallback_model` 選填，拒答時改送。範本會列出建議組合，並註明還沒有盲評。
+**模型**：TOME 不內建預設模型，因為便宜模型的品質還沒驗證（H-2），不該替使用者選，也不該在沒注意時花到貴的模型。`scanner_model`（Pass 0 用）與 `translator_model`（主翻譯用）在 `tome.yaml` 必填，用到時才檢查，依區塊角色覆寫排到 M4（ADR-0103），例如規則文字用便宜模型、敘事文字用好模型。同一個群組用第一個單位的角色決定模型。`fallback_model` 選填，拒答時改送。範本會列出建議組合，並註明還沒有盲評。2026-11-21 起範本建議翻譯用 `claude-sonnet-5-5`（維持註解），寫明維護者評過、不是盲評，其他模型還沒有比較（ADR-0139 第 15 項）。
 
 **已實作**：`providers/anthropic.yaml`，格式是 `tome-provider/1`（`schemas/tome-provider-1.schema.json`、`src/core/provider.ts`；`tests/core/provider.test.ts`）。這是 TOME 知道怎麼呼叫的模型清單，不是預設模型，不在表上的模型拒絕執行，查證滿 60 天時警告（ADR-0099）。`tome provider list` 列出這份清單的模型與即時、批次價格（ADR-0106）。
 

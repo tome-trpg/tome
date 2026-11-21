@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
@@ -149,6 +149,17 @@ describe('tome init', () => {
     const base = tempDir();
     const { io } = capture({ env: { TOME_HOME: join(base, 'home') } });
     expect(await run(['init', '--vault', join(base, 'vault')], io)).toBe(0);
+  });
+
+  it('suggests the evaluated model but leaves it commented out, and says the evaluation was not blind (ADR-0041 item 3, ADR-0139 item 11)', async () => {
+    const home = join(tempDir(), 'home');
+    expect(await run(['init'], capture({ env: { TOME_HOME: home } }).io)).toBe(0);
+    const text = readFileSync(join(home, 'tome.yaml'), 'utf8');
+    expect(text).toContain('# translator_model: claude-sonnet-5-5\n');
+    expect(text).not.toMatch(/^\s*(translator|scanner|fallback)_model:/m);
+    expect(text).toContain('不是盲評');
+    // 建議的模型要在供應商檔裡，否則照著設定會被拒絕。
+    expect(readFileSync('providers/anthropic.yaml', 'utf8')).toContain('- id: claude-sonnet-5-5\n');
   });
 });
 
