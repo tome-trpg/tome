@@ -5,9 +5,9 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { readInstructions } from '../../src/core/prompt.ts';
 import { main } from '../../tools/eval.ts';
-import { consistency, renderReport, results, summarize, variantScores } from '../../tools/eval-report.ts';
+import { consistency, renderReport, results, sampleScores, summarize } from '../../tools/eval-report.ts';
 import { estimateAll, readOutputs, runAll, VARIANTS, type OutputFile, type PassageStatus } from '../../tools/eval-run.ts';
-import { buildBlind, complete, readScores, renderScorePage, startScoreServer, type BlindFile } from '../../tools/eval-score.ts';
+import { buildSample, previousScores, readSampleScores, renderScorePage, startScoreServer, type BlindFile, type SampleFile } from '../../tools/eval-score.ts';
 import { allocate, pick, prng, selectPassages, shuffled, sourceTexts, type BookSpec } from '../../tools/eval-select.ts';
 import { fakeHost, startFakeProvider, type FakeScript } from '../helpers/fake-provider.ts';
 import { library, type Library } from '../helpers/library.ts';
@@ -136,6 +136,10 @@ describe('choosing passages (ADR-0139 item 3)', () => {
     const review = readFileSync(join(dir, 'passages-review.html'), 'utf8');
     expect(review).not.toContain('<script');
     expect(review).toContain('The warden rolls');
+    // 原文換行、表頭固定、前四欄不換行（維護者 2026-11-14 看不到長段落的右半）。
+    expect(review).toContain('white-space: pre-wrap');
+    expect(review).toContain('position: sticky');
+    expect(review).toMatch(/nth-child\(-n\+4\)[^{]*\{[^}]*white-space: nowrap/);
     const struck = await selectPassages({ dir, home: lib.home, books: BOOKS, seed: 48, excluded: [file.passages[0]?.key ?? ''] });
     expect(struck.passages.map(({ key }) => key)).not.toContain(file.passages[0]?.key);
     expect(struck.passages).toHaveLength(12);
@@ -203,7 +207,7 @@ describe('estimating and running (ADR-0139 items 1, 2, 5 and 10)', () => {
   });
 });
 
-/** 不跑供應商，直接編一份結果：A 全部淘汰，B、C、D、F 一樣，E 不一樣。 */
+/** 不跑供應商，直接編一份結果：A 全部淘汰，B 照 `failed` 少幾段，E 每段都有只報告的問題。 */
 function fakeOutputs(ids: readonly string[], failed: readonly string[] = []): OutputFile {
   const of = (code: string, text: (id: string) => string | null) => ({
     code,
@@ -229,58 +233,109 @@ function fakeOutputs(ids: readonly string[], failed: readonly string[] = []): Ou
 }
 
 const IDS = Array.from({ length: 30 }, (_, index) => `P${String(index + 1).padStart(3, '0')}`);
+/** 挑好的 30 段：orc 18 段、cthulhu 12 段，每三段一個標題。 */
 const FILE = {
   seed: 48,
-  books: [{ label: 'orc', slug: 'book', quota: 30, document_sha256: 'a'.repeat(64) }],
+  books: [
+    { label: 'orc', slug: 'book', quota: 18, document_sha256: 'a'.repeat(64) },
+    { label: 'cthulhu', slug: 'tale', quota: 12, document_sha256: 'e'.repeat(64) },
+  ],
   excluded: [],
-  passages: IDS.map((id, index) => ({ id, book: 'orc', key: `u${index}`, role: index % 3 === 0 ? 'heading' : 'paragraph', units: [`u${index}`], blocks: [`b${index}`], chars: 40 })),
+  passages: IDS.map((id, index) => ({ id, book: index < 18 ? 'orc' : 'cthulhu', key: `u${index}`, role: index % 3 === 0 ? 'heading' : 'paragraph', units: [`u${index}`], blocks: [`b${index}`], chars: 40 })),
 };
-const CODES = VARIANTS.map(({ code }) => code);
+/** 照書的比例抽一半。 */
+const HALF = { orc: 9, cthulhu: 6 };
 
-describe('blinding the outputs (ADR-0139 items 5 to 7)', () => {
-  it('drops a variant that lost more than a tenth, merges identical outputs, and shuffles every passage', () => {
-    const blind = buildBlind(fakeOutputs(IDS), FILE, CODES, prng(3));
-    expect(blind.dropped).toEqual(['A']);
-    expect(blind.rates).toMatchObject({ A: 1, B: 0 });
-    const first = blind.passages[0];
-    expect(first?.items.map(({ variants }) => variants)).toEqual([['B', 'C', 'D', 'F'], ['E']]);
-    expect(blind.slots).toHaveLength(40);
-    expect(blind.slots.map(({ slot }) => slot)).toEqual(Array.from({ length: 40 }, (_, index) => index + 1));
-    const orders = new Set(blind.slots.map(({ order }) => order.join()));
-    expect(orders.size).toBe(2);
-  });
+function passageOf(id: string): (typeof FILE.passages)[number] {
+  const found = FILE.passages.find((passage) => passage.id === id);
+  if (found === undefined) throw new Error(`no passage ${id}`);
+  return found;
+}
 
-  it('keeps a variant that lost a tenth or less, and repeats ten passages later on, after their first time', () => {
-    const blind = buildBlind(fakeOutputs(IDS, ['P001', 'P002', 'P003']), FILE, CODES, prng(5));
-    expect(blind.dropped).toEqual(['A']);
-    expect(blind.rates['B']).toBeCloseTo(0.1);
-    const repeats = blind.slots.filter(({ round }) => round === 2);
-    expect(repeats).toHaveLength(10);
-    for (const again of repeats) {
-      const first = blind.slots.find(({ passage, round }) => passage === again.passage && round === 1);
-      expect(first?.slot).toBeLessThan(again.slot);
-      expect(again.slot).toBeGreaterThan(15);
+describe('drawing the passages to score (ADR-0139 item 16)', () => {
+  it("draws each book's share from the seed, by role, whatever the order of scoring", () => {
+    const sample = buildSample(fakeOutputs(IDS), FILE, HALF, new Map(), prng(3));
+    expect(sample).toMatchObject({ code: 'B', seed: 48, rate: 0, dropped: false, failed: [], reused: {} });
+    expect(sample.passages.filter((id) => passageOf(id).book === 'orc')).toHaveLength(9);
+    expect(sample.passages.filter((id) => passageOf(id).book === 'cthulhu')).toHaveLength(6);
+    // 書裡照角色分層，跟挑段落同一套：每個角色至少 2 段。
+    for (const book of ['orc', 'cthulhu']) {
+      expect(sample.passages.filter((id) => passageOf(id).book === book && passageOf(id).role === 'heading').length).toBeGreaterThanOrEqual(2);
     }
-    const mixed = blind.passages.find(({ id }) => id === 'P001');
-    expect(mixed?.items.map(({ variants }) => variants)).toEqual([['C', 'D', 'F'], ['E']]);
+    expect(sample.passages).toEqual([...sample.passages].sort());
+    expect(buildSample(fakeOutputs(IDS), FILE, HALF, new Map(), prng(99)).passages).toEqual(sample.passages);
+    expect(buildSample(fakeOutputs(IDS), { ...FILE, seed: 7 }, HALF, new Map(), prng(3)).passages).not.toEqual(sample.passages);
   });
 
-  it('refuses to blind a run that has not finished', () => {
+  it('scores each passage once and repeats five of them later on, after their first time', () => {
+    const sample = buildSample(fakeOutputs(IDS), FILE, HALF, new Map(), prng(3));
+    expect(sample.slots.map(({ slot }) => slot)).toEqual(Array.from({ length: 20 }, (_, index) => index + 1));
+    const first = sample.slots.filter(({ round }) => round === 1);
+    expect(first.map(({ passage }) => passage).sort()).toEqual([...sample.passages].sort());
+    const repeats = sample.slots.filter(({ round }) => round === 2);
+    expect(repeats).toHaveLength(5);
+    expect(new Set(repeats.map(({ passage }) => passage)).size).toBe(5);
+    for (const again of repeats) {
+      expect(first.find(({ passage }) => passage === again.passage)?.slot).toBeLessThan(again.slot);
+      expect(again.slot).toBeGreaterThan(8);
+    }
+  });
+
+  it('carries over the scores B already had in the blind round, and repeats passages scored now', () => {
+    const base = buildSample(fakeOutputs(IDS), FILE, HALF, new Map(), prng(3));
+    const [one, two] = base.passages;
+    if (one === undefined || two === undefined) throw new Error('no passages');
+    const sample = buildSample(fakeOutputs(IDS), FILE, HALF, new Map([[one, 5], [two, 3], ['P999', 4]]), prng(3));
+    expect(sample.passages).toEqual(base.passages);
+    expect(sample.reused).toEqual({ [one]: 5, [two]: 3 });
+    expect(sample.slots.filter(({ round }) => round === 1)).toHaveLength(13);
+    expect(sample.slots.some(({ passage }) => passage === one || passage === two)).toBe(false);
+    // 全部都評過了：重複題只好從沿用的段落挑。
+    const all = buildSample(fakeOutputs(IDS), FILE, HALF, new Map(base.passages.map((id) => [id, 4])), prng(3));
+    expect(all.slots).toHaveLength(5);
+    expect(all.slots.every(({ round }) => round === 2)).toBe(true);
+  });
+
+  it('reads the score B had in the blind round from the first time each passage was shown', () => {
+    const blind: BlindFile = {
+      dropped: ['A'],
+      rates: {},
+      passages: [
+        { id: 'P001', items: [{ hash: 'h1', variants: ['E'] }, { hash: 'h2', variants: ['B', 'C'] }] },
+        { id: 'P002', items: [{ hash: 'h3', variants: ['B'] }] },
+        { id: 'P003', items: [{ hash: 'h4', variants: ['B'] }] },
+        { id: 'P004', items: [{ hash: 'h5', variants: ['E'] }] },
+      ],
+      slots: [
+        { slot: 1, passage: 'P001', round: 1, order: [1, 0] },
+        { slot: 2, passage: 'P002', round: 1, order: [0] },
+        { slot: 3, passage: 'P002', round: 2, order: [0] },
+        { slot: 4, passage: 'P003', round: 1, order: [0] },
+        { slot: 5, passage: 'P004', round: 1, order: [0] },
+      ],
+    };
+    const scores = { '1': { '0': 2, '1': 5 }, '2': { '0': 3 }, '3': { '0': 1 }, '5': { '0': 4 } };
+    expect(previousScores(blind, scores, 'B')).toEqual(new Map([['P001', 5], ['P002', 3]]));
+  });
+
+  it('leaves out what B did not translate, and scores nothing when B lost more than a tenth', () => {
+    const base = buildSample(fakeOutputs(IDS), FILE, HALF, new Map(), prng(3));
+    const lost = base.passages.slice(0, 3);
+    const sample = buildSample(fakeOutputs(IDS, lost), FILE, HALF, new Map(), prng(3));
+    expect(sample.rate).toBeCloseTo(0.1);
+    expect(sample.dropped).toBe(false);
+    expect(sample.passages).toEqual(base.passages);
+    expect(sample.failed).toEqual(lost);
+    expect(sample.slots.some(({ passage }) => lost.includes(passage))).toBe(false);
+    const extra = IDS.find((id) => !lost.includes(id)) ?? '';
+    const dropped = buildSample(fakeOutputs(IDS, [...lost, extra]), FILE, HALF, new Map([[base.passages[5] ?? '', 4]]), prng(3));
+    expect(dropped).toMatchObject({ dropped: true, reused: {}, slots: [] });
+  });
+
+  it('refuses before B has finished', () => {
     const outputs = fakeOutputs(IDS);
     const unfinished = { ...outputs, B: { ...outputs['B'], passages: { P001: { status: 'missing', text: null, issues: [] } } } } as OutputFile;
-    expect(() => buildBlind(unfinished, FILE, CODES, prng(1))).toThrow(/has not finished/);
-  });
-
-  it('shows letters and texts, never the variants or the models', () => {
-    const blind = buildBlind(fakeOutputs(IDS), FILE, CODES, prng(3));
-    const slot = blind.slots[0];
-    if (slot === undefined) throw new Error('no slot');
-    const html = renderScorePage({ base: '/t/', slot, total: 40, scored: 0, source: 'The <warden> & co.', shown: ['譯：甲', '譯者：乙'], given: {}, notice: null, missing: false });
-    expect(html).toContain('The &lt;warden&gt; &amp; co.');
-    expect(html).toContain('譯文 A');
-    expect(html).toContain('譯文 B');
-    for (const word of ['claude', 'sonnet', 'haiku', 'opus', 'fable']) expect(html.toLowerCase()).not.toContain(word);
-    expect(html.match(/type="radio"/g)).toHaveLength(10);
+    expect(() => buildSample(unfinished, FILE, HALF, new Map(), prng(1))).toThrow(/has not finished/);
   });
 });
 
@@ -297,13 +352,29 @@ function call(url: string, options: { method?: string; headers?: Record<string, 
   });
 }
 
-describe('the scoring page (ADR-0139 item 6)', () => {
-  it('saves each passage as it is scored, refuses a half-scored one, and picks up where it stopped', async () => {
+describe('the scoring page (ADR-0139 items 8 and 16)', () => {
+  it("shows the source and B's translation, and says the maintainer knows which model it is", () => {
+    const model = { base: '/t/', slot: { slot: 1, passage: 'P001', round: 1 as const }, total: 20, scored: 0, code: 'B', model: 'claude-sonnet-5-5', source: 'The <warden> & co.', text: '譯：甲', given: undefined, notice: null, missing: false };
+    const html = renderScorePage(model);
+    expect(html).toContain('The &lt;warden&gt; &amp; co.');
+    expect(html).toContain('譯：甲');
+    expect(html).toContain('B 組的譯文');
+    expect(html).toContain('claude-sonnet-5-5');
+    expect(html).toContain('不是盲評');
+    expect(html.match(/type="radio"/g)).toHaveLength(5);
+    expect(html).not.toContain(' checked');
+    expect(renderScorePage({ ...model, given: 4 }).match(/ checked/g)).toHaveLength(1);
+  });
+
+  it('saves each passage as it is scored, refuses one without a score, and picks up where it stopped', async () => {
     const dir = tempDir();
     const outputs = fakeOutputs(IDS);
-    const blind = buildBlind(outputs, FILE, CODES, prng(3));
+    const sample = buildSample(outputs, FILE, HALF, new Map(), prng(3));
     const sources = new Map(IDS.map((id) => [id, `Source of ${id}.`]));
-    const server = await startScoreServer({ dir, blind, outputs, sources });
+    const options = { dir, sample, outputs, sources, model: 'claude-sonnet-5-5' };
+    const [first, second] = sample.slots;
+    if (first === undefined || second === undefined) throw new Error('no slots');
+    const server = await startScoreServer(options);
     const origin = new URL(server.url).origin;
     const post = (path: string, body: string) =>
       call(new URL(path, server.url).toString(), { method: 'POST', headers: { origin, 'content-type': 'application/x-www-form-urlencoded' }, body });
@@ -311,27 +382,25 @@ describe('the scoring page (ADR-0139 item 6)', () => {
       const page = await call(server.url);
       expect(page.status).toBe(200);
       expect(page.headers['cache-control']).toBe('no-store');
-      expect(page.body).toContain(`Source of ${blind.slots[0]?.passage}.`);
-      const [first, second] = blind.slots;
-      if (first === undefined || second === undefined) throw new Error('no slots');
-      const half = await post(`slots/${first.slot}`, `i${first.order[0]}=4`);
-      expect(half.status).toBe(422);
-      expect(half.body).toContain('role="alert"');
-      expect(existsSync(join(dir, 'scores.json'))).toBe(false);
-      const fields = first.order.map((item, index) => `i${item}=${index + 3}`).join('&');
-      const saved = await post(`slots/${first.slot}`, fields);
+      expect(page.body).toContain(`Source of ${first.passage}.`);
+      expect(page.body).toContain(`譯：${first.passage}`);
+      const none = await post(`slots/${first.slot}`, '');
+      expect(none.status).toBe(422);
+      expect(none.body).toContain('role="alert"');
+      expect(existsSync(join(dir, 'sample-scores.json'))).toBe(false);
+      const saved = await post(`slots/${first.slot}`, 'score=4');
       expect(saved.status).toBe(303);
       expect(new URL(saved.headers.location ?? '', server.url).searchParams.get('slot')).toBe(String(second.slot));
-      expect(readScores(dir)[String(first.slot)]).toEqual(Object.fromEntries(first.order.map((item, index) => [String(item), index + 3])));
-      expect((await post(`slots/${first.slot}`, first.order.map((item) => `i${item}=9`).join('&'))).status).toBe(422);
-      expect((await post('slots/999', fields)).status).toBe(404);
+      expect(readSampleScores(dir)).toEqual({ [String(first.slot)]: 4 });
+      expect((await post(`slots/${first.slot}`, 'score=9')).status).toBe(422);
+      expect((await post('slots/999', 'score=4')).status).toBe(404);
       expect((await call(new URL('app.js', server.url).toString())).body).not.toMatch(/\b(fetch|localStorage|sessionStorage)\b/);
     } finally {
       await server.close();
     }
-    const again = await startScoreServer({ dir, blind, outputs, sources });
+    const again = await startScoreServer(options);
     try {
-      expect((await call(again.url)).body).toContain(`Source of ${blind.slots[1]?.passage}.`);
+      expect((await call(again.url)).body).toContain(`Source of ${second.passage}.`);
     } finally {
       await again.close();
     }
@@ -339,13 +408,10 @@ describe('the scoring page (ADR-0139 item 6)', () => {
 
   it('says so when every passage is scored', async () => {
     const dir = tempDir();
-    const outputs = fakeOutputs(IDS.slice(0, 2));
-    const file = { ...FILE, passages: FILE.passages.slice(0, 2) };
-    const blind = buildBlind(outputs, file, CODES, prng(3));
-    const scores = Object.fromEntries(blind.slots.map(({ slot, order }) => [String(slot), Object.fromEntries(order.map((item) => [String(item), 4]))]));
-    writeFileSync(join(dir, 'scores.json'), JSON.stringify(scores));
-    expect(blind.slots.every((slot) => complete(slot, scores))).toBe(true);
-    const server = await startScoreServer({ dir, blind, outputs, sources: new Map() });
+    const outputs = fakeOutputs(IDS);
+    const sample = buildSample(outputs, FILE, HALF, new Map(), prng(3));
+    writeFileSync(join(dir, 'sample-scores.json'), JSON.stringify(Object.fromEntries(sample.slots.map(({ slot }) => [String(slot), 4]))));
+    const server = await startScoreServer({ dir, sample, outputs, sources: new Map(), model: 'claude-sonnet-5-5' });
     try {
       expect((await call(server.url)).body).toContain('都評完了');
     } finally {
@@ -354,61 +420,76 @@ describe('the scoring page (ADR-0139 item 6)', () => {
   });
 });
 
-describe('the report (ADR-0139 items 7 to 9)', () => {
-  /** 每段都打分：B 那一則 4 分，E 那一則 3 分；重複的那一次 B 改成 5 分。 */
-  function scored(blind: BlindFile): Record<string, Record<string, number>> {
-    return Object.fromEntries(
-      blind.slots.map(({ slot, passage, order, round }) => {
-        const items = blind.passages.find(({ id }) => id === passage)?.items ?? [];
-        return [String(slot), Object.fromEntries(order.map((item) => [String(item), items[item]?.variants.includes('B') ? (round === 2 ? 5 : 4) : 3]))];
-      }),
-    );
+describe('the report (ADR-0139 items 9, 10, 12 and 16)', () => {
+  /** 這次評的每段給 `first` 分，重複的那一次給 `again` 分。 */
+  function scored(sample: SampleFile, first = 4, again = 5): Record<string, number> {
+    return Object.fromEntries(sample.slots.map(({ slot, round }) => [String(slot), round === 2 ? again : first]));
   }
 
-  it('averages what was scored, counts each repeat once, and checks consistency on the repeats', () => {
+  /** 抽中的前兩段在盲評時評過：5 分與 3 分。 */
+  function carried(): SampleFile {
+    const base = buildSample(fakeOutputs(IDS), FILE, HALF, new Map(), prng(3));
+    return buildSample(fakeOutputs(IDS), FILE, HALF, new Map([[base.passages[0] ?? '', 5], [base.passages[1] ?? '', 3]]), prng(3));
+  }
+
+  it('averages each passage once, keeps carried-over scores apart from new ones, and checks the repeats', () => {
     expect(summarize([4, 5, 3, 4])).toMatchObject({ n: 4, mean: 4, counts: [0, 0, 1, 2, 1] });
     expect(summarize([4]).half).toBe(0);
     expect(Number.isNaN(summarize([]).mean)).toBe(true);
-    const blind = buildBlind(fakeOutputs(IDS), FILE, CODES, prng(3));
-    const scores = scored(blind);
-    expect(variantScores(blind, scores, 'B')).toHaveLength(30);
-    expect(new Set(variantScores(blind, scores, 'B'))).toEqual(new Set([4]));
-    expect(new Set(variantScores(blind, scores, 'E'))).toEqual(new Set([3]));
-    expect(variantScores(blind, scores, 'A')).toEqual([]);
-    const same = consistency(blind, scores);
-    expect(same).toMatchObject({ repeats: 10, pairs: 20, exact: 0.5, mad: 0.5, within: 1, stable: true });
+    const sample = carried();
+    const scores = scored(sample);
+    const split = sampleScores(sample, scores);
+    expect(split.all).toHaveLength(15);
+    expect([...split.reused].sort()).toEqual([3, 5]);
+    expect(split.fresh).toEqual(Array.from({ length: 13 }, () => 4));
+    expect(sampleScores(sample, {}).fresh).toEqual([]);
+    expect(consistency(sample, scores)).toMatchObject({ repeats: 5, pairs: 5, exact: 0, mad: 1, within: 1, stable: true });
+    // 重複題的第一次是沿用的分數時，拿它來比。
+    const all = buildSample(fakeOutputs(IDS), FILE, HALF, new Map(sample.passages.map((id) => [id, 2])), prng(3));
+    expect(consistency(all, scored(all))).toMatchObject({ repeats: 5, pairs: 5, exact: 0, mad: 3, within: 0, stable: false });
   });
 
-  it('writes numbers, settings and the index only, and judges Q-8 on variant B', () => {
-    const blind = buildBlind(fakeOutputs(IDS), FILE, CODES, prng(3));
-    const found = results(VARIANTS, fakeOutputs(IDS), blind, scored(blind));
-    expect(found.q8).toMatchObject({ code: 'B', mean: 4, pass: true });
-    expect(found.variants.find(({ code }) => code === 'A')).toMatchObject({ dropped: true, rate: 1 });
-    expect(found.variants.find(({ code }) => code === 'E')).toMatchObject({ issues: 30 });
+  it('writes numbers, settings and the index only, marks the other variants unscored, and judges Q-8 on B', () => {
+    const sample = carried();
+    const found = results(VARIANTS, fakeOutputs(IDS), sample, scored(sample));
+    expect(found.q8).toMatchObject({ code: 'B', rate: 0, pass: true });
+    expect(found.q8.mean).toBeCloseTo(4);
+    expect(found.summary.n).toBe(15);
+    expect(found.reused).toMatchObject({ n: 2, mean: 4 });
+    expect(found.fresh).toMatchObject({ n: 13, mean: 4 });
+    expect(found.variants.find(({ code }) => code === 'A')).toMatchObject({ scored: false, dropped: true, rate: 1 });
+    expect(found.variants.find(({ code }) => code === 'B')).toMatchObject({ scored: true, dropped: false, rate: 0 });
+    expect(found.variants.find(({ code }) => code === 'E')).toMatchObject({ scored: false, issues: 30 });
     const estimate = {
       budget_usd: 30,
       over: false,
       estimate: { low_usd: 1, high_usd: 2 },
       variants: VARIANTS.map(({ code, model }) => ({ code, model, estimate: { low_usd: 0.1, high_usd: 0.2 }, books: [{ book: 'orc', requests: 30, units: 30, estimate: { low_usd: 0.1, high_usd: 0.2 }, prompt_hash: 'c'.repeat(64), pack_hash: 'd'.repeat(64) }] })),
     };
-    const markdown = renderReport({ date: '2026-11-20', commit: 'abc1234', sdk: '0.137.0', specs: VARIANTS, file: FILE, estimate, results: found });
+    const markdown = renderReport({ date: '2026-11-21', commit: 'abc1234', sdk: '0.137.0', specs: VARIANTS, file: FILE, sample, estimate, results: found });
     expect(markdown).toContain('abc1234');
     expect(markdown).toContain('a'.repeat(64));
-    expect(markdown).toContain('| B | 30 | 4.00 |');
+    expect(markdown).toContain('| 15 | 4.00 |');
     // 分數的定義跟評分頁同一套。
     expect(markdown).toContain('* 4 分：可以直接上桌。');
     expect(markdown).toContain('* 5 分：很好，讀起來像原本就用中文寫的。');
+    expect(markdown).toContain('不是盲評');
+    expect(markdown).toContain('沿用');
+    expect(markdown.match(/\| 未經人評 \|/g)).toHaveLength(5);
+    expect(markdown).toContain('| B | 15 段 |');
     expect(markdown).toContain('達標');
     expect(markdown).not.toContain('譯：');
     expect(markdown).not.toContain('Source of');
-    expect(markdown).toContain('| P030 | orc | paragraph | 40 | `b29` | 1 |');
-    const failing = results(VARIANTS, fakeOutputs(IDS), blind, Object.fromEntries(Object.entries(scored(blind)).map(([slot, items]) => [slot, Object.fromEntries(Object.keys(items).map((item) => [item, 2]))])));
-    expect(failing.q8.pass).toBe(false);
+    const chosen = passageOf(sample.passages[0] ?? '');
+    expect(markdown).toContain(`| ${chosen.id} | ${chosen.book} | ${chosen.role} | 40 | \`${chosen.blocks[0]}\` | 1 | 是 |`);
+    const skipped = passageOf(IDS.find((id) => !sample.passages.includes(id)) ?? '');
+    expect(markdown).toContain(`| ${skipped.id} | ${skipped.book} | ${skipped.role} | 40 | \`${skipped.blocks[0]}\` | 1 |  |`);
+    expect(results(VARIANTS, fakeOutputs(IDS), sample, scored(sample, 2, 2)).q8.pass).toBe(false);
   });
 });
 
-describe('node tools/eval.ts (ADR-0139 item 10)', () => {
-  it('walks select, estimate, run, score and report', async () => {
+describe('node tools/eval.ts (ADR-0139 items 13 and 16)', () => {
+  it('walks select, estimate, run, score and report, and carries over a score from the blind round', async () => {
     const lib = await workspace();
     const dir = join(tempDir(), 'eval');
     let said = '';
@@ -434,11 +515,21 @@ describe('node tools/eval.ts (ADR-0139 item 10)', () => {
     expect(await main(['estimate', '--dir', dir], io)).toBe(0);
     expect(await main(['run', '--dir', dir], io)).toBe(0);
     expect(said).toContain('6 組都跑完了');
+    expect(await main(['report', '--dir', dir, '--commit', 'abc1234', '--out', join(tempDir(), 'early.md')], io)).toBe(1);
+    // 之前的盲評評過 P001：B 跟 C、D、F 一樣的那一則給了 5 分。
+    const blind: BlindFile = { dropped: [], rates: {}, passages: [{ id: 'P001', items: [{ hash: 'h', variants: ['B', 'C', 'D', 'F'] }] }], slots: [{ slot: 1, passage: 'P001', round: 1, order: [0] }] };
+    writeFileSync(join(dir, 'blind.json'), JSON.stringify(blind));
+    writeFileSync(join(dir, 'scores.json'), JSON.stringify({ '1': { '0': 5 } }));
     const scoring = main(['score', '--dir', dir], io);
     await new Promise((resolve) => setTimeout(resolve, 300));
     finish();
     expect(await scoring).toBe(0);
-    expect(existsSync(join(dir, 'blind.json'))).toBe(true);
+    // 合成的書不夠 30 加 20，全部抽：26 段，P001 沿用盲評的分數。
+    const sample = JSON.parse(readFileSync(join(dir, 'sample.json'), 'utf8')) as SampleFile;
+    expect(sample.passages).toHaveLength(26);
+    expect(sample.reused).toEqual({ P001: 5 });
+    expect(sample.slots).toHaveLength(30);
+    expect(said).toContain('沿用');
     const out = join(tempDir(), 'evals', 'report.md');
     expect(await main(['report', '--dir', dir, '--commit', 'abc1234', '--out', out], io)).toBe(0);
     expect(readFileSync(out, 'utf8')).toContain('2026-11-20');

@@ -231,6 +231,15 @@ export function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (char) => ESCAPES[char] ?? char);
 }
 
+/** 原文換行、表頭固定、前四欄（段號、書、角色、字元）不換行；長段落不會被截在右邊。 */
+const REVIEW_STYLE = [
+  'table { border-collapse: collapse; width: 100%; }',
+  'th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; vertical-align: top; }',
+  'th { position: sticky; top: 0; background: #fff; }',
+  'th:nth-child(-n+4), td:nth-child(-n+4) { white-space: nowrap; }',
+  'pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; }',
+].join('\n');
+
 /** 給維護者看挑出來的段落，只用來剔除解析壞掉的；本機的檔案，不連網、沒有腳本。 */
 export function reviewHtml(file: PassageFile, texts: ReadonlyMap<string, string>): string {
   const rows = file.passages
@@ -238,7 +247,7 @@ export function reviewHtml(file: PassageFile, texts: ReadonlyMap<string, string>
     .join('\n');
   return [
     '<!doctype html>',
-    '<html lang="en"><head><meta charset="utf-8"><title>passages</title></head><body>',
+    `<html lang="en"><head><meta charset="utf-8"><title>passages</title><style>\n${REVIEW_STYLE}\n</style></head><body>`,
     '<table>',
     '<tr><th>id</th><th>book</th><th>role</th><th>chars</th><th>text</th></tr>',
     rows,

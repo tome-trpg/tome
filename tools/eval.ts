@@ -7,17 +7,19 @@ import type { LLMHost } from '../src/core/llm.ts';
 import { runTool, type ToolRunner } from '../src/core/process.ts';
 import { osSecretStore, resolveApiKey, type SecretStore } from '../src/core/secrets.ts';
 import { resolveHome } from '../src/core/workspace.ts';
-import { estimateAll, readInstructionsFile, readOutputs, runAll, VARIANTS, ESTIMATE_FILE } from './eval-run.ts';
+import { estimateAll, readInstructionsFile, readOutputs, runAll, VARIANTS, ESTIMATE_FILE, Q8_VARIANT } from './eval-run.ts';
 import { renderReport, results, sdkVersion } from './eval-report.ts';
-import { BLIND_FILE, buildBlind, fill, readBlind, readScores, secretRandom, startScoreServer } from './eval-score.ts';
+import { buildSample, fill, previousScores, readBlind, readBlindScores, readSample, readSampleScores, SAMPLE_FILE, secretRandom, startScoreServer } from './eval-score.ts';
 import { readPassages, REVIEW_FILE, selectPassages, sourceTexts, type BookSpec } from './eval-select.ts';
 import texts from './eval/texts.json' with { type: 'json' };
 
-// 盲評的工具（ADR-0139）：維護者在自己的電腦、用自己的金鑰跑，不隨套件發佈。
+// 評測的工具（ADR-0139）：維護者在自己的電腦、用自己的金鑰跑，不隨套件發佈。
 // 步驟：select 挑段落 → estimate 試算 → run 送出 → score 評分 → report 寫報告。結束碼：0 正常、1 停下來了、2 用法錯了。
 
 const SEED = 48;
 const QUOTAS = { orc: 60, cthulhu: 40 } as const;
+/** 人評只評 B 組，從挑好的段落照書的比例抽一半（ADR-0139 第 16 項）。 */
+const SAMPLE = { orc: 30, cthulhu: 20 } as const;
 const CLI = texts.cli;
 
 export interface EvalIo {
@@ -160,17 +162,37 @@ export async function main(argv: readonly string[], io: EvalIo): Promise<number>
 
   if (command === 'score') {
     const outputs = readOutputs(dir);
-    let blind = readBlind(dir);
-    if (blind === null) {
+    let sample = readSample(dir);
+    if (sample === null) {
+      // 之前的盲評評過的 B 照樣算，抽樣只看段落與種子。
+      const blind = readBlind(dir);
+      const previous = blind === null ? new Map<string, number>() : previousScores(blind, readBlindScores(dir), Q8_VARIANT);
       try {
-        blind = buildBlind(outputs, file, VARIANTS.map(({ code }) => code), secretRandom);
+        sample = buildSample(outputs, file, SAMPLE, previous, secretRandom);
       } catch {
         io.write(CLI.no_outputs);
         return 1;
       }
-      writeFileSync(join(dir, BLIND_FILE), `${JSON.stringify(blind, null, 2)}\n`);
+      writeFileSync(join(dir, SAMPLE_FILE), `${JSON.stringify(sample, null, 2)}\n`);
     }
-    const server = await startScoreServer({ dir, blind, outputs, sources: await sourceTexts(dir, file) });
+    if (sample.dropped) {
+      io.write(fill(CLI.dropped, { code: sample.code }));
+      return 1;
+    }
+    const books = file.books.map(({ label }) => `${label} ${file.passages.filter(({ id, book }) => book === label && sample.passages.includes(id)).length}`).join('、');
+    io.write(
+      fill(CLI.sampled, {
+        count: String(file.passages.length),
+        sample: String(sample.passages.length),
+        books,
+        reused: String(Object.keys(sample.reused).length),
+        total: String(sample.slots.length),
+        repeats: String(sample.slots.filter(({ round }) => round === 2).length),
+        left: String(sample.slots.filter(({ slot }) => readSampleScores(dir)[String(slot)] === undefined).length),
+      }),
+    );
+    const model = VARIANTS.find(({ code }) => code === sample.code)?.model ?? '';
+    const server = await startScoreServer({ dir, sample, outputs, model, sources: await sourceTexts(dir, file) });
     try {
       io.write(fill(CLI.score, { url: server.url }));
       if (values['no-open'] !== true) {
@@ -193,17 +215,17 @@ export async function main(argv: readonly string[], io: EvalIo): Promise<number>
       io.write(CLI.usage);
       return 2;
     }
-    const blind = readBlind(dir);
-    if (blind === null) {
-      io.write(CLI.no_blind);
+    const sample = readSample(dir);
+    if (sample === null) {
+      io.write(CLI.no_sample);
       return 1;
     }
     const { readFileSync } = await import('node:fs');
     const estimate = JSON.parse(readFileSync(join(dir, ESTIMATE_FILE), 'utf8')) as Parameters<typeof renderReport>[0]['estimate'];
-    const found = results(VARIANTS, readOutputs(dir), blind, readScores(dir));
+    const found = results(VARIANTS, readOutputs(dir), sample, readSampleScores(dir));
     const date = (io.today?.() ?? new Date()).toISOString().slice(0, 10);
     mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, renderReport({ date, commit, sdk: sdkVersion(), specs: VARIANTS, file, estimate, results: found }));
+    writeFileSync(out, renderReport({ date, commit, sdk: sdkVersion(), specs: VARIANTS, file, sample, estimate, results: found }));
     io.write(fill(CLI.reported, { path: out, verdict: found.q8.pass ? texts.report.pass : texts.report.fail }));
     return 0;
   }
