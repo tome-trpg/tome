@@ -2,8 +2,8 @@
 id: ADR-0141
 status: accepted
 date: 2026-11-21
-depends-on: [ADR-0026, ADR-0102, ADR-0116]
-amends: [ADR-0116]
+depends-on: [ADR-0026, ADR-0063, ADR-0102, ADR-0110, ADR-0116, ADR-0131]
+amends: [ADR-0110, ADR-0116]
 ---
 
 # ADR-0141：樣式的起點落進佔位符
@@ -37,17 +37,29 @@ ADR-0116 定了行內樣式的送法：有樣式的文字用 `<pc>` 包起來；
    * **文字不會掉**，只有樣式變空：修正前那段粗體、斜體或連結在佔位符上變成空的 `<pc>`，譯文裡那段沒有樣式；遮蔽與還原的文字都完整。
    * 修正後，受影響的單位遮蔽後的文字變了，`syncUnits` 讓它回到起點（ADR-0102、ADR-0116 第 14 項），下次翻譯會再送一次，估價會先列出。只有上面那種單位。
 5. **變異測試**：`mutation-lines` 跑改過的行，結果見第 6 項。
-6. `mutation-lines` 的結果：PR 開了之後補上。
+6. `mutation-lines` 的結果：第 7 項的設定改好之後補上。
+7. **Stryker 第一次全套測試的上限放寬到 15 分鐘**（`stryker.config.mjs` 的 `dryRunTimeoutMinutes`，維護者 2026-11-21 同意）。PR 99 第一次跑 `mutation-lines`（`src/core/mask.ts:179-181,193-193`，14 個變異）時，Stryker 在變異之前先把有關的測試完整跑一次，跑到預設的 5 分鐘上限就停下，沒有報告。main 的 `mutation.yml` 從 11-15 起，遮蔽還原的 job 也是這樣：
+
+   | 時間 | 範圍 | 第一次全套測試 | 結果 |
+   | :--- | :--- | :--- | :--- |
+   | 2026-11-12 main `b93ae4d` | 整個 `mask.ts` | 3 分 35 秒，1,397 個測試 | 成功 |
+   | 2026-11-14 PR 94 | `server.ts` 改的行 | 3 分 47 秒，751 個 | 成功 |
+   | 2026-11-14 PR 94 | 四個檔案改的行 | 4 分 06 秒，1,154 個 | 成功 |
+   | 2026-11-15 main `c29af40` | 整個 `mask.ts` | 5 分鐘逾時 | 失敗，其他 5 個模組都過 |
+   | 2026-11-21 PR 99 | `mask.ts` 改的行 | 5 分鐘逾時 | 失敗 |
+
+   第一次全套測試只跑跟被變異檔案有關的測試；`mask.ts` 被很多模組用到，有關的測試多，測試一多就超過。這一項只放寬這一步的上限，不改分數的算法、每個變異的時限（ADR-0131 第 8、9 項）與門檻（ADR-0110 第 9 項）；job 的上限照舊是 130 分鐘。15 分鐘約是 11-12 那次的四倍。
 
 ## 驗證
 
 <!-- @assert-count target="src/core/mask.ts" symbol="{ at: openingAt(start, hidden), order: 1, tag: pairedTag(id) }," expected="1" reason="第 1 項：<pc> 不從佔位符中間開始" -->
+<!-- @assert-count target="stryker.config.mjs" symbol="dryRunTimeoutMinutes: 15," expected="1" comments="include" reason="第 7 項：第一次全套測試的上限 15 分鐘" -->
 
 固定的反例與邊界在 `tests/core/mask.test.ts`「opens the <pc> before a placeholder its trimmed start falls in」。
 
 ## 後果
 
-佔位符從空白開始又被樣式蓋住時，樣式照第 10 項保留在整個佔位符上，ADR-0116 的性質測試不會再因為這種輸入失敗。這種單位修正後會重翻一次；只有自訂規則包或自訂詞條會產生。
+佔位符從空白開始又被樣式蓋住時，樣式照第 10 項保留在整個佔位符上，ADR-0116 的性質測試不會再因為這種輸入失敗。這種單位修正後會重翻一次；只有自訂規則包或自訂詞條會產生。遮蔽還原的變異測試重新跑得完；測試再多下去，第一次全套測試可能又逼近 15 分鐘，到時候看 Stryker 印的秒數再決定。
 
 ## 替代方案
 
