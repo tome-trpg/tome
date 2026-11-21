@@ -52,13 +52,13 @@ protectedFiles:
 
 ## Invariants
 
-- [ ] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
-- [ ] 原本兩個測試驗證的每一項行為，修改後都還有測試驗證，ADR 列出對照
-- [ ] 全域的 `testTimeout` 沒有改；若有單一上限，ADR 寫出理由與量到的秒數
-- [ ] `specs`、`test` 在 CI 第一次跑就通過，Windows 與 Ubuntu 都過，沒有靠重跑
-- [ ] ADR-0140 記下兩個測試修改前後在 Windows runner 上的秒數
-- [ ] 逾時後 `EPERM` 的原因查清楚，或記成 Open Question
-- [ ] 改到 `src/` 的 `.ts` 時跑 `mutation-lines`，存活的變異補上測試或說明
+- [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
+- [x] 原本兩個測試驗證的每一項行為，修改後都還有測試驗證，ADR 列出對照
+- [x] 全域的 `testTimeout` 沒有改；若有單一上限，ADR 寫出理由與量到的秒數
+- [x] `specs`、`test` 在 CI 第一次跑就通過，Windows 與 Ubuntu 都過，沒有靠重跑
+- [x] ADR-0140 記下兩個測試修改前後在 Windows runner 上的秒數
+- [x] 逾時後 `EPERM` 的原因查清楚，或記成 Open Question
+- [x] 改到 `src/` 的 `.ts` 時跑 `mutation-lines`，存活的變異補上測試或說明
 
 ## The Defect, Measured
 
