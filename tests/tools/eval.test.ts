@@ -73,6 +73,10 @@ const BOOKS: readonly BookSpec[] = [
   { label: 'cthulhu', slug: 'tale', quota: 4 },
 ];
 
+// 每規劃一本書就起一個跑規則包正則的 worker，新開的 `book.db` 還要先建單位；Windows 的 runner 上一次要一秒上下。
+// 所以 6 組只在「runs the six variants」走一次、只用一本書，其他測試只跑 B 組（ADR-0140）。
+const ONLY_B = VARIANTS.filter(({ code }) => code === 'B');
+
 /** 依模型給不同的譯文：Haiku 只回一個字（過短，重送後還是不過，淘汰），Sonnet 與 Fable 一樣（合併顯示），Opus 另一種。 */
 const SCRIPT: FakeScript = ({ user, model }) => {
   const units = parseUnits(user).units.map(({ id, raw }) => {
@@ -161,7 +165,7 @@ describe('estimating and running (ADR-0139 items 1, 2, 5 and 10)', () => {
     expect(byCode['F']?.estimate.high_usd).toBeGreaterThan(byCode['B']?.estimate.high_usd ?? 0);
     expect(byCode['A']?.estimate.high_usd).toBeLessThan(byCode['B']?.estimate.high_usd ?? 0);
     expect(estimate.over).toBe(false);
-    const tight = await estimateAll(dir, file, () => ZH, VARIANTS, 0);
+    const tight = await estimateAll(dir, file, () => ZH, ONLY_B, 0);
     expect(tight.over).toBe(true);
     const provider = await startFakeProvider(SCRIPT);
     await expect(runAll(dir, file, tight, fakeHost(provider), () => ZH)).rejects.toThrow(/estimate tops/);
@@ -171,7 +175,8 @@ describe('estimating and running (ADR-0139 items 1, 2, 5 and 10)', () => {
   it('runs the six variants in batches through the product, one passage per request', async () => {
     const lib = await workspace();
     const dir = join(tempDir(), 'eval');
-    const file = await selectPassages({ dir, home: lib.home, books: BOOKS, seed: 48 });
+    // 一本書就看得到每一組的差別；兩本書的流程由試算的測試與 `node tools/eval.ts` 的測試走過。
+    const file = await selectPassages({ dir, home: lib.home, books: BOOKS.slice(0, 1), seed: 48 });
     const estimate = await estimateAll(dir, file, () => ZH);
     const provider = await startFakeProvider(SCRIPT);
     const { outputs, stop } = await runAll(dir, file, estimate, fakeHost(provider), () => ZH);
@@ -189,9 +194,10 @@ describe('estimating and running (ADR-0139 items 1, 2, 5 and 10)', () => {
     expect(byModel('claude-sonnet-5-5').some(({ body }) => system(body).startsWith(readInstructions().trim()))).toBe(true);
     expect(byModel('claude-fable-5-2').every(({ body }) => (body['output_config'] as { effort: string }).effort === 'low')).toBe(true);
     // 每組的成功段落各送一次；Haiku 重送到上限才淘汰。
-    expect(byModel('claude-opus-5-5')).toHaveLength(12);
-    expect(byModel('claude-haiku-5-5').length).toBeGreaterThan(12);
-    expect(golden.size).toBeGreaterThanOrEqual(12);
+    expect(file.passages).toHaveLength(8);
+    expect(byModel('claude-opus-5-5')).toHaveLength(8);
+    expect(byModel('claude-haiku-5-5').length).toBeGreaterThan(8);
+    expect(golden.size).toBeGreaterThanOrEqual(8);
     const statuses = (code: string): string[] => Object.values(outputs[code]?.passages ?? {}).map(({ status }) => status);
     expect(new Set(statuses('A'))).toEqual(new Set(['failed']));
     for (const code of ['B', 'C', 'D', 'E', 'F']) expect(new Set(statuses(code))).toEqual(new Set(['done']));
@@ -199,9 +205,9 @@ describe('estimating and running (ADR-0139 items 1, 2, 5 and 10)', () => {
     expect(outputs['E']?.passages['P001']?.text).toMatch(/^譯者：/);
     expect(outputs['B']?.spent_usd).toBeGreaterThan(0);
     expect(outputs['B']?.input_tokens).toBeGreaterThan(0);
-    // 跑過的不再送。
+    // 跑過的不再送：每一組走同一段程式，重跑 B 組就看得出來。
     const sent = provider.requests.length;
-    await runAll(dir, file, estimate, fakeHost(provider), () => ZH);
+    await runAll(dir, file, estimate, fakeHost(provider), () => ZH, {}, ONLY_B);
     expect(provider.requests).toHaveLength(sent);
     expect(readOutputs(dir)['B']?.passages['P001']?.status).toBe('done');
   });
@@ -505,6 +511,8 @@ describe('node tools/eval.ts (ADR-0139 items 13 and 16)', () => {
       tool: async () => ({ stdout: '' }),
       stopped: () => stopped,
       today: () => new Date('2026-11-20T00:00:00Z'),
+      // 指令的接線只要一組就看得到；6 組由「runs the six variants」走過（ADR-0140）。
+      variants: ONLY_B,
     };
     expect(await main(['estimate'], io)).toBe(2);
     expect(await main(['estimate', '--dir', dir], io)).toBe(1);
@@ -513,8 +521,10 @@ describe('node tools/eval.ts (ADR-0139 items 13 and 16)', () => {
     expect(said).toContain('挑好 26 段');
     expect(await main(['run', '--dir', dir], io)).toBe(1);
     expect(await main(['estimate', '--dir', dir], io)).toBe(0);
+    expect(said).toContain('B claude-sonnet-5-5：26 個請求');
+    expect(said).not.toContain('claude-haiku-5-5');
     expect(await main(['run', '--dir', dir], io)).toBe(0);
-    expect(said).toContain('6 組都跑完了');
+    expect(said).toContain('都跑完了');
     expect(await main(['report', '--dir', dir, '--commit', 'abc1234', '--out', join(tempDir(), 'early.md')], io)).toBe(1);
     // 之前的盲評評過 P001：B 跟 C、D、F 一樣的那一則給了 5 分。
     const blind: BlindFile = { dropped: [], rates: {}, passages: [{ id: 'P001', items: [{ hash: 'h', variants: ['B', 'C', 'D', 'F'] }] }], slots: [{ slot: 1, passage: 'P001', round: 1, order: [0] }] };
