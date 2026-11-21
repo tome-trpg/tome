@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-21
 type: defect
 wave: 54
@@ -31,7 +31,15 @@ protectedFiles:
   - systems/**
   - tools/**
   - vitest.config.ts
+integrity: sha256-a4cca3951564a356a8596162cd76abe99e383640fc663262beff1de0c263b9c7
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-21.**
+> Merged in pull request [#99](https://github.com/tome-trpg/tome/pull/99).
+> Recorded at commit `18e10a2`: 10 files changed, +206 −1.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 053 — 樣式的起點落進佔位符
 
