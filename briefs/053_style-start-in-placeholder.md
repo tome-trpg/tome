@@ -55,12 +55,12 @@ protectedFiles:
 
 ## Invariants
 
-- [ ] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
-- [ ] 反例寫成固定的測試，先在舊程式上失敗過
-- [ ] 改過的行跑 `mutation-lines`，存活的變異補上測試，或說明為什麼等價
-- [ ] ADR-0141 寫下原因、修法與影響範圍（內建規則包碰不到、自訂規則包可能會、文字不會掉、只有樣式變空）
-- [ ] `specs`、`test` 在 CI 第一次跑就通過，Windows 與 Ubuntu 都過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
+- [x] 反例寫成固定的測試，先在舊程式上失敗過
+- [x] 改過的行跑 `mutation-lines`，存活的變異補上測試，或說明為什麼等價
+- [x] ADR-0141 寫下原因、修法與影響範圍（內建規則包碰不到、自訂規則包可能會、文字不會掉、只有樣式變空）
+- [x] `specs`、`test` 在 CI 第一次跑就通過，Windows 與 Ubuntu 都過，沒有靠重跑
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
 
 ## The Defect, Measured
 
