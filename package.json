@@ -71,7 +71,7 @@
     "fast-check": "4.10.2",
     "pdfkit": "0.20.2",
     "typescript": "7.0.2",
-    "vitest": "5.0.5"
+    "vitest": "5.1.0"
   },
   "overrides": {
     "@stryker-mutator/core": {
