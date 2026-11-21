@@ -9,6 +9,7 @@ affectedFiles:
   - docs/WHITEPAPER.md
   - docs/adr/**
   - src/core/mask.ts
+  - stryker.config.mjs
   - tests/**
 protectedFiles:
   - .github/**
@@ -37,6 +38,8 @@ protectedFiles:
 ## Intent
 
 這個回合結束時，佔位符從空白開始、又被一段行內樣式（粗體、斜體、連結）蓋住時，遮蔽後的 `<pc>` 包住整個 `<ph>`，還原時樣式的位置跟原文記下的一致，ADR-0116 的性質測試不會再因為這種輸入失敗。原因在 `src/core/mask.ts`：`planFormats` 先把樣式對齊佔位符的邊界（`shrink`），再去掉頭尾空白（`trimmed`），起點就可能落進佔位符裡；`maskText` 輸出時游標已經在佔位符後面，`<pc>` 只能接在它後面，變成空的。記下的位置（去掉空白後的）照 ADR-0116 第 13 項本來就對，錯的是 `<pc>` 開頭放的地方。反例先寫成固定的測試，在舊程式上失敗，再修。決定寫成 ADR-0141，寫清楚影響範圍：內建規則包碰不到、自訂規則包可能會，文字不會掉、只有樣式變空。名稱（`053_style-start-in-placeholder`、標題「樣式的起點落進佔位符」）是提案，等維護者確認。
+
+2026-11-21 範圍增加：`mutation-lines` 跑 `mask.ts` 時，Stryker 第一次的全套測試撞到預設的 5 分鐘上限，沒有結果；main 的 `mutation.yml` 的 mask job 從 11-15 起也是這樣。維護者同意在這個回合的 `stryker.config.mjs` 加 `dryRunTimeoutMinutes: 15`，只放寬這一步的上限，不改分數的算法、各變異的時限與門檻。
 
 ## Negative Scope
 
