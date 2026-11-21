@@ -71,22 +71,22 @@ protectedFiles:
 
 ## Invariants
 
-- [ ] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
-- [ ] 新的測試先在舊程式上失敗過
-- [ ] 評測用的選項（開思考、換指令、一段一個請求）只有 `tools/` 用得到，`src/cli/` 沒有任何地方傳它們，有斷言把關
-- [ ] ADR-0039、ADR-0082、ADR-0138 的斷言照舊成立：`node:http` 只在 `src/cli/review/server.ts`、只聽 `127.0.0.1`，子行程只經過 `process.ts`，`src` 的 `.ts` 沒有中文
-- [ ] 訊息、`--json`、紀錄與 `docs/evals/` 只有數字、編號與雜湊，沒有書本文字
-- [ ] 評分頁、中文指令與範本的字樣經維護者審過
-- [ ] `mutation-lines` 跑過改過的行，存活的變異補上測試，或說明為什麼等價
-- [ ] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
-- [ ] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
+- [x] `npm run spec`、`npm run typecheck`、`npm test`、`npm run licenses` 在本機都通過
+- [x] 新的測試先在舊程式上失敗過
+- [x] 評測用的選項（開思考、換指令、一段一個請求）只有 `tools/` 用得到，`src/cli/` 沒有任何地方傳它們，有斷言把關
+- [x] ADR-0039、ADR-0082、ADR-0138 的斷言照舊成立：`node:http` 只在 `src/cli/review/server.ts`、只聽 `127.0.0.1`，子行程只經過 `process.ts`，`src` 的 `.ts` 沒有中文
+- [x] 訊息、`--json`、紀錄與 `docs/evals/` 只有數字、編號與雜湊，沒有書本文字
+- [x] 評分頁、中文指令與範本的字樣經維護者審過
+- [x] `mutation-lines` 跑過改過的行，存活的變異補上測試，或說明為什麼等價
+- [x] `specs`、`test` 在 CI 第一次跑就通過，沒有靠重跑
+- [x] `CodeQL` 檢查的 conclusion 是 success，annotations 沒有新警示
 
 ## Acceptance Criteria
 
-- [ ] ADR-0139 寫下維護者的 11 項回答、Fable 5.2 的價格來源與 `tome provider test` 的結果、評測工具的做法，成熟度照 ADR-0068 標
-- [ ] `providers/anthropic.yaml` 有 Fable 5.2，Fable 5.1 留著
-- [ ] `tools/eval.ts` 的挑段落、試算、送出、評分、出報告，都用假供應商與合成的書測過
-- [ ] 評分頁照 047 的安全設計，鍵盤 1 到 5、可以分次評、重複題；2026-11-21 起只評 B 組，寫明不是盲評
-- [ ] 維護者評完 B 組的 50 段，`docs/evals/` 有這次的數字，ADR-0139 寫下 Q-8；H-2、H-13、H-18 只有自動指標，比較留到 0.1.0 之後
-- [ ] `tome init` 範本照 ADR-0041 第 3 項註明還沒有盲評的比較，字樣先給維護者審
-- [ ] 白皮書、CHANGELOG 跟著改
+- [x] ADR-0139 寫下維護者的 11 項回答、Fable 5.2 的價格來源與 `tome provider test` 的結果、評測工具的做法，成熟度照 ADR-0068 標
+- [x] `providers/anthropic.yaml` 有 Fable 5.2，Fable 5.1 留著
+- [x] `tools/eval.ts` 的挑段落、試算、送出、評分、出報告，都用假供應商與合成的書測過
+- [x] 評分頁照 047 的安全設計，鍵盤 1 到 5、可以分次評、重複題；2026-11-21 起只評 B 組，寫明不是盲評
+- [x] 維護者評完 B 組的 50 段，`docs/evals/` 有這次的數字，ADR-0139 寫下 Q-8；H-2、H-13、H-18 只有自動指標，比較留到 0.1.0 之後
+- [x] `tome init` 範本照 ADR-0041 第 3 項註明還沒有盲評的比較，字樣先給維護者審
+- [x] 白皮書、CHANGELOG 跟著改
