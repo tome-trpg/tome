@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { readInstructions } from '../../src/core/prompt.ts';
 import { main } from '../../tools/eval.ts';
 import { consistency, renderReport, results, sampleScores, summarize } from '../../tools/eval-report.ts';
-import { estimateAll, readOutputs, runAll, VARIANTS, type OutputFile, type PassageStatus } from '../../tools/eval-run.ts';
+import { BUDGET_USD, estimateAll, readOutputs, runAll, VARIANTS, type EstimateFile, type OutputFile, type PassageStatus } from '../../tools/eval-run.ts';
 import { buildSample, previousScores, readSampleScores, renderScorePage, startScoreServer, type BlindFile, type SampleFile } from '../../tools/eval-score.ts';
 import { allocate, pick, prng, selectPassages, shuffled, sourceTexts, type BookSpec } from '../../tools/eval-select.ts';
 import { fakeHost, startFakeProvider, type FakeScript } from '../helpers/fake-provider.ts';
@@ -177,7 +177,8 @@ describe('estimating and running (ADR-0139 items 1, 2, 5 and 10)', () => {
     const dir = join(tempDir(), 'eval');
     // 一本書就看得到每一組的差別；兩本書的流程由試算的測試與 `node tools/eval.ts` 的測試走過。
     const file = await selectPassages({ dir, home: lib.home, books: BOOKS.slice(0, 1), seed: 48 });
-    const estimate = await estimateAll(dir, file, () => ZH);
+    // `runAll` 只拿試算的結果檢查上限與預算，書由它自己複製；試算本身由上一個測試驗證，這裡不再規劃 6 次。
+    const estimate: EstimateFile = { variants: [], estimate: { low_usd: 0, high_usd: 0 }, budget_usd: BUDGET_USD, over: false };
     const provider = await startFakeProvider(SCRIPT);
     const { outputs, stop } = await runAll(dir, file, estimate, fakeHost(provider), () => ZH);
     expect(stop).toBeNull();
