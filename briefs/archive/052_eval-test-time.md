@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 date: 2026-11-21
 type: defect
 wave: 53
@@ -29,7 +29,15 @@ protectedFiles:
   - src/core/store.ts
   - systems/**
   - vitest.config.ts
+integrity: sha256-9dc89e19b53efe1ee095e868f1472f067fb1529039d98ae25956863407b918d8
 ---
+
+<!-- spec-brief:banner -->
+> **Archived 2026-11-21.**
+> Merged in pull request [#98](https://github.com/tome-trpg/tome/pull/98).
+> Recorded at commit `c0a8b41`: 5 files changed, +206 −16.
+> The body below describes the tree before execution and is not maintained.
+<!-- /spec-brief:banner -->
 
 # 052 — 評測測試的時間
 
