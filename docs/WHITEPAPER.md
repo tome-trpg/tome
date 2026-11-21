@@ -1319,6 +1319,7 @@ M4 只有 Anthropic，所以這次比較 Anthropic 的模型，並涵蓋思考�
 | [ADR-0137](adr/0137-soupsieve-security-update.md) | Docling 環境的 soupsieve 安全更新 | M4 |
 | [ADR-0138](adr/0138-review-ui-and-next-step.md) | 審定網頁、審定門檻與下一步 | M4 |
 | [ADR-0139](adr/0139-blind-evaluation.md) | 盲評 | M4 |
+| [ADR-0140](adr/0140-eval-test-time.md) | 評測測試的時間 | M4 |
 | [ADR-0141](adr/0141-style-start-in-placeholder.md) | 樣式的起點落進佔位符 | M4 |
 
 ---

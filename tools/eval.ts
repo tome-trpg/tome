@@ -7,7 +7,7 @@ import type { LLMHost } from '../src/core/llm.ts';
 import { runTool, type ToolRunner } from '../src/core/process.ts';
 import { osSecretStore, resolveApiKey, type SecretStore } from '../src/core/secrets.ts';
 import { resolveHome } from '../src/core/workspace.ts';
-import { estimateAll, readInstructionsFile, readOutputs, runAll, VARIANTS, ESTIMATE_FILE, Q8_VARIANT } from './eval-run.ts';
+import { estimateAll, readInstructionsFile, readOutputs, runAll, VARIANTS, ESTIMATE_FILE, Q8_VARIANT, type VariantSpec } from './eval-run.ts';
 import { renderReport, results, sdkVersion } from './eval-report.ts';
 import { buildSample, fill, previousScores, readBlind, readBlindScores, readSample, readSampleScores, SAMPLE_FILE, secretRandom, startScoreServer } from './eval-score.ts';
 import { readPassages, REVIEW_FILE, selectPassages, sourceTexts, type BookSpec } from './eval-select.ts';
@@ -34,6 +34,8 @@ export interface EvalIo {
   readonly stopped?: () => Promise<void>;
   readonly instructions?: string;
   readonly today?: () => Date;
+  /** 測試只跑幾組，省時間（ADR-0140）；沒給就是 6 組。 */
+  readonly variants?: readonly VariantSpec[];
 }
 
 function untilInterrupted(): Promise<void> {
@@ -81,6 +83,7 @@ export async function main(argv: readonly string[], io: EvalIo): Promise<number>
   }
   mkdirSync(dir, { recursive: true });
   const instructions = (): string => io.instructions ?? readInstructionsFile();
+  const specs = io.variants ?? VARIANTS;
 
   if (command === 'select') {
     const previous = readPassages(dir);
@@ -115,7 +118,7 @@ export async function main(argv: readonly string[], io: EvalIo): Promise<number>
   }
 
   if (command === 'estimate') {
-    const estimate = await estimateAll(dir, file, instructions);
+    const estimate = await estimateAll(dir, file, instructions, specs);
     for (const variant of estimate.variants) {
       const requests = variant.books.reduce((sum, { requests: count }) => sum + count, 0);
       io.write(fill(CLI.estimate_line, { code: variant.code, model: variant.model, requests: String(requests), low: usd(variant.estimate.low_usd), high: usd(variant.estimate.high_usd) }));
@@ -150,7 +153,7 @@ export async function main(argv: readonly string[], io: EvalIo): Promise<number>
       onBatchSent: (batch, requests, planned) => io.write(fill(CLI.batch_sent, { batch: String(batch), requests: String(requests), planned: String(planned) })),
       onBatchWait: (_batch, minutes) => io.write(fill(CLI.batch_wait, { minutes: String(minutes) })),
       onRetry: (_status, seconds, attempt) => io.write(fill(CLI.retry, { attempt: String(attempt), seconds: String(seconds) })),
-    });
+    }, specs);
     const spent = Object.values(outputs).reduce((sum, item) => sum + item.spent_usd, 0);
     if (stop !== null) {
       io.write(fill(CLI.stopped, { code: stop.code, spent: usd(spent) }));
@@ -191,7 +194,7 @@ export async function main(argv: readonly string[], io: EvalIo): Promise<number>
         left: String(sample.slots.filter(({ slot }) => readSampleScores(dir)[String(slot)] === undefined).length),
       }),
     );
-    const model = VARIANTS.find(({ code }) => code === sample.code)?.model ?? '';
+    const model = specs.find(({ code }) => code === sample.code)?.model ?? '';
     const server = await startScoreServer({ dir, sample, outputs, model, sources: await sourceTexts(dir, file) });
     try {
       io.write(fill(CLI.score, { url: server.url }));
@@ -222,10 +225,10 @@ export async function main(argv: readonly string[], io: EvalIo): Promise<number>
     }
     const { readFileSync } = await import('node:fs');
     const estimate = JSON.parse(readFileSync(join(dir, ESTIMATE_FILE), 'utf8')) as Parameters<typeof renderReport>[0]['estimate'];
-    const found = results(VARIANTS, readOutputs(dir), sample, readSampleScores(dir));
+    const found = results(specs, readOutputs(dir), sample, readSampleScores(dir));
     const date = (io.today?.() ?? new Date()).toISOString().slice(0, 10);
     mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, renderReport({ date, commit, sdk: sdkVersion(), specs: VARIANTS, file, sample, estimate, results: found }));
+    writeFileSync(out, renderReport({ date, commit, sdk: sdkVersion(), specs, file, sample, estimate, results: found }));
     io.write(fill(CLI.reported, { path: out, verdict: found.q8.pass ? texts.report.pass : texts.report.fail }));
     return 0;
   }
